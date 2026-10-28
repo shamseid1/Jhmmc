@@ -647,6 +647,10 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual(oceanTable.boats.map((b) => [b.teamName, b.points]), [['Sea Hunter', 725]]);
     assert.equal(oceanTable.tournaments[0].name, 'October Cup');
     assert.deepEqual([oceanTable.tournaments[0].winner.teamName, oceanTable.tournaments[0].winner.points], ['Sea Hunter', 725]);
+    // The tournament trophy table only adds up tournament-day fish: none yet besides today's cup.
+    const tourTable = (await as()('GET', '/points?division=ocean&scope=tournaments')).body;
+    assert.equal(tourTable.scope, 'tournaments');
+    assert.deepEqual(tourTable.boats.map((b) => [b.teamName, b.points]), [['Sea Hunter', 725]]);
     const riverTable = (await as()('GET', '/points?division=river')).body;
     assert.deepEqual(riverTable.boats.map((b) => [b.teamName, b.points]), [['Lofa Runner', 7.5]]);
     const results = (await as()('GET', `/tournaments/${cup.id}`)).body.results;
@@ -664,6 +668,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(weekendResults.tournament.endDate, TODAY);
     assert.deepEqual(weekendResults.results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 775, 4]], 'both days count');
     assert.equal((await as()('GET', `/tournaments/${cup.id}`)).body.results[0].points, 725, 'the one-day cup only has today');
+    // An approved fish on a day with no tournament counts overall, not for the tournament trophy.
+    r = await sec('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Wahoo').id,
+      caughtOn: day(-2), weightKg: '10', weighStation: 'Extreme' }));
+    await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
+    assert.equal((await as()('GET', '/points?division=ocean')).body.boats[0].points, 825, 'overall: every day');
+    assert.equal((await as()('GET', '/points?division=ocean&scope=tournaments')).body.boats[0].points, 775, 'tournaments only');
     const listed = (await as()('GET', '/points?division=ocean')).body.tournaments.find((t) => t.id === weekend.id);
     assert.deepEqual([listed.endDate, listed.winner.points], [TODAY, 775]);
     assert.equal((await as()('GET', '/events')).body.events.find((e) => e.id === cup.id).endDate, TODAY, 'one-day events end the same day');

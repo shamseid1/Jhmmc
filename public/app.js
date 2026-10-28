@@ -966,20 +966,28 @@ const pagesFor = (view) => ({
 
   // Official JHMMC standings from approved catches.
   async points() {
-    const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
-    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}`);
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const division = q.get('division') === 'river' ? 'river' : 'ocean';
+    // Two trophies: overall points (every day) and tournament points only.
+    const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
+    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
+    const scopeTab = (key, label) => html`<a role="tab" href="#/points?scope=${key}&division=${division}" aria-selected="${scope === key}">${label}</a>`;
     view.innerHTML = html`${raw(boardTabs('points'))}
-      ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by captains at the weigh station on the day and approved by the secretary.
+      <div class="seg scope" role="tablist">${raw(scopeTab('overall', 'Overall'))}${raw(scopeTab('tournaments', 'Tournaments'))}</div>
+      ${raw(divisionTabs(`#/points?scope=${scope}`, division))}
+      <p class="small muted">${scope === 'tournaments'
+        ? `Tournament trophy: points from fish caught during the season's tournaments only, all tournaments added up.`
+        : `Overall trophy: points from every fishing day of the JHMMC season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`}
+        Fish registered by captains at the weigh station and approved by the secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
-      ${boats.length ? raw(html`<h2>Points by boat</h2>
-      <section class="card pad bars" aria-label="Season points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
+      ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
+      <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
       <h2>Boats</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
         <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
-          <td class="num">${b.catches}</td><td class="num"><b>${b.points}</b></td></tr>`)) : empty(4, 'No approved catches yet this season.')}</tbody>
+          <td class="num">${b.catches}</td><td class="num"><b>${b.points}</b></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
       </table></div>
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>

@@ -1193,12 +1193,17 @@ function createApp({
   });
 
   // Season standings from approved catches, split by ocean and river boats.
+  // Two end-of-season trophies: overall points (every day) and tournament
+  // points (only fish caught during the season's tournaments, added up).
   api.get('/points', (req, res) => {
     const division = req.query.division === 'river' ? 'river' : 'ocean';
+    const scope = req.query.scope === 'tournaments' ? 'tournaments' : 'overall';
     const start = setting('season_start');
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end`;
+      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end
+      ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e WHERE e.kind = 'tournament'
+        AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
     const params = { division, start, end, home: homeClubId() };
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
@@ -1224,7 +1229,7 @@ function createApp({
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
-    res.json({ division, season: { start, end }, boats, anglers, tournaments, pending });
+    res.json({ division, scope, season: { start, end }, boats, anglers, tournaments, pending });
   });
 
   // One tournament's results: boats ranked, with their approved catches.
