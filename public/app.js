@@ -429,7 +429,7 @@ function needLogin(view, what) {
 
 const HERO = `<section class="hero">
   <h1>Every big fish in West Africa, in one place</h1>
-  <p>Follow the boats and anglers, see every catch, and check the leaderboard, from Dakar to Lagos. Crews sign in to log their catches.</p>
+  <p>Follow the boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
   <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
 </section>`;
 
