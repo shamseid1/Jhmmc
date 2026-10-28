@@ -403,6 +403,8 @@ const divisionTabs = (base, division) => `<div class="seg" role="tablist">
 </div>`;
 
 const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+// A tournament's days: "Sat, 14 Nov 2026" or "Sat, 14 Nov 2026 to Sun, 15 Nov 2026".
+const fmtDays = (ev) => (ev.endDate && ev.endDate !== ev.date ? `${fmtDay(ev.date)} to ${fmtDay(ev.endDate)}` : fmtDay(ev.date));
 
 // Points form for a catch waiting for the secretary.
 function reviewForm(c) {
@@ -892,7 +894,7 @@ const pagesFor = (view) => ({
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
         <a href="#/tournament/${t.id}?division=${division}"><b>${t.name}</b></a>
-        <div class="muted small">${fmtDay(t.date)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
+        <div class="muted small">${fmtDays(t)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
       </li>`)) : raw('<li class="muted">No tournaments on the calendar yet.</li>')}</ul></div>
       <h2>Anglers</h2>
       <div class="card table-wrap"><table>
@@ -908,7 +910,7 @@ const pagesFor = (view) => ({
     const { tournament, results } = await api(`/tournaments/${id}?division=${division}`);
     view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
       <h1>${tournament.name}</h1>
-      <p class="muted">${fmtDay(tournament.date)}</p>
+      <p class="muted">${fmtDays(tournament)}</p>
       ${raw(divisionTabs(`#/tournament/${id}`, division))}
       ${results.length ? results.map((b, i) => raw(html`<section class="card pad result">
         <div class="catch-head"><h3 class="catch-title">${i + 1}. <a href="#/boat/${b.teamId}">${b.teamName}</a></h3><span class="weight">${fmtPoints(b.points)}</span></div>
@@ -1164,13 +1166,17 @@ const pagesFor = (view) => ({
       </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
-        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDay(ev.date)}</div></span>
+        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDays(ev)}</div></span>
         ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
       </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
       ${editable ? raw(html`<h2>Add a tournament</h2>
       <form class="card pad stack" id="event">
         <input type="hidden" name="kind" value="tournament">
-        <label>Date <input name="date" type="date" required></label>
+        <div class="row">
+          <label>First day <input name="date" type="date" required></label>
+          <label>Last day <input name="endDate" type="date"></label>
+        </div>
+        <p class="small muted">Leave the last day empty for a one-day tournament. Fish on every day of it count towards its results.</p>
         <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup"></label>
         <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
       </form>`) : ''}`;
@@ -1182,6 +1188,7 @@ const pagesFor = (view) => ({
       route();
     });
     const eventForm = view.querySelector('#event');
+    eventForm.date.addEventListener('change', () => { eventForm.endDate.min = eventForm.date.value; });
     bindForm(eventForm, async () => {
       await api('/events', { method: 'POST', body: formData(eventForm) });
       toast('Added');

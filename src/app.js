@@ -58,6 +58,7 @@ function createApp({
   fs.mkdirSync(uploadDir, { recursive: true });
 
   const MAX_FISH_PER_SHEET = 30;
+  const MAX_EVENT_DAYS = 14;
   const photoUploads = (files) => multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -811,7 +812,8 @@ function createApp({
 
   // ---- official scoring: weigh-in, approval, calendar, standings ---------
 
-  const eventsOn = (date) => db.prepare('SELECT id, kind, name FROM events WHERE date = ?').all(date);
+  // A tournament runs from date to endDate; one-day events have no end_date.
+  const eventsOn = (day) => db.prepare('SELECT id, kind, name FROM events WHERE ? BETWEEN date AND COALESCE(end_date, date)').all(day);
 
   // The points the rules give a catch, as a suggestion for the secretary.
   function suggestPoints(catchId) {
@@ -918,7 +920,7 @@ function createApp({
     const end = setting('season_end');
     res.json({
       season: { start, end },
-      events: db.prepare('SELECT id, date, kind, name FROM events WHERE date BETWEEN ? AND ? ORDER BY date').all(start, end),
+      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name FROM events WHERE COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date`).all(start, end),
     });
   });
 
@@ -926,10 +928,17 @@ function createApp({
     const date = str(req.body.date, 10);
     const kind = req.body.kind === 'tournament' ? 'tournament' : 'holiday';
     const name = str(req.body.name, 80);
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Choose the date.' });
+    const endDate = str(req.body.endDate, 10) || date;
+    const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? '');
+    if (!isDay(date)) return res.status(400).json({ error: 'Choose the date.' });
+    if (!isDay(endDate) || endDate < date) return res.status(400).json({ error: 'The last day must be on or after the first day.' });
+    if ((Date.parse(endDate) - Date.parse(date)) / 86400000 >= MAX_EVENT_DAYS) {
+      return res.status(400).json({ error: `A tournament can last up to ${MAX_EVENT_DAYS} days.` });
+    }
     if (!name) return res.status(400).json({ error: kind === 'tournament' ? 'Name the tournament.' : 'Name the holiday.' });
-    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, kind, name) VALUES (?, ?, ?)').run(date, kind, name);
-    res.status(201).json({ event: { id: Number(lastInsertRowid), date, kind, name } });
+    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name) VALUES (?, ?, ?, ?)')
+      .run(date, endDate === date ? null : endDate, kind, name);
+    res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name } });
   });
 
   api.delete('/events/:id', requireReview, (req, res) => {
@@ -976,15 +985,17 @@ function createApp({
       ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
     `).all(params).map(({ first, ...a }) => a);
-    const tournaments = db.prepare(`SELECT id, date, name FROM events WHERE kind = 'tournament' AND date BETWEEN ? AND ? ORDER BY date DESC`)
+    const tournaments = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events
+      WHERE kind = 'tournament' AND COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date DESC`)
       .all(start, end)
       .map((e) => ({
         ...e,
         winner: db.prepare(`
           SELECT t.id AS teamId, t.name AS teamName, ROUND(SUM(k.points), 1) AS points
           FROM catches k JOIN teams t ON t.id = k.team_id
-          WHERE k.status = 'approved' AND k.club_id = ? AND t.division = ? AND k.caught_on = ? GROUP BY t.id ORDER BY points DESC LIMIT 1
-        `).get(params.home, division, e.date) ?? null,
+          WHERE k.status = 'approved' AND k.club_id = ? AND t.division = ? AND k.caught_on BETWEEN ? AND ?
+          GROUP BY t.id ORDER BY points DESC LIMIT 1
+        `).get(params.home, division, e.date, e.endDate) ?? null,
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
@@ -993,11 +1004,11 @@ function createApp({
 
   // One tournament's results: boats ranked, with their approved catches.
   api.get('/tournaments/:id', (req, res) => {
-    const event = db.prepare(`SELECT id, date, name FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));
+    const event = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
     const division = req.query.division === 'river' ? 'river' : 'ocean';
-    const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on = :date AND t.division = :division AND k.status = 'approved'
-      AND k.club_id = :home ORDER BY k.points DESC`).all({ date: event.date, division, home: homeClubId(), viewer: req.user?.id ?? 0 });
+    const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on BETWEEN :date AND :endDate AND t.division = :division AND k.status = 'approved'
+      AND k.club_id = :home ORDER BY k.points DESC`).all({ date: event.date, endDate: event.endDate, division, home: homeClubId(), viewer: req.user?.id ?? 0 });
     const boats = new Map();
     for (const r of rows) {
       const b = boats.get(r.teamId) ?? { teamId: r.teamId, teamName: r.teamName, points: 0, catches: [] };

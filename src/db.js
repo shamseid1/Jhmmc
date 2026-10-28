@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -153,10 +153,12 @@ CREATE TABLE IF NOT EXISTS species (
   points_per_kg REAL NOT NULL DEFAULT 3
 );
 
--- Calendar days: tournaments (and holidays from earlier versions, no longer used for scoring).
+-- Calendar: tournaments, from date to end_date (NULL for one day), and
+-- holidays from earlier versions, no longer used for scoring.
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
   date TEXT NOT NULL,
+  end_date TEXT,
   kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament')),
   name TEXT NOT NULL
 );
@@ -266,6 +268,11 @@ function openDb(file) {
   if (hasTables && version < 10) {
     if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'weigh_station')) {
       db.exec('ALTER TABLE users ADD COLUMN weigh_station TEXT');
+    }
+  }
+  if (hasTables && version < 11) {
+    if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'end_date')) {
+      db.exec('ALTER TABLE events ADD COLUMN end_date TEXT');
     }
   }
   db.exec(SCHEMA);

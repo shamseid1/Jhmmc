@@ -611,6 +611,22 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const results = (await as()('GET', `/tournaments/${cup.id}`)).body.results;
     assert.deepEqual(results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 725, 3]]);
 
+    // Tournaments can run over several days: fish from any of its days count.
+    assert.equal((await sec('POST', '/events', { date: TODAY, endDate: day(-1), kind: 'tournament', name: 'Backwards' })).status, 400);
+    assert.equal((await sec('POST', '/events', { date: day(-14), endDate: TODAY, kind: 'tournament', name: 'Too long' })).status, 400);
+    const weekend = (await sec('POST', '/events', { date: day(-1), endDate: TODAY, kind: 'tournament', name: 'Weekend Classic' })).body.event;
+    assert.deepEqual([weekend.date, weekend.endDate], [day(-1), TODAY]);
+    r = await sec('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Wahoo').id,
+      caughtOn: day(-1), weightKg: '10', weighStation: 'Extreme' }));
+    await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
+    const weekendResults = (await as()('GET', `/tournaments/${weekend.id}`)).body;
+    assert.equal(weekendResults.tournament.endDate, TODAY);
+    assert.deepEqual(weekendResults.results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 775, 4]], 'both days count');
+    assert.equal((await as()('GET', `/tournaments/${cup.id}`)).body.results[0].points, 725, 'the one-day cup only has today');
+    const listed = (await as()('GET', '/points?division=ocean')).body.tournaments.find((t) => t.id === weekend.id);
+    assert.deepEqual([listed.endDate, listed.winner.points], [TODAY, 775]);
+    assert.equal((await as()('GET', '/events')).body.events.find((e) => e.id === cup.id).endDate, TODAY, 'one-day events end the same day');
+
     // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.
     const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
     assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'from the registration');

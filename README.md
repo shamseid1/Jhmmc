@@ -118,8 +118,8 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
 | GET    | `/api/points`                 | `division=ocean|river`: season standings for boats and anglers, tournaments with winners |
 | GET    | `/api/tournaments/:id`        | One tournament's results by boat |
-| GET    | `/api/events`                 | Season dates, holidays and tournaments |
-| POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add or remove a holiday or tournament |
+| GET    | `/api/events`                 | Season dates and tournaments (first and last day) |
+| POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add a tournament (`date`, optional `endDate`, up to 14 days) or remove one |
 | PATCH  | `/api/settings/season`        | Secretary: `{start, end}` season dates |
 | PATCH  | `/api/species/:id`            | Secretary: `{pointsPerKg}` |
 | GET    | `/api/officials/queue`        | Registrations waiting for the secretary, with the rules' suggested points (weighmasters see their own) |
