@@ -1018,7 +1018,8 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li>Every fishing day scores. A captain can only register fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li><b>Season points:</b> every fishing day scores. A captain can only register fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li><b>Tournament points:</b> each tournament has its own results from its days only, with its own winner. Those fish count for the season too.</li>
           <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
@@ -1052,7 +1053,9 @@ const pagesFor = (view) => ({
   // One boat and day, as many fish as it brought in, submitted together.
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (captains of JHMMC boats)');
-    const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
+    const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
+    // Fish on a tournament day count for the season and for that tournament.
+    const onNow = events.find((e) => e.kind === 'tournament' && e.date <= today() && today() <= e.endDate);
     const official = state.me.canReview;
     const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
@@ -1063,6 +1066,7 @@ const pagesFor = (view) => ({
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
+      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · today's fish also count for this tournament</p>`) : ''}
       <form class="card pad stack" id="sheet">
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
