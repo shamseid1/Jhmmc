@@ -12,6 +12,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Participants tab**: every angler and every boat as a photo card with a search box, showing the boat (or boat length and make) and released/weighed counts. Captains add the boat's photo, length and make; anglers can add their own photo.
 - **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat, or for any other angler by typing their name (guests don't need an account; their catches count in the feed, leaderboards, records and Participants). Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class in pounds (2 to 130 lb, or unlimited), released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
+- **JHMMC points (official scoring)**: boats are registered as Ocean or River and have separate standings. Kept fish wait for a **weighmaster**, who records the official weight, weigh station (Extreme, Beerville, Barracuda Club, Lofa River) and a photo on the scale; released fish and weighed fish then go to the **secretary**, who approves the points the rules suggest or changes them with a note, or rejects the catch. Only Sundays, public holidays and tournament days score; the secretary keeps the season calendar and the points-per-kg table (seeded from the 2025-26 Fish Registration Form). Rules: weight × species points; released marlin 500; marlin under 100 kg kept is deducted; released sailfish scores as 25 kg; under 2 kg (ocean) / 1 kg (river) doesn't count. The **Points** tab shows the season table for boats and anglers and each tournament's results and winner. The admin makes members weighmasters or secretaries on the Members page. Scoring rules live in `src/scoring.js`.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Records**: the IGFA all-tackle world record for each species (weight, angler, place, year, African records flagged) beside the heaviest fish logged in the app and how close it came, plus the app's own records by species and IGFA line class. The world records live in `src/igfa-records.js`; check them against https://igfa.org/world-records/ and update that file when a record falls.
 - **Club records**: the Records page has a "Records for" picker listing IGFA, then JHMMC, then every other club. A club's book shows its heaviest fish of each species (angler, boat, line class, share of the world record) and its records by line class; it opens on the angler's own club. Each club page also lists its records. JHMMC (Liberia) is created automatically as the founding club (`HOME_CLUB` in `src/db.js`).
@@ -112,6 +113,17 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/catches/:id/like`       | Toggle like                            |
 | POST   | `/api/catches/:id/comments`   | Add a comment                          |
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
+| GET    | `/api/points`                 | `division=ocean|river`: season standings for boats and anglers, tournaments with winners |
+| GET    | `/api/tournaments/:id`        | One tournament's results by boat |
+| GET    | `/api/events`                 | Season dates, holidays and tournaments |
+| POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add or remove a holiday or tournament |
+| PATCH  | `/api/settings/season`        | Secretary: `{start, end}` season dates |
+| PATCH  | `/api/species/:id`            | Secretary: `{pointsPerKg}` |
+| GET    | `/api/officials/queue`        | Weighmaster/secretary: catches to weigh and to review, with the rules' suggested points |
+| POST   | `/api/catches/:id/weigh`      | Weighmaster: official weight, weigh station, line class, scale photo |
+| POST   | `/api/weigh`                  | Weighmaster: record a catch at the dock for any boat |
+| POST   | `/api/catches/:id/review`     | Secretary: `{decision: approve|reject, points?, note?}` |
+| PATCH  | `/api/admin/users/:id`        | Admin: `{role: weighmaster|secretary|null}` |
 | GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club |
 | GET    | `/api/users/:id`              | Angler profile and stats               |
 

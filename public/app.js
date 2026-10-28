@@ -145,6 +145,17 @@ const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 
 // ---- catch card -----------------------------------------------------------
 
+const DIVISIONS = [['ocean', 'Ocean'], ['river', 'River']];
+const fmtPoints = (p) => `${Number.isInteger(p) ? p : p.toFixed(1)} pts`;
+
+// Where a catch is in the official process: weigh-in, secretary, decision.
+function statusBadge(c) {
+  if (c.status === 'approved') return `<span class="badge status ok">${esc(fmtPoints(c.points))}</span>`;
+  if (c.status === 'rejected') return '<span class="badge status no">Not counted</span>';
+  if (c.status === 'pending_weigh') return '<span class="badge status wait">Waiting for weigh-in</span>';
+  return '<span class="badge status wait">Waiting for the secretary</span>';
+}
+
 function catchCard(c, { full = false } = {}) {
   const photo = c.photoUrl
     ? html`<img class="catch-photo" src="${c.photoUrl}" alt="${c.species} caught by ${c.angler}" loading="lazy">`
@@ -164,6 +175,7 @@ function catchCard(c, { full = false } = {}) {
         · ${fmtDate(c.caughtOn)}${details ? ' · ' + details : ''}
       </p>
       <div class="badges">
+        ${raw(statusBadge(c))}
         ${c.released ? raw('<span class="badge release">Released</span>') : ''}
         ${c.tagged ? raw('<span class="badge release">Tagged</span>') : ''}
         ${c.lengthCm ? raw(html`<span class="badge">${c.lengthCm} cm</span>`) : ''}
@@ -171,6 +183,11 @@ function catchCard(c, { full = false } = {}) {
       </div>
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
+      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl) ? raw(html`<div class="official">
+        ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
+        ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
+        ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img class="scale-photo" src="${c.scalePhotoUrl}" alt="Fish on the scale" loading="lazy"></a>`) : ''}
+      </div>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
         <a class="btn" href="#/catch/${c.id}" aria-label="Comments">${raw(icon('comment'))} ${c.comments}</a>
@@ -270,10 +287,32 @@ function noBoatBanner() {
   </div>`;
 }
 
-const boardTabs = (active) => `<div class="seg" role="tablist">
+const boardTabs = (active) => `<div class="seg three" role="tablist">
+  <a role="tab" href="#/points" aria-selected="${active === 'points'}">Points</a>
   <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
   <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
 </div>`;
+
+// Ocean / River switch for the points pages, keeping the rest of the address.
+const divisionTabs = (base, division) => `<div class="seg" role="tablist">
+  ${DIVISIONS.map(([key, label]) => `<a role="tab" href="${base}${base.includes('?') ? '&' : '?'}division=${key}" aria-selected="${division === key}">${label}</a>`).join('')}
+</div>`;
+
+const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+// Points form for a catch waiting for the secretary.
+function reviewForm(c) {
+  return html`<form class="review" data-id="${c.id}">
+    <p class="small"><b>Rules give ${fmtPoints(c.suggested.points)}</b> · ${c.suggested.note}
+      ${c.events.length ? ` · ${c.events.map((e) => e.name).join(', ')}` : ''}</p>
+    <div class="row">
+      <label>Points <input name="points" type="number" step="0.1" value="${c.suggested.points}"></label>
+      <label>Note <input name="note" maxlength="300" placeholder="Needed if you change the points or reject"></label>
+    </div>
+    <div class="actions"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></div>
+    <p class="error"></p>
+  </form>`;
+}
 
 // ---- pages ----------------------------------------------------------------
 
@@ -334,13 +373,14 @@ const pagesFor = (view) => ({
     }
     const { team } = await api(`/teams/${state.me.teamId}`);
     view.innerHTML = html`<h1>Log a catch</h1>
-      <p class="muted">Logging for <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}</p>
+      <p class="muted">Logging for <b>${team.name}</b> (${team.division === 'river' ? 'River' : 'Ocean'})${team.clubName ? ` · ${team.clubName}` : ''}.
+        Kept fish are weighed by a JHMMC weighmaster at the dock, then the secretary approves the points.</p>
       <form class="card pad stack" id="f">
         <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="e.g. 180"></label>
+          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="your estimate"></label>
           <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
         </div>
         <div class="row">
@@ -402,7 +442,10 @@ const pagesFor = (view) => ({
             <label>Home port <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
             <label>Country <select name="country">${raw(options(state.meta.countries, state.me.country, 'Choose…'))}</select></label>
           </div>
-          <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), null, 'No club'))}</select></label>
+          <div class="row">
+            <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), null, 'No club'))}</select></label>
+            <label>Registered for <select name="division">${raw(options(DIVISIONS, 'ocean'))}</select></label>
+          </div>
           <p class="error"></p>
           <div><button type="submit" class="primary">Register boat</button></div>
         </form>
@@ -473,7 +516,7 @@ const pagesFor = (view) => ({
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
       <h1>${team.name}</h1>
-      <p class="muted">${[spec, team.homePort, team.country].filter(Boolean).join(' · ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+      <p class="muted">${[team.division === 'river' ? 'River boat' : 'Ocean boat', spec, team.homePort, team.country].filter(Boolean).join(' · ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
       ${team.isMember ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
@@ -514,7 +557,10 @@ const pagesFor = (view) => ({
           <label>Home port <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country, 'Choose…'))}</select></label>
         </div>
-        <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), team.clubId, 'No club'))}</select></label>
+        <div class="row">
+          <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), team.clubId, 'No club'))}</select></label>
+          <label>Registered for <select name="division">${raw(options(DIVISIONS, team.division))}</select></label>
+        </div>
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>`) : ''}
@@ -643,6 +689,255 @@ const pagesFor = (view) => ({
     await renderFeed(view.querySelector('#feed'), { club: club.id });
   },
 
+  // Official JHMMC standings from approved catches.
+  async points() {
+    const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
+    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}`);
+    const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
+    view.innerHTML = html`${raw(boardTabs('points'))}
+      ${raw(divisionTabs('#/points', division))}
+      <p class="small muted">Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Approved catches from Sundays, holidays and tournaments.
+        ${pending ? `${plural(pending, 'catch')} waiting to be weighed or approved.` : ''} <a href="#/scoring">How points work</a></p>
+      <h2>Boats</h2>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
+        <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
+          <td class="num">${b.catches}</td><td class="num"><b>${b.points}</b></td></tr>`)) : empty(4, 'No approved catches yet this season.')}</tbody>
+      </table></div>
+      <h2>Tournaments</h2>
+      <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
+        <a href="#/tournament/${t.id}?division=${division}"><b>${t.name}</b></a>
+        <div class="muted small">${fmtDay(t.date)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
+      </li>`)) : raw('<li class="muted">No tournaments on the calendar yet.</li>')}</ul></div>
+      <h2>Anglers</h2>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>#</th><th>Angler</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
+        <tbody>${anglers.length ? anglers.map((a, i) => raw(html`<tr><td>${i + 1}</td>
+          <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName}</div></td>
+          <td class="num">${a.catches}</td><td class="num">${a.points}</td></tr>`)) : empty(4, 'Nothing yet.')}</tbody>
+      </table></div>`;
+  },
+
+  async tournament(id) {
+    const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
+    const { tournament, results } = await api(`/tournaments/${id}?division=${division}`);
+    view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
+      <h1>${tournament.name}</h1>
+      <p class="muted">${fmtDay(tournament.date)}</p>
+      ${raw(divisionTabs(`#/tournament/${id}`, division))}
+      ${results.length ? results.map((b, i) => raw(html`<section class="card pad result">
+        <div class="catch-head"><h3 class="catch-title">${i + 1}. <a href="#/boat/${b.teamId}">${b.teamName}</a></h3><span class="weight">${fmtPoints(b.points)}</span></div>
+        <ul class="list compact">${b.catches.map((c) => raw(html`<li><a href="#/catch/${c.id}">${c.species}</a>
+          ${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : c.released ? ' · released' : ''} · ${c.angler}<span class="num-right">${fmtPoints(c.points)}</span></li>`))}</ul>
+      </section>`)) : raw('<div class="card pad empty">No approved results for this tournament yet.</div>')}`;
+  },
+
+  // Points per kg for each species; the secretary can edit it.
+  async scoring() {
+    const editable = !!state.me?.canReview;
+    const meta = await api('/meta');
+    state.meta = meta;
+    view.innerHTML = html`<p class="back"><a href="#/points">‹ Points</a></p>
+      <h1>How points work</h1>
+      <div class="card pad rulebook">
+        <ul>
+          <li>Only <b>Sundays, public holidays and tournament days</b> score. The secretary keeps the calendar.</li>
+          <li>A kept fish scores its <b>weight in kg × the points for its species</b>, once a JHMMC weighmaster has weighed it and the secretary has approved it.</li>
+          <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept has its points <b>deducted</b>.</li>
+          <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
+          <li>Fish under <b>2 kg (ocean)</b> or <b>1 kg (river)</b> don't count. Ocean and river boats have separate standings.</li>
+        </ul>
+        <p class="small muted">The secretary can change a catch's points with a note, as on the paper form.</p>
+      </div>
+      <h2>Points per kg</h2>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Species</th><th class="num">Points per kg</th></tr></thead>
+        <tbody>${meta.species.map((x) => raw(html`<tr><td>${x.name}</td><td class="num">${editable
+          ? raw(html`<input class="ppk" data-id="${x.id}" type="number" min="0" max="100" step="0.5" value="${x.pointsPerKg}" aria-label="Points per kg for ${x.name}">`)
+          : x.pointsPerKg}</td></tr>`))}</tbody>
+      </table></div>
+      ${editable ? raw('<p class="small muted">Changes save as soon as you leave a box. They apply to catches approved from now on.</p>') : ''}`;
+    view.addEventListener('change', async (e) => {
+      const input = e.target.closest('.ppk');
+      if (!input) return;
+      try {
+        await api(`/species/${input.dataset.id}`, { method: 'PATCH', body: { pointsPerKg: Number(input.value) } });
+        toast('Saved');
+      } catch (ex) {
+        toast(ex.message);
+      }
+    });
+  },
+
+  // Weighmaster: official weights for logged catches, or record one at the dock.
+  async weigh() {
+    if (!state.me?.canWeigh) return needLogin(view, 'use the weigh station (weighmasters only)');
+    const [{ toWeigh }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
+    const stations = state.meta.weighStations;
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Weigh station</h1>
+      <p class="small muted">Every fish weighed must be photographed hanging freely on a certified scale, with the weight clearly showing (rule 8).</p>
+      <h2>Waiting to be weighed (${toWeigh.length})</h2>
+      ${toWeigh.length ? toWeigh.map((c) => raw(html`<form class="card pad stack weigh-one" data-id="${c.id}">
+        <div><b>${c.species}</b> · ${c.teamName} · ${c.angler}<div class="muted small">${fmtDay(c.caughtOn)}${c.weightKg ? ` · crew estimate ${fmtWeight(c.weightKg)}` : ''}</div></div>
+        <div class="row">
+          <label>Official weight (kg) <input name="weightKg" type="number" step="0.1" min="0" required inputmode="decimal"></label>
+          <label>Weigh station <select name="weighStation" required>${raw(options(stations, null, 'Choose…'))}</select></label>
+        </div>
+        <div class="row">
+          <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, c.lineClass, 'Not recorded'))}</select></label>
+          <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/jpeg,image/png,image/webp" required></label>
+        </div>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Record weight</button></div>
+      </form>`)) : raw('<div class="card pad empty">Nothing waiting. Crews log their catches; they appear here to be weighed.</div>')}
+      <h2>Record a catch at the dock</h2>
+      <form class="card pad stack" id="record">
+        <div class="row">
+          <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
+          <label>Angler <select name="anglerId" required><option value="">Choose the boat first</option></select></label>
+        </div>
+        <label id="rec-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
+        <div class="row">
+          <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
+          <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="released"> Released (no weight)</label>
+        <div class="row">
+          <label>Official weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
+          <label>Weigh station <select name="weighStation">${raw(options(stations, null, 'Choose…'))}</select></label>
+        </div>
+        <div class="row">
+          <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+          <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        </div>
+        <p class="small muted">The scale photo is needed for kept fish (rule 8).</p>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Record catch</button></div>
+      </form>`;
+
+    for (const f of view.querySelectorAll('.weigh-one')) {
+      bindForm(f, async () => {
+        await api(`/catches/${f.dataset.id}/weigh`, { method: 'POST', form: new FormData(f) });
+        toast('Weight recorded. Sent to the secretary.');
+        route();
+      });
+    }
+    const rec = view.querySelector('#record');
+    rec.teamId.addEventListener('change', async () => {
+      const id = rec.teamId.value;
+      const crew = id ? (await api(`/teams/${id}`)).team.members : [];
+      rec.anglerId.innerHTML = options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], null, 'Choose…');
+    });
+    rec.anglerId.addEventListener('change', () => {
+      view.querySelector('#rec-name').hidden = rec.anglerId.value !== 'other';
+    });
+    bindForm(rec, async () => {
+      const fd = new FormData(rec);
+      if (!fd.get('scalePhoto')?.size) fd.delete('scalePhoto');
+      await api('/weigh', { method: 'POST', form: fd });
+      toast('Catch recorded. Sent to the secretary.');
+      route();
+    });
+  },
+
+  // Secretary: check each weighed or released catch and approve its points.
+  async review() {
+    if (!state.me?.canReview) return needLogin(view, 'review catches (the secretary only)');
+    const { toReview, toWeigh } = await api('/officials/queue');
+    // Grouped by day and boat, like the paper registration forms.
+    const groups = new Map();
+    for (const c of toReview) {
+      const key = `${c.caughtOn}|${c.teamId}`;
+      if (!groups.has(key)) groups.set(key, { date: c.caughtOn, boat: c.teamName, division: c.division, catches: [] });
+      groups.get(key).catches.push(c);
+    }
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Review catches</h1>
+      <p class="small muted">${plural(toReview.length, 'catch')} to check${toWeigh.length ? ` · ${toWeigh.length} still waiting for a weighmaster` : ''}. Approving gives the points shown; change them with a note if needed.</p>
+      ${groups.size ? [...groups.values()].map((g) => raw(html`<section class="sheet">
+        <h2>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h2>
+        ${g.catches.map((c) => raw(html`<article class="card pad review-item">
+          <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
+            <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
+          <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}${c.weighStation ? ` · weighed at ${c.weighStation}` : ''}</p>
+          <div class="thumbs">
+            ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
+            ${c.photoUrl ? raw(html`<a href="${c.photoUrl}" target="_blank" rel="noopener"><img src="${c.photoUrl}" alt="Catch photo"></a>`) : ''}
+            ${!c.scalePhotoUrl && !c.photoUrl ? raw('<span class="small muted">No photo</span>') : ''}
+          </div>
+          ${raw(reviewForm(c))}
+        </article>`))}
+      </section>`)) : raw('<div class="card pad empty">Nothing to review. Weighed and released catches appear here.</div>')}`;
+    view.addEventListener('click', (e) => {
+      const btn = e.target.closest('form.review button[name=decision]');
+      if (btn) btn.form.dataset.decision = btn.value;
+    });
+    view.addEventListener('submit', async (e) => {
+      const form = e.target.closest('form.review');
+      if (!form) return;
+      e.preventDefault();
+      const err = form.querySelector('.error');
+      err.textContent = '';
+      try {
+        await api(`/catches/${form.dataset.id}/review`, { method: 'POST', body: { ...formData(form), decision: form.dataset.decision } });
+        form.closest('.review-item').remove();
+        toast(form.dataset.decision === 'approve' ? 'Approved' : 'Rejected');
+      } catch (ex) {
+        err.textContent = ex.message;
+      }
+    });
+  },
+
+  // Secretary: season dates, public holidays and tournaments.
+  async calendar() {
+    const { season, events } = await api('/events');
+    const editable = !!state.me?.canReview;
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Season calendar</h1>
+      <p class="small muted">Every Sunday scores automatically. Public holidays and tournament days listed here score too.</p>
+      ${editable ? raw(html`<form class="card pad stack" id="season">
+        <div class="row">
+          <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
+          <label>Season ends <input name="end" type="date" required value="${season.end}"></label>
+        </div>
+        <p class="error"></p><div><button type="submit">Save season dates</button></div>
+      </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
+      <h2>Holidays and tournaments</h2>
+      <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
+        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDay(ev.date)}</div></span>
+        ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
+      </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
+      ${editable ? raw(html`<h2>Add a day</h2>
+      <form class="card pad stack" id="event">
+        <div class="row">
+          <label>Date <input name="date" type="date" required></label>
+          <label>Type <select name="kind">${raw(options([['tournament', 'Tournament'], ['holiday', 'Public holiday']], 'tournament'))}</select></label>
+        </div>
+        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup, Independence Day"></label>
+        <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
+      </form>`) : ''}`;
+    if (!editable) return;
+    const seasonForm = view.querySelector('#season');
+    bindForm(seasonForm, async () => {
+      await api('/settings/season', { method: 'PATCH', body: formData(seasonForm) });
+      toast('Season dates saved');
+      route();
+    });
+    const eventForm = view.querySelector('#event');
+    bindForm(eventForm, async () => {
+      await api('/events', { method: 'POST', body: formData(eventForm) });
+      toast('Added');
+      route();
+    });
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act=delete-event]');
+      if (!btn || !confirm('Remove this day from the calendar? Catches on it stop scoring unless it is a Sunday.')) return;
+      await api(`/events/${btn.closest('[data-id]').dataset.id}`, { method: 'DELETE' });
+      route();
+    });
+  },
+
   async leaderboard() {
     const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
     const { records, teams, anglers, clubs } = await api('/leaderboard?' + new URLSearchParams(q));
@@ -709,6 +1004,12 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
+      ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
+        ${item('#/weigh', 'weight', 'Weigh station', 'Record official weights')}
+        ${me.canReview ? item('#/review', 'review', 'Review catches', 'Check and approve points') : ''}
+        ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Holidays and tournaments') : ''}
+        ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
+      </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Find a member, make a password reset link')}
       </div>`) : ''}
@@ -716,6 +1017,8 @@ const pagesFor = (view) => ({
       <div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
+        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg and scoring days'))}
+        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments and holidays'))}
       </div>
       <h2>Records &amp; clubs</h2>
       <div class="card menu">
@@ -742,16 +1045,27 @@ const pagesFor = (view) => ({
     const { users } = await api('/admin/users');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})</h1>
-      <p class="small muted">When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
+      <p class="small muted">Set who are weighmasters and the secretary. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
+        <label class="role">Role <select data-act="role">${raw(options([['', 'Member'], ['weighmaster', 'Weighmaster'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
         <div class="reset-out" hidden></div>
       </li>`))}</ul></div>`;
     view.querySelector('.search input').addEventListener('input', (e) => {
       const term = e.target.value.trim().toLowerCase();
       for (const li of view.querySelectorAll('.member-row')) li.hidden = !!term && !li.dataset.find.includes(term);
+    });
+    view.addEventListener('change', async (e) => {
+      const sel = e.target.closest('select[data-act=role]');
+      if (!sel) return;
+      try {
+        await api(`/admin/users/${sel.closest('.member-row').dataset.id}`, { method: 'PATCH', body: { role: sel.value } });
+        toast(sel.value ? `Now a ${sel.value}` : 'Now a member');
+      } catch (ex) {
+        toast(ex.message);
+      }
     });
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act]');
@@ -1008,6 +1322,10 @@ const ICONS = {
   catch: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  weight: '<circle cx="12" cy="5" r="3"/><path d="M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.48 8Z"/>',
+  review: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
+  calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+  calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -1024,14 +1342,14 @@ const ICONS = {
 function renderNav(active) {
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
-    ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
+    ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
   if (state.me?.teamId) links.push(['#/new', 'Log catch', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
-    boat: 'participants', user: 'participants', records: 'leaderboard',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
+    boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>

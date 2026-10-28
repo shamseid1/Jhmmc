@@ -410,3 +410,133 @@ test('without email: members contact the admin, who makes reset links', async ()
     srv.close();
   }
 });
+
+test('JHMMC points: weigh-in, secretary approval, calendar and standings', async () => {
+  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads3'), mailer, adminEmail: 'boss@example.com' });
+  const srv = app.listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const at = `http://127.0.0.1:${srv.address().port}/api`;
+  const as = () => {
+    let cookie = '';
+    return async (method, url, body) => {
+      const headers = cookie ? { cookie } : {};
+      let payload = body;
+      if (body && !(body instanceof FormData)) {
+        headers['content-type'] = 'application/json';
+        payload = JSON.stringify(body);
+      }
+      const res = await fetch(at + url, { method, headers, body: payload });
+      const set = res.headers.get('set-cookie');
+      if (set) cookie = set.split(';')[0];
+      return { status: res.status, body: await res.json() };
+    };
+  };
+  const form = (fields) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return fd;
+  };
+  // Weighmasters attach the photo of the fish on the scale.
+  const weighed = (fields) => {
+    const fd = form(fields);
+    fd.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'scale.png');
+    return fd;
+  };
+  try {
+    const boss = as();
+    await boss('POST', '/auth/register', { name: 'Boss', email: 'boss@example.com', password: 'password1' });
+    const sec = as();
+    await sec('POST', '/auth/register', { name: 'Robert Secretary', email: 'sec@example.com', password: 'password1' });
+    const wm = as();
+    await wm('POST', '/auth/register', { name: 'Weigh Master', email: 'wm@example.com', password: 'password1' });
+    const users = (await boss('GET', '/admin/users')).body.users;
+    const idOf = (email) => users.find((u) => u.email === email).id;
+    assert.equal((await sec('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' })).status, 403, 'only the admin sets roles');
+    await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' });
+    await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' });
+    assert.deepEqual([(await wm('GET', '/me')).body.user.canWeigh, (await wm('GET', '/me')).body.user.canReview], [true, false]);
+    assert.equal((await sec('GET', '/me')).body.user.canReview, true);
+
+    const cap = as();
+    await cap('POST', '/auth/register', { name: 'Ocean Captain', email: 'oc@example.com', password: 'password1' });
+    const ocean = (await cap('POST', '/teams', { name: 'Sea Hunter' })).body.team;
+    assert.equal(ocean.division, 'ocean');
+    const rcap = as();
+    await rcap('POST', '/auth/register', { name: 'River Captain', email: 'rc@example.com', password: 'password1' });
+    const river = (await rcap('POST', '/teams', { name: 'Lofa Runner', division: 'river' })).body.team;
+    assert.equal(river.division, 'river');
+
+    const species = (await cap('GET', '/meta')).body.species;
+    const sp = (n) => species.find((x) => x.name === n);
+    assert.equal(sp('Wahoo').pointsPerKg, 5);
+    assert.equal(sp('Butter nose').pointsPerKg, 5);
+
+    // Sunday 25 Oct 2026: crew logs a kept wahoo and a released marlin.
+    let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '19' }));
+    const wahoo = r.body.catch;
+    assert.equal(wahoo.status, 'pending_weigh', 'kept fish wait for the weighmaster');
+    r = await cap('POST', '/catches', form({ speciesId: sp('Atlantic blue marlin').id, caughtOn: '2026-10-25', released: 'on' }));
+    const marlin = r.body.catch;
+    assert.equal(marlin.status, 'pending_review', 'released fish go straight to the secretary');
+
+    assert.equal((await cap('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Extreme' }))).status, 403);
+    assert.equal((await wm('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Nowhere' }))).status, 400);
+    assert.equal((await wm('POST', `/catches/${wahoo.id}/weigh`, form({ weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
+    r = await wm('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Extreme', lineClass: '50 lb' }));
+    assert.match(r.body.catch.scalePhotoUrl, /^\/uploads\//);
+    assert.deepEqual([r.body.catch.status, r.body.catch.weightKg, r.body.catch.weighStation], ['pending_review', 21, 'Extreme']);
+
+    // Weighmaster records a river fish brought to Lofa River for a guest.
+    r = await wm('POST', '/weigh', weighed({ teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
+      caughtOn: '2026-10-25', weightKg: '1.5', weighStation: 'Lofa River' }));
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const snapper = r.body.catch;
+    // Saturday catch: logged but not a scoring day.
+    r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
+      caughtOn: '2026-10-24', weightKg: '8', weighStation: 'Beerville' }));
+    const saturday = r.body.catch;
+
+    const queue = (await sec('GET', '/officials/queue')).body;
+    const sug = (id) => queue.toReview.find((c) => c.id === id).suggested.points;
+    assert.equal(sug(wahoo.id), 105);
+    assert.equal(sug(marlin.id), 500);
+    assert.equal(sug(snapper.id), 7.5, 'river minimum is 1 kg');
+    assert.equal(sug(saturday.id), 0, 'Saturday is not a scoring day');
+    assert.equal((await wm('GET', '/officials/queue')).body.toReview.length, 0, 'weighmasters do not approve');
+
+    assert.equal((await wm('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' })).status, 403);
+    assert.equal((await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve', points: 90 })).status, 400, 'changed points need a note');
+    r = await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' });
+    assert.deepEqual([r.body.catch.status, r.body.catch.points], ['approved', 105]);
+    await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' });
+    await sec('POST', `/catches/${snapper.id}/review`, { decision: 'approve' });
+    assert.equal((await sec('POST', `/catches/${saturday.id}/review`, { decision: 'reject' })).status, 400, 'rejections need a reason');
+    await sec('POST', `/catches/${saturday.id}/review`, { decision: 'reject', note: 'Not a scoring day' });
+    assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'approved catches are locked for crews');
+
+    // Tournament on Saturday 17 Oct: secretary adds it, then a catch that day scores.
+    assert.equal((await cap('POST', '/events', { date: '2026-10-17', kind: 'tournament', name: 'October Cup' })).status, 403);
+    const cup = (await sec('POST', '/events', { date: '2026-10-17', kind: 'tournament', name: 'October Cup' })).body.event;
+    r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
+      caughtOn: '2026-10-17', weightKg: '40', weighStation: 'Barracuda Club' }));
+    await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
+
+    const oceanTable = (await as()('GET', '/points?division=ocean')).body;
+    assert.deepEqual(oceanTable.boats.map((b) => [b.teamName, b.points]), [['Sea Hunter', 725]]);
+    assert.equal(oceanTable.tournaments[0].name, 'October Cup');
+    assert.deepEqual([oceanTable.tournaments[0].winner.teamName, oceanTable.tournaments[0].winner.points], ['Sea Hunter', 120]);
+    const riverTable = (await as()('GET', '/points?division=river')).body;
+    assert.deepEqual(riverTable.boats.map((b) => [b.teamName, b.points]), [['Lofa Runner', 7.5]]);
+    const results = (await as()('GET', `/tournaments/${cup.id}`)).body.results;
+    assert.deepEqual(results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 120, 1]]);
+
+    // Scoring table and season dates.
+    assert.equal((await sec('PATCH', `/species/${sp('Atlantic sailfish').id}`, { pointsPerKg: 4 })).status, 200);
+    assert.equal((await as()('GET', '/meta')).body.species.find((x) => x.name === 'Atlantic sailfish').pointsPerKg, 4);
+    assert.equal((await sec('PATCH', '/settings/season', { start: '2027-01-01', end: '2026-01-01' })).status, 400);
+    r = await sec('PATCH', '/settings/season', { start: '2026-12-01', end: '2027-11-30' });
+    assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'October is outside the new season');
+  } finally {
+    srv.close();
+  }
+});

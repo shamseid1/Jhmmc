@@ -8,32 +8,38 @@ const COUNTRIES = [
   'Senegal', 'Sierra Leone', 'Togo',
 ];
 
-// Big game species commonly targeted off the West African coast.
+// Big game species commonly targeted off the West African coast, with the
+// JHMMC points per kg from the 2025-26 Fish Registration Form (editable in the app).
 const SPECIES = [
-  ['Atlantic blue marlin', 'Makaira nigricans', 'Billfish'],
-  ['Atlantic sailfish', 'Istiophorus albicans', 'Billfish'],
-  ['White marlin', 'Kajikia albida', 'Billfish'],
-  ['Swordfish', 'Xiphias gladius', 'Billfish'],
-  ['Yellowfin tuna', 'Thunnus albacares', 'Tuna'],
-  ['Bigeye tuna', 'Thunnus obesus', 'Tuna'],
-  ['Skipjack tuna', 'Katsuwonus pelamis', 'Tuna'],
-  ['Little tunny', 'Euthynnus alletteratus', 'Tuna'],
-  ['Wahoo', 'Acanthocybium solandri', 'Pelagic'],
-  ['Dorado (mahi-mahi)', 'Coryphaena hippurus', 'Pelagic'],
-  ['West African Spanish mackerel', 'Scomberomorus tritor', 'Pelagic'],
-  ['Barracuda', 'Sphyraena afra', 'Pelagic'],
-  ['Greater amberjack', 'Seriola dumerili', 'Reef & jacks'],
-  ['Crevalle jack', 'Caranx hippos', 'Reef & jacks'],
-  ['African pompano', 'Alectis ciliaris', 'Reef & jacks'],
-  ['Cubera snapper', 'Lutjanus cyanopterus', 'Reef & jacks'],
-  ['Giant African threadfin', 'Polydactylus quadrifilis', 'Inshore'],
-  ['Atlantic tarpon', 'Megalops atlanticus', 'Inshore'],
-  ['Leerfish (garrick)', 'Lichia amia', 'Inshore'],
-  ['Dusky grouper', 'Epinephelus marginatus', 'Bottom'],
-  ['Shortfin mako shark', 'Isurus oxyrinchus', 'Shark'],
-  ['Hammerhead shark', 'Sphyrna spp.', 'Shark'],
-  ['Other', null, 'Other'],
+  ['Atlantic blue marlin', 'Makaira nigricans', 'Billfish', 5],
+  ['Atlantic sailfish', 'Istiophorus albicans', 'Billfish', 5],
+  ['White marlin', 'Kajikia albida', 'Billfish', 5],
+  ['Swordfish', 'Xiphias gladius', 'Billfish', 3],
+  ['Yellowfin tuna', 'Thunnus albacares', 'Tuna', 3],
+  ['Bigeye tuna', 'Thunnus obesus', 'Tuna', 3],
+  ['Skipjack tuna', 'Katsuwonus pelamis', 'Tuna', 3],
+  ['Little tunny', 'Euthynnus alletteratus', 'Tuna', 3],
+  ['Wahoo', 'Acanthocybium solandri', 'Pelagic', 5],
+  ['Dorado (mahi-mahi)', 'Coryphaena hippurus', 'Pelagic', 3],
+  ['West African Spanish mackerel', 'Scomberomorus tritor', 'Pelagic', 3],
+  ['Barracuda', 'Sphyraena afra', 'Pelagic', 3],
+  ['Greater amberjack', 'Seriola dumerili', 'Reef & jacks', 3],
+  ['Crevalle jack', 'Caranx hippos', 'Reef & jacks', 5],
+  ['African pompano', 'Alectis ciliaris', 'Reef & jacks', 3],
+  ['Cubera snapper', 'Lutjanus cyanopterus', 'Reef & jacks', 5],
+  ['Snapper', 'Lutjanus spp.', 'Bottom', 5],
+  ['Giant African threadfin', 'Polydactylus quadrifilis', 'Inshore', 3],
+  ['Atlantic tarpon', 'Megalops atlanticus', 'Inshore', 5],
+  ['Butter nose', null, 'Inshore', 5],
+  ['Leerfish (garrick)', 'Lichia amia', 'Inshore', 3],
+  ['Dusky grouper', 'Epinephelus marginatus', 'Bottom', 5],
+  ['Shortfin mako shark', 'Isurus oxyrinchus', 'Shark', 5],
+  ['Hammerhead shark', 'Sphyrna spp.', 'Shark', 5],
+  ['Other', null, 'Other', 3],
 ];
+
+// JHMMC weigh stations; Lofa River weighs for river boats.
+const WEIGH_STATIONS = ['Extreme', 'Beerville', 'Barracuda Club', 'Lofa River'];
 
 // IGFA line classes, in pounds, plus 100 lb, which local tournaments use.
 const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb', '30 lb', '50 lb', '80 lb', '100 lb', '130 lb', 'Unlimited'];
@@ -41,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -64,6 +70,16 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   notes TEXT,
   photo TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Official scoring: weighed at the dock by a weighmaster, then approved by the secretary.
+  status TEXT NOT NULL DEFAULT 'pending_review',
+  weigh_station TEXT,
+  weighed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  weighed_at TEXT,
+  scale_photo TEXT,
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TEXT,
+  points REAL,
+  points_note TEXT,
   CHECK (user_id IS NOT NULL OR angler_name IS NOT NULL)
 );`;
 
@@ -90,6 +106,7 @@ CREATE TABLE IF NOT EXISTS users (
   team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
   bio TEXT,
   photo TEXT,
+  role TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -102,6 +119,7 @@ CREATE TABLE IF NOT EXISTS teams (
   length_ft REAL,
   make TEXT,
   photo TEXT,
+  division TEXT NOT NULL DEFAULT 'ocean',
   club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
   captain_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   join_code TEXT NOT NULL UNIQUE,
@@ -126,7 +144,21 @@ CREATE TABLE IF NOT EXISTS species (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   scientific_name TEXT,
-  category TEXT NOT NULL
+  category TEXT NOT NULL,
+  points_per_kg REAL NOT NULL DEFAULT 3
+);
+
+-- Scoring days besides Sundays: public holidays and tournaments.
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY,
+  date TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament')),
+  name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 ${catchesTable('catches')}
@@ -185,16 +217,38 @@ function openDb(file) {
       COMMIT;`);
     db.exec('PRAGMA foreign_keys = ON');
   }
+  if (hasTables && version < 6) {
+    const addColumn = (table, column, definition) => {
+      const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+      if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    };
+    addColumn('users', 'role', 'TEXT');
+    addColumn('teams', 'division', "TEXT NOT NULL DEFAULT 'ocean'");
+    addColumn('species', 'points_per_kg', 'REAL NOT NULL DEFAULT 3');
+    for (const [column, definition] of [
+      ['status', "TEXT NOT NULL DEFAULT 'pending_review'"], ['weigh_station', 'TEXT'],
+      ['weighed_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL'], ['weighed_at', 'TEXT'], ['scale_photo', 'TEXT'],
+      ['reviewed_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL'], ['reviewed_at', 'TEXT'],
+      ['points', 'REAL'], ['points_note', 'TEXT'],
+    ]) addColumn('catches', column, definition);
+    // Existing species take the JHMMC points from the registration form.
+    const setPoints = db.prepare('UPDATE species SET points_per_kg = ? WHERE name = ?');
+    for (const [name, , , points] of SPECIES) setPoints.run(points, name);
+  }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   // Species renamed since earlier versions; catches keep pointing at the same row.
   db.prepare("UPDATE species SET name = 'Barracuda' WHERE name = 'Guinean barracuda'").run();
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO species (name, scientific_name, category) VALUES (?, ?, ?)'
+    'INSERT OR IGNORE INTO species (name, scientific_name, category, points_per_kg) VALUES (?, ?, ?, ?)'
   );
   for (const s of SPECIES) insert.run(...s);
   db.prepare('INSERT OR IGNORE INTO clubs (name, country) VALUES (?, ?)').run(HOME_CLUB.name, HOME_CLUB.country);
+  // Season dates, changed by the secretary on the Calendar page.
+  const setting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  setting.run('season_start', '2026-09-01');
+  setting.run('season_end', '2027-08-31');
   return db;
 }
 
-module.exports = { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB };
+module.exports = { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB, WEIGH_STATIONS };
