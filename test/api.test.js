@@ -502,10 +502,9 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // The captain registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;
     const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY, declared: 'yes' };
-    // Only Sundays, holidays and tournament days score: an ordinary weekday can't be registered.
-    const weekday = [-1, -2, -4, -5, -6].map(day).find((d) => new Date(`${d}T12:00:00Z`).getUTCDay() !== 0);
-    r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: weekday, speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
-    assert.match(r.body.error, /Sunday, holiday or tournament/, 'registrations are for scoring days');
+    // Only tournament fish score: nothing can be registered until today is a tournament.
+    r = await sec('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
+    assert.match(r.body.error, /tournament/, 'registrations are for tournament days');
     assert.equal((await cap('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).status, 403);
     const cup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).body.event;
     await sec('POST', '/events', { date: day(-3), kind: 'tournament', name: 'Early Bird' });
