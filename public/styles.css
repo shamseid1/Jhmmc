@@ -270,3 +270,21 @@ button.more[hidden] { display: none; }
 .club-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .club-pick select { flex: 1 1 200px; width: auto; }
 td.num, td.nw { white-space: nowrap; }
+
+/* ---- rules ---- */
+.seg.three { grid-template-columns: repeat(3, 1fr); }
+.rulebook { line-height: 1.6; }
+.rulebook h1 { font-size: 1.35rem; margin-top: 0; }
+.rulebook h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.rulebook ol.rules > li { margin-bottom: 18px; padding-left: 4px; }
+.rulebook ol.rules > li::marker { font-weight: 800; }
+.rulebook ol ol { margin: 6px 0; }
+.rulebook li li { margin-bottom: 4px; }
+.rulebook p { margin: 0 0 8px; }
+.rulebook ul { padding-left: 20px; margin: 0 0 12px; }
+.rulebook .warn { color: var(--danger); }
+.rulebook .strong { font-weight: 700; text-decoration: underline; }
+.rulebook li.key { background: rgba(194, 65, 59, .06); border-radius: 8px; padding: 10px 10px 4px; }
+.rulebook .notice { background: var(--bg); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
+.rulebook ol { padding-left: 22px; }
+.rulebook ol ol { padding-left: 18px; }

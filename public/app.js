@@ -262,9 +262,10 @@ function noBoatBanner() {
   </div>`;
 }
 
-const boardTabs = (active) => `<div class="seg" role="tablist">
+const boardTabs = (active) => `<div class="seg three" role="tablist">
   <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
   <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
+  <a role="tab" href="#/rules" aria-selected="${active === 'rules'}">Rules</a>
 </div>`;
 
 // ---- pages ----------------------------------------------------------------
@@ -602,6 +603,7 @@ const pagesFor = (view) => ({
         </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches from this club yet.</td></tr>')}</tbody>
       </table></div>
       <p class="small"><a href="#/records?club=${club.id}">Club records by line class, and against the IGFA world records</a></p>
+      ${club.name.toLowerCase() === state.meta.homeClub.toLowerCase() ? raw('<p><a class="btn" href="#/rules">JHMMC season rules</a></p>') : ''}
       <h2>Recent catches</h2>
       <div id="feed"></div>`;
     await renderFeed(view.querySelector('#feed'), { club: club.id });
@@ -652,6 +654,23 @@ const pagesFor = (view) => ({
       else p.delete(e.target.name);
       location.hash = '#/leaderboard?' + p;
     });
+  },
+
+  // The JHMMC season rules and a summary of the IGFA angling rules.
+  async rules() {
+    const which = new URLSearchParams(location.hash.split('?')[1] || '').get('book') === 'igfa' ? 'igfa' : 'jhmmc';
+    const book = window.RULES[which];
+    view.innerHTML = html`${raw(boardTabs('rules'))}
+      <div class="seg" role="tablist">
+        <a role="tab" href="#/rules?book=jhmmc" aria-selected="${which === 'jhmmc'}">JHMMC rules</a>
+        <a role="tab" href="#/rules?book=igfa" aria-selected="${which === 'igfa'}">IGFA rules</a>
+      </div>
+      <article class="card pad rulebook">
+        <h1>${book.title}</h1>
+        ${book.pdf ? raw(html`<p><a class="btn" href="${book.pdf}" target="_blank" rel="noopener">Download the official PDF</a></p>`) : ''}
+        ${raw(book.html)}
+        ${book.url ? raw(html`<p><a class="btn primary" href="${book.url}" target="_blank" rel="noopener">Read the full IGFA rules</a></p>`) : ''}
+      </article>`;
   },
 
   // One page, many record books: IGFA's world records, or any club's own.
@@ -822,7 +841,7 @@ function renderNav(active) {
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   if (!state.me?.teamId) links.push(['#/clubs', 'Clubs', 'clubs', 'clubs']);
   links.push(state.me ? ['#/profile', 'Me', 'profile', 'me'] : ['#/login', 'Sign in', 'login', 'me']);
-  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login', records: 'leaderboard' }[active] || active;
+  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login', records: 'leaderboard', rules: 'leaderboard' }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
       <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span></a>`)
