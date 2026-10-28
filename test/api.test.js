@@ -245,6 +245,24 @@ test('anglers without an account: catches logged under a typed name', async () =
   const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
   assert.equal(rec.best.angler, 'Guest Varney');
   assert.equal(guest[0].name, 'Guest Varney', 'shown as first typed');
+
+  // Varney joins the crew and the captain moves the typed-name catches to the account.
+  const teamId = (await cap('GET', '/me')).body.user.teamId;
+  const team = (await cap('GET', `/teams/${teamId}`)).body.team;
+  assert.deepEqual(team.guests, [{ name: 'Guest Varney', catches: 2 }]);
+  const varney = client();
+  await varney('POST', '/auth/register', { name: 'Varney Doe', email: 'varney@example.com', password: 'password1' });
+  const varneyId = (await varney('GET', '/me')).body.user.id;
+  assert.equal((await cap('POST', `/teams/${teamId}/guests/link`, { name: 'guest varney', userId: varneyId })).status, 400, 'must be crew');
+  await varney('POST', '/teams/join', { code: team.joinCode });
+  assert.equal((await varney('POST', `/teams/${teamId}/guests/link`, { name: 'Guest Varney', userId: varneyId })).status, 403, 'captain only');
+  r = await cap('POST', `/teams/${teamId}/guests/link`, { name: 'guest varney', userId: varneyId });
+  assert.equal(r.body.moved, 2);
+  assert.deepEqual(r.body.team.guests, []);
+  const stats = (await anon('GET', `/users/${varneyId}`)).body.stats;
+  assert.deepEqual([stats.catches, stats.released], [2, 1]);
+  assert.ok(!(await anon('GET', '/anglers')).body.anglers.some((a) => a.name === 'Guest Varney'));
+  assert.equal((await cap('POST', `/teams/${teamId}/guests/link`, { name: 'Guest Varney', userId: varneyId })).status, 404);
 });
 
 test('visitors without an account can look but not act', async () => {

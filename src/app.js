@@ -304,8 +304,13 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const isMember = members.some((m) => m.id === viewerId);
     // The invite code is the key to the boat: crew only.
     if (!isMember) delete team.joinCode;
+    // Names typed for anglers without an account, so the captain can move them to one.
+    const guests = db.prepare(`
+      SELECT angler_name AS name, MIN(id) AS first, COUNT(*) AS catches FROM catches
+      WHERE team_id = ? AND user_id IS NULL GROUP BY lower(angler_name) ORDER BY name COLLATE NOCASE
+    `).all(id).map(({ first, ...g }) => g);
     const { photo, ...rest } = team;
-    return { ...rest, photoUrl: photoUrl(photo), members, isMember, isCaptain: team.captainId === viewerId };
+    return { ...rest, photoUrl: photoUrl(photo), members, guests, isMember, isCaptain: team.captainId === viewerId };
   }
 
   api.get('/teams/:id', (req, res) => {
@@ -413,6 +418,23 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     }
     db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(userId, team.id);
     res.json({ team: getTeam(team.id, req.user.id) });
+  });
+
+  // Captain: credit every catch this boat logged under a typed name to a crew member's account.
+  api.post('/teams/:id/guests/link', (req, res) => {
+    const team = captainOf(req, res);
+    if (!team) return;
+    const name = str(req.body.name, 80);
+    const userId = intId(req.body.userId);
+    if (!userId || !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(userId, team.id)) {
+      return res.status(400).json({ error: 'Choose a crew member. The angler has to join the boat first.' });
+    }
+    const { changes } = db.prepare(`
+      UPDATE catches SET user_id = ?, angler_name = NULL
+      WHERE team_id = ? AND user_id IS NULL AND angler_name = ? COLLATE NOCASE
+    `).run(userId, team.id, name ?? '');
+    if (!changes) return res.status(404).json({ error: 'No catches on this boat are logged under that name.' });
+    res.json({ moved: changes, team: getTeam(team.id, req.user.id) });
   });
 
   api.delete('/teams/:id/members/:userId', (req, res) => {

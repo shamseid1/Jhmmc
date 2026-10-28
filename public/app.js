@@ -488,6 +488,15 @@ const pagesFor = (view) => ({
           <span class="muted small">· ${plural(m.catches, 'catch')}</span></span>
         ${team.isCaptain && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
       </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>
+      ${team.isCaptain && team.guests.length ? raw(html`<h2>Guest anglers</h2>
+      <p class="small muted">Catches logged under a typed name. If one of them joins the crew, move their catches to their account.</p>
+      <div class="card"><ul class="list">${team.guests.map((g) => raw(html`<li class="member guest" data-name="${g.name}">
+        <span><a href="${anglerHref(null, g.name)}">${g.name}</a> <span class="muted small">· ${plural(g.catches, 'catch')}</span></span>
+        <span class="actions">
+          <select aria-label="Crew member for ${g.name}">${raw(options(team.members.map((m) => [m.id, m.name]), null, 'Move to…'))}</select>
+          <button data-act="link">Move</button>
+        </span>
+      </li>`))}</ul></div>`) : ''}
       ${team.isCaptain ? raw(html`<h2>Boat details</h2>
       <form class="card pad stack" id="edit">
         <label>Boat name <input name="name" required maxlength="80" value="${team.name}"></label>
@@ -512,6 +521,7 @@ const pagesFor = (view) => ({
       const btn = e.target.closest('button[data-act]');
       if (!btn || btn.closest('.feed')) return;
       const uid = btn.closest('[data-uid]')?.dataset.uid;
+      const guestRow = btn.closest('[data-name]');
       const name = team.members.find((m) => String(m.id) === uid)?.name;
       try {
         switch (btn.dataset.act) {
@@ -529,6 +539,15 @@ const pagesFor = (view) => ({
             if (!confirm(`Remove ${name} from the crew?`)) return;
             await api(`/teams/${id}/members/${uid}`, { method: 'DELETE' });
             break;
+          case 'link': {
+            const to = guestRow.querySelector('select');
+            if (!to.value) return toast('Choose the crew member first.');
+            const who = to.selectedOptions[0].textContent;
+            if (!confirm(`Move all of ${guestRow.dataset.name}'s catches on this boat to ${who}'s account?`)) return;
+            const { moved } = await api(`/teams/${id}/guests/link`, { method: 'POST', body: { name: guestRow.dataset.name, userId: Number(to.value) } });
+            toast(`Moved ${plural(moved, 'catch')} to ${who}`);
+            break;
+          }
           case 'leave':
             if (!confirm(`Leave ${team.name}? You will no longer be able to log catches for it.`)) return;
             state.me = (await api('/teams/leave', { method: 'POST' })).user;

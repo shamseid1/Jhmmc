@@ -7,7 +7,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Open to look at**: anyone with the link can browse the feed, leaderboards, boats, anglers, clubs and catches without an account.
 - **Personal accounts**: every angler signs in with their own email and password to like, comment, join a boat or log catches.
 - **Boats are teams**: a captain registers the boat (name, home port, country, club) and gets a 6-character crew invite code to share, for example on WhatsApp. Crew join with the code, and a boat can have any number of crew.
-- **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew.
+- **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew, and move a guest angler's typed-name catches to their account once they join the crew.
 - **Individual anglers** without a boat can like and comment, but cannot log catches.
 - **Participants tab**: every angler and every boat as a photo card with a search box, showing the boat (or boat length and make) and released/weighed counts. Captains add the boat's photo, length and make; anglers can add their own photo.
 - **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat, or for any other angler by typing their name (guests don't need an account; their catches count in the feed, leaderboards, records and Participants). Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class in pounds (2 to 130 lb, or unlimited), released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
@@ -83,6 +83,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/me/photo`               | Your own photo (`multipart/form-data`) |
 | POST   | `/api/teams/:id/captain`      | Captain: `{userId}` hands over         |
 | DELETE | `/api/teams/:id/members/:userId` | Captain: remove crew                |
+| POST   | `/api/teams/:id/guests/link`  | Captain: `{name, userId}` moves this boat's catches under a typed name to a crew member |
 | GET/POST | `/api/clubs`                | List or register clubs                 |
 | GET    | `/api/clubs/:id`              | Club, its boats, stats                 |
 | GET    | `/api/catches`                | Feed; filters `species`, `team`, `club`, `country`, `user`, `angler` (typed name), `released=true`, paging with `before` |

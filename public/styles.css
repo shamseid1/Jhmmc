@@ -305,3 +305,4 @@ td.num, td.nw { white-space: nowrap; }
 label[hidden] { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
 .chip a { text-decoration: none; color: var(--muted); }
+.member.guest select { width: auto; padding: 4px 8px; font-size: 14px; }
