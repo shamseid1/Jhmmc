@@ -255,6 +255,7 @@ function statusBadge(c) {
   if (c.status === 'approved') return `<span class="badge status ok">${esc(fmtPoints(c.points))}</span>`;
   if (c.status === 'rejected') return '<span class="badge status no">Not counted</span>';
   if (c.status === 'pending_weigh') return '<span class="badge status wait">Waiting for weigh-in</span>';
+  if (c.points != null) return `<span class="badge status wait">${esc(fmtPoints(c.points))} · awaiting approval</span>`;
   return '<span class="badge status wait">Waiting for the secretary</span>';
 }
 
@@ -958,7 +959,7 @@ const pagesFor = (view) => ({
   // as many fish as it brought in, submitted together.
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (JHMMC weighmasters only)');
-    const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
+    const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
     const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const station = state.me.weighStation;
     if (!station && !state.me.canReview) {
@@ -980,13 +981,14 @@ const pagesFor = (view) => ({
           : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
+        <p class="sheet-total" id="sheet-total"></p>
         <p class="error"></p>
         <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
       <h2>Waiting for the secretary (${mine.length})</h2>
       <div class="card"><ul class="list">${mine.length ? mine.map((c) => raw(html`<li>
         <a href="#/catch/${c.id}"><b>${c.species}</b></a> · ${c.teamName} · ${c.angler}
-        <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}${c.weighStation ? ` · ${c.weighStation}` : ''}</div>
+        <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}${c.weighStation ? ` · ${c.weighStation}` : ''}${c.points != null ? ` · ${fmtPoints(c.points)}` : ''}</div>
       </li>`)) : raw('<li class="muted">Nothing waiting.</li>')}</ul></div>`;
 
     const sheet = view.querySelector('#sheet');
@@ -1005,7 +1007,39 @@ const pagesFor = (view) => ({
         <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       </div>
       <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/*"></label>
+      <p class="points-preview" aria-live="polite"></p>
     </fieldset>`;
+    // Points for each fish, worked out with the club's rules as the weight is typed.
+    const updatePoints = () => {
+      const team = teams.find((t) => String(t.id) === sheet.teamId.value);
+      const date = sheet.caughtOn.value;
+      const scoringDay = !!date && (scoring.isSunday(date) || events.some((e) => e.date === date));
+      let total = 0;
+      let counted = 0;
+      for (const row of list.querySelectorAll('.fish')) {
+        const out = row.querySelector('.points-preview');
+        const sp = state.meta.species.find((x) => String(x.id) === row.querySelector('[name=speciesId]').value);
+        const weight = row.querySelector('[name=weightKg]').value;
+        const released = row.querySelector('[name=released]').checked;
+        if (!sp || (!released && weight === '')) {
+          out.textContent = 'Points appear when you enter the species and weight.';
+          out.className = 'points-preview muted';
+          continue;
+        }
+        const r = scoring.scoreCatch({
+          species: sp.name, pointsPerKg: sp.pointsPerKg, weightKg: weight === '' ? null : Number(weight),
+          released, division: team?.division || 'ocean', scoringDay,
+        });
+        out.innerHTML = html`<b>${fmtPoints(r.points)}</b> · ${r.note}`;
+        out.className = `points-preview ${r.points > 0 ? 'good' : r.points < 0 ? 'bad' : 'muted'}`;
+        total += r.points;
+        counted++;
+      }
+      view.querySelector('#sheet-total').innerHTML = counted ? html`Total for the sheet: <b>${fmtPoints(Math.round(total * 10) / 10)}</b>` : '';
+    };
+    list.addEventListener('input', updatePoints);
+    sheet.addEventListener('change', updatePoints);
+
     const renumber = () => {
       const rows = list.querySelectorAll('.fish');
       rows.forEach((row, i) => {
@@ -1017,6 +1051,7 @@ const pagesFor = (view) => ({
     const addFish = () => {
       list.insertAdjacentHTML('beforeend', fishRow());
       renumber();
+      updatePoints();
     };
     addFish();
     view.querySelector('#add-fish').addEventListener('click', () => {
@@ -1027,6 +1062,7 @@ const pagesFor = (view) => ({
       if (e.target.closest('[data-act=remove-fish]')) {
         e.target.closest('.fish').remove();
         renumber();
+        updatePoints();
       }
     });
     list.addEventListener('change', (e) => {

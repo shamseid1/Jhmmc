@@ -507,6 +507,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const wahoo = r.body.catch;
     assert.match(wahoo.scalePhotoUrl, /^\/uploads\//);
     assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
+    assert.deepEqual([wahoo.points, wahoo.pointsNote], [105, '21 kg × 5 points per kg.'], 'points worked out at registration');
     r = await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
     assert.equal(r.status, 201, 'released fish need no weight or scale photo');
     const marlin = r.body.catch;
@@ -567,8 +568,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('GET', '/officials/queue')).body.toReview.length, before, 'nothing saved');
     r = await wm('POST', '/weigh/sheet', sheet(three, [0, 1]));
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation]),
-      [['Dorado (mahi-mahi)', 'Extreme'], ['Barracuda', 'Extreme'], ['Atlantic sailfish', 'Extreme']]);
+    assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation, c.points]),
+      [['Dorado (mahi-mahi)', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Atlantic sailfish', 'Extreme', 125]]);
     for (const c of r.body.catches) await sec('POST', `/catches/${c.id}/review`, { decision: 'reject', note: 'Test sheet' });
 
     const wmQueue = (await wm('GET', '/officials/queue')).body.toReview;

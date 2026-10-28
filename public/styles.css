@@ -377,3 +377,7 @@ button.link[hidden] { display: none; }
 .member-row .role { flex-wrap: wrap; }
 .member-row .role label { display: flex; align-items: center; gap: 6px; font-weight: 500; }
 .member-row .role label[hidden] { display: none; }
+.points-preview { margin: 0; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: var(--bg); }
+.points-preview.good { color: var(--good); }
+.points-preview.bad { color: var(--danger); }
+.sheet-total { margin: 0; font-size: 1.05rem; }

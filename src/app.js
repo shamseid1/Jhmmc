@@ -86,6 +86,7 @@ function createApp({
   app.use(auth.sessionMiddleware(db));
   app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
+  app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js')));
 
   const api = express.Router();
 
@@ -783,7 +784,16 @@ function createApp({
       removeUpload(req.file?.filename);
       return res.status(400).json({ error: checked.error });
     }
-    res.status(201).json({ catch: getCatch(insertCatchRow(checked.values), req.user) });
+    const id = insertCatchRow(checked.values);
+    if (opts.official) scoreRegistration(id);
+    res.status(201).json({ catch: getCatch(id, req.user) });
+  }
+
+  // A registration gets its points as soon as the weighmaster records it;
+  // they count once the secretary approves.
+  function scoreRegistration(id) {
+    const { points, note } = suggestPoints(id);
+    db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(points, note, id);
   }
 
   // Only crews post: an angler has to be on a boat.
@@ -849,6 +859,7 @@ function createApp({
     db.exec('BEGIN');
     try {
       const ids = rows.map(insertCatchRow);
+      ids.forEach(scoreRegistration);
       db.exec('COMMIT');
       res.status(201).json({ catches: ids.map((id) => getCatch(id, req.user)) });
     } catch (err) {
