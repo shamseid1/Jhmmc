@@ -90,6 +90,8 @@ h2 { font-size: 1.15rem; margin: 24px 0 8px; }
 
 .feed { display: grid; gap: 16px; }
 .catch-photo { aspect-ratio: 4 / 3; object-fit: cover; width: 100%; background: var(--line); }
+/* Photos keep their own shape, landscape or portrait; only very tall ones are trimmed. */
+img.catch-photo { display: block; aspect-ratio: auto; height: auto; max-height: min(80vh, 680px); }
 .catch-photo.placeholder {
   display: grid;
   place-items: center;
@@ -354,7 +356,7 @@ button.liked .icon { fill: currentColor; }
 .photo-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .photo-cta { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 18px; border: 2px dashed var(--line); border-radius: var(--radius); color: var(--accent); }
 .photo-pick:focus-within .photo-cta { border-color: var(--accent); }
-.photo-preview img { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); }
+.photo-preview img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: var(--line); border-radius: var(--radius); }
 .photo-preview[hidden] { display: none; }
 .more-details summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 4px 0; }
 .more-details[open] summary { margin-bottom: 10px; }
