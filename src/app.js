@@ -823,6 +823,13 @@ function createApp({
     return scoring.scoreCatch({ ...row, released: !!row.released });
   }
 
+  // Fish registered while only Sundays and holidays scored were saved with
+  // 0 points; every day scores now, so give them their points.
+  for (const { id } of db.prepare("SELECT id FROM catches WHERE points_note LIKE 'Not a scoring day%' AND status IN ('pending_review', 'approved')").all()) {
+    const { points, note } = suggestPoints(id);
+    db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(points, note, id);
+  }
+
   // Weighmaster: register a fish at the dock for a JHMMC boat (the digital Fish Registration Form).
   api.post('/weigh', requireWeigh, upload.single('scalePhoto'), (req, res) => {
     const teamId = intId(req.body.teamId);

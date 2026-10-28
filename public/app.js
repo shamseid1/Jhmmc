@@ -1274,7 +1274,7 @@ const pagesFor = (view) => ({
       <div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
-        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg and scoring days'))}
+        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
         ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
       </div>
       <h2>Records &amp; clubs</h2>
