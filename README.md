@@ -39,6 +39,9 @@ Environment variables:
 | `DB_FILE`     | `data/fishing.db`  | SQLite database file                      |
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
+| `APP_URL`     | the request's address | Public address used in emailed links, e.g. `https://west-africa-big-game.onrender.com` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | — | Email server for password resets. Without `SMTP_HOST`, emails are printed to the server log |
+| `MAIL_FROM`   | `SMTP_USER`        | Sender shown on emails, e.g. `JHMMC <noreply@jhmmc.com>` |
 
 Upgrading: newer versions upgrade the database automatically on start. The only exception is a database from the very first version (before boats), which the app refuses to open rather than lose data; move it aside and restart.
 
@@ -52,6 +55,15 @@ The repo includes `render.yaml`, which sets up one web service with a 1 GB persi
 4. Optional: add your own domain under the service's **Settings → Custom Domains**.
 
 Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Back up `/var/data` (the service's **Disks** tab offers snapshots).
+
+## Email (password resets)
+
+Members can reset a forgotten password from the sign-in page (a one-time link, valid for an hour) and change it under Edit profile; either way they get an email saying the password changed, and other devices are signed out. Any SMTP provider works:
+
+- **Gmail** (quickest): turn on 2-Step Verification for the Google account, create an app password at https://myaccount.google.com/apppasswords, then set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=` the Gmail address, `SMTP_PASS=` the 16-letter app password. Gmail allows about 500 emails a day.
+- **Your own domain** (e.g. `noreply@jhmmc.com`): use the SMTP details from your email host or a sending service such as Resend, Mailgun or Brevo.
+
+On Render, enter these under the service's **Environment** tab, together with `APP_URL`, then redeploy.
 
 ## Project layout
 
@@ -73,6 +85,8 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/meta`                   | Countries and species                  |
 | POST   | `/api/auth/register`, `/login`, `/logout` | JSON body                  |
 | GET/PATCH | `/api/me`                  | Current angler, their boat and whether they are captain |
+| POST   | `/api/auth/forgot`, `/api/auth/reset` | `{email}` emails a reset link; `{token, password}` sets the new password |
+| POST   | `/api/me/password`            | `{current, password}` changes your password |
 | GET/POST | `/api/teams`                | List boats, or register one (you become captain) |
 | GET/PATCH | `/api/teams/:id`           | Boat, crew and stats (invite code shown to crew only); captain edits details |
 | POST   | `/api/teams/join`             | `{code}` joins a boat's crew           |
@@ -98,7 +112,6 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 ## Ideas for next steps
 
 - French (and Portuguese) translations for Senegal, Côte d'Ivoire, Guinea-Bissau and Cabo Verde.
-- Password reset by email.
 - Captains or club officials who verify catches before they count towards records, and tournament scoring.
 - Photo resizing, and cloud storage (S3 or similar) once it's hosted.
 - GPS/map of catch spots, tide and moon data, tag-and-release reporting to research programmes.

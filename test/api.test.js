@@ -5,13 +5,17 @@ const os = require('node:os');
 const path = require('node:path');
 const { createApp } = require('../src/app');
 
+// Captures emails instead of sending them.
+const outbox = [];
+const mailer = { configured: true, send: async (msg) => { outbox.push(msg); } };
+
 let server;
 let base;
 let tmp;
 
 before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-'));
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads') });
+  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), mailer, appUrl: 'https://club.example' });
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -325,4 +329,42 @@ test('repeated failed sign-ins are slowed down', async () => {
   assert.deepEqual(tries.slice(0, 10), Array(10).fill(401));
   assert.equal(tries[10], 429);
   assert.equal((await fetch(base + '/healthz')).status, 200);
+});
+
+test('forgotten and changed passwords', async () => {
+  const ama = client();
+  await ama('POST', '/auth/register', { name: 'Ama Owusu', email: 'ama@example.com', password: 'oldpassword' });
+  const otherDevice = client();
+  await otherDevice('POST', '/auth/login', { email: 'ama@example.com', password: 'oldpassword' });
+
+  outbox.length = 0;
+  let r = await client()('POST', '/auth/forgot', { email: 'nobody@example.com' });
+  assert.equal(r.status, 200, 'same answer for unknown emails');
+  assert.equal(outbox.length, 0);
+
+  r = await client()('POST', '/auth/forgot', { email: 'AMA@example.com' });
+  assert.equal(r.status, 200);
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0].to, 'ama@example.com');
+  const token = outbox[0].text.match(/https:\/\/club\.example\/#\/reset\?token=([\w-]+)/)[1];
+
+  const stranger = client();
+  assert.equal((await stranger('POST', '/auth/reset', { token: 'made-up', password: 'newpassword' })).status, 400);
+  assert.equal((await stranger('POST', '/auth/reset', { token, password: 'short' })).status, 400);
+  r = await stranger('POST', '/auth/reset', { token, password: 'newpassword' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.user.email, 'ama@example.com', 'signed in after resetting');
+  assert.equal((await stranger('POST', '/auth/reset', { token, password: 'another1' })).status, 400, 'links work once');
+  assert.match(outbox.at(-1).subject, /password was changed/);
+  assert.equal((await otherDevice('GET', '/me')).body.user, null, 'other devices are signed out');
+  assert.equal((await client()('POST', '/auth/login', { email: 'ama@example.com', password: 'oldpassword' })).status, 401);
+  assert.equal((await client()('POST', '/auth/login', { email: 'ama@example.com', password: 'newpassword' })).status, 200);
+
+  // Changing the password while signed in.
+  assert.equal((await stranger('POST', '/me/password', { current: 'wrongpass', password: 'brandnew1' })).status, 400);
+  r = await stranger('POST', '/me/password', { current: 'newpassword', password: 'brandnew1' });
+  assert.equal(r.status, 200);
+  assert.ok((await stranger('GET', '/me')).body.user, 'this device stays signed in');
+  assert.equal((await client()('POST', '/auth/login', { email: 'ama@example.com', password: 'brandnew1' })).status, 200);
+  assert.equal((await client()('POST', '/me/password', { current: 'x', password: 'y' })).status, 401);
 });

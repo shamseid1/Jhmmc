@@ -834,7 +834,20 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>
+      <h2>Change password</h2>
+      <form class="card pad stack" id="pw">
+        <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
+        <label>New password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+        <p class="error"></p>
+        <div><button type="submit">Change password</button></div>
+      </form>
       <p><a href="#/more">‹ Back to More</a></p>`;
+    const pw = view.querySelector('#pw');
+    bindForm(pw, async () => {
+      await api('/me/password', { method: 'POST', body: formData(pw) });
+      pw.reset();
+      toast('Password changed. Other devices have been signed out.');
+    });
     const form = view.querySelector('#f');
     bindForm(form, async () => {
       const { photo, ...fields } = formData(form);
@@ -858,12 +871,48 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit" class="primary">Sign in</button></div>
       </form>
+      <p><a href="#/forgot">Forgot your password?</a></p>
       <p>New here? <a href="#/register">Create an account</a>.</p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {
       state.me = (await api('/auth/login', { method: 'POST', body: formData(form) })).user;
       location.hash = state.afterLogin || '#/';
       state.afterLogin = null;
+    });
+  },
+
+  async forgot() {
+    view.innerHTML = html`<h1>Reset your password</h1>
+      <p class="muted">Enter the email you signed up with and we'll send you a link to choose a new password.</p>
+      <form class="card pad stack" id="f">
+        <label>Email <input name="email" type="email" required autocomplete="email"></label>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Send reset link</button></div>
+      </form>
+      <p><a href="#/login">Back to sign in</a></p>`;
+    const form = view.querySelector('#f');
+    bindForm(form, async () => {
+      const { message } = await api('/auth/forgot', { method: 'POST', body: formData(form) });
+      view.querySelector('#f').outerHTML = html`<div class="card pad"><p style="margin:0">${message}</p></div>`;
+    });
+  },
+
+  async reset() {
+    const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token');
+    view.innerHTML = html`<h1>Choose a new password</h1>
+      <form class="card pad stack" id="f">
+        <label>New password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label>Type it again <input name="again" type="password" required minlength="8" autocomplete="new-password"></label>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Save password</button></div>
+      </form>`;
+    const form = view.querySelector('#f');
+    bindForm(form, async () => {
+      const { password, again } = formData(form);
+      if (password !== again) throw new Error("The two passwords don't match.");
+      state.me = (await api('/auth/reset', { method: 'POST', body: { token, password } })).user;
+      toast('Password saved. You are signed in.');
+      location.hash = '#/';
     });
   },
 
@@ -921,7 +970,7 @@ function renderNav(active) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'leaderboard',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>

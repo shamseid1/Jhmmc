@@ -39,6 +39,34 @@ function createSession(db, res, userId, secure) {
   });
 }
 
+// Signs a user out everywhere, e.g. after their password changes.
+function destroyAllSessions(db, userId) {
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+}
+
+const RESET_MINUTES = 60;
+const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
+
+// Returns a fresh reset token for the user; only its hash is kept.
+function createResetToken(db, userId) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const expires = new Date(Date.now() + RESET_MINUTES * 60e3).toISOString();
+  db.prepare('DELETE FROM password_resets WHERE user_id = ? OR expires_at < ?').run(userId, new Date().toISOString());
+  db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), userId, expires);
+  return token;
+}
+
+// The user id for a valid, unused, unexpired token, marking it used; otherwise null.
+function useResetToken(db, token) {
+  if (typeof token !== 'string' || !token) return null;
+  const row = db.prepare(`
+    SELECT user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(sha256(token), new Date().toISOString());
+  if (!row) return null;
+  db.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(new Date().toISOString(), sha256(token));
+  return row.user_id;
+}
+
 function destroySession(db, req, res) {
   const token = parseCookies(req.headers.cookie)[COOKIE];
   if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
@@ -93,6 +121,10 @@ module.exports = {
   verifyPassword,
   createSession,
   destroySession,
+  destroyAllSessions,
+  createResetToken,
+  useResetToken,
+  RESET_MINUTES,
   sessionMiddleware,
   requireUser,
   rateLimit,

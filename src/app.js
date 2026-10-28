@@ -6,6 +6,7 @@ const path = require('node:path');
 const { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB } = require('./db');
 const auth = require('./auth');
 const igfa = require('./igfa-records');
+const { createMailer } = require('./mail');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 // No 0/O or 1/I so codes survive being read out over the radio or WhatsApp.
@@ -42,7 +43,7 @@ function newCode() {
   return Array.from(crypto.randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCookies = false } = {}) {
+function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCookies = false, mailer = createMailer(), appUrl = process.env.APP_URL } = {}) {
   const db = openDb(dbFile);
   fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -143,6 +144,65 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     res.json({ user: getMe(row.id) });
   });
 
+  // ---- password reset and change ---------------------------------------
+
+  const forgotLimit = auth.rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    key: (req) => `${req.ip}|${String(req.body.email ?? '').toLowerCase()}`,
+    message: 'Too many reset requests. Try again in an hour.',
+  });
+
+  // The address people reach the app at, for links in emails.
+  const baseUrl = (req) => (appUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+  function passwordChangedEmail(user, req) {
+    return mailer.send({
+      to: user.email,
+      subject: 'Your West Africa Big Game password was changed',
+      text: `Hello ${user.name},\n\nThe password for your West Africa Big Game account was just changed. ` +
+        `If this was you, there is nothing to do.\n\nIf it wasn't, reset your password straight away at ` +
+        `${baseUrl(req)}/#/forgot and tell your club.\n`,
+    }).catch((err) => console.error('Password-changed email failed:', err.message));
+  }
+
+  api.post('/auth/forgot', forgotLimit, async (req, res) => {
+    const email = str(req.body.email, 120)?.toLowerCase();
+    // Same answer whether or not the account exists, so emails can't be probed.
+    const reply = { ok: true, message: 'If an account uses that email, a reset link is on its way. Check your inbox and spam folder.' };
+    const user = email && db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email);
+    if (!user) return res.json(reply);
+    const link = `${baseUrl(req)}/#/reset?token=${auth.createResetToken(db, user.id)}`;
+    try {
+      await mailer.send({
+        to: user.email,
+        subject: 'Reset your West Africa Big Game password',
+        text: `Hello ${user.name},\n\nSomeone asked to reset the password for your West Africa Big Game account. ` +
+          `To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\n` +
+          `If you didn't ask for this, ignore this email; your password stays the same.\n`,
+      });
+    } catch (err) {
+      console.error('Reset email failed:', err.message);
+      return res.status(502).json({ error: "We couldn't send the email just now. Try again in a few minutes." });
+    }
+    res.json(reply);
+  });
+
+  api.post('/auth/reset', (req, res) => {
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    const userId = auth.useResetToken(db, req.body.token);
+    if (!userId) {
+      return res.status(400).json({ error: 'This reset link has expired or was already used. Ask for a new one.' });
+    }
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(password), userId);
+    auth.destroyAllSessions(db, userId);
+    auth.createSession(db, res, userId, secureCookies);
+    const user = getMe(userId);
+    passwordChangedEmail(user, req);
+    res.json({ user });
+  });
+
   api.post('/auth/logout', (req, res) => {
     auth.destroySession(db, req, res);
     res.json({ ok: true });
@@ -174,6 +234,20 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
     db.prepare('UPDATE users SET name = ?, country = ?, bio = ? WHERE id = ?').run(name, country, bio, u.id);
     res.json({ user: getMe(u.id) });
+  });
+
+  api.post('/me/password', (req, res) => {
+    const current = typeof req.body.current === 'string' ? req.body.current : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!auth.verifyPassword(current, row.password_hash)) return res.status(400).json({ error: 'Your current password is not right.' });
+    if (password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(password), req.user.id);
+    // Sign out every other device, keep this one signed in.
+    auth.destroyAllSessions(db, req.user.id);
+    auth.createSession(db, res, req.user.id, secureCookies);
+    passwordChangedEmail(getMe(req.user.id), req);
+    res.json({ ok: true });
   });
 
   api.post('/me/photo', upload.single('photo'), (req, res) => {

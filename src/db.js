@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL
 );
 
+-- One-time password reset links. Only a hash of the token is stored.
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS species (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,

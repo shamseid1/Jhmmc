@@ -15,6 +15,19 @@ services:
         value: /var/data/fishing.db
       - key: UPLOAD_DIR
         value: /var/data/uploads
+      # Email for password resets; fill these in on the Render dashboard.
+      - key: APP_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
     disk:
       name: data
       mountPath: /var/data
