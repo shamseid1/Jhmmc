@@ -368,3 +368,45 @@ test('forgotten and changed passwords', async () => {
   assert.equal((await client()('POST', '/auth/login', { email: 'ama@example.com', password: 'brandnew1' })).status, 200);
   assert.equal((await client()('POST', '/me/password', { current: 'x', password: 'y' })).status, 401);
 });
+
+test('without email: members contact the admin, who makes reset links', async () => {
+  const quiet = { configured: false, send: async () => { throw new Error('should not send'); } };
+  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads2'), mailer: quiet, adminEmail: 'Admin@Example.com' });
+  const srv = app.listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const at = `http://127.0.0.1:${srv.address().port}/api`;
+  const as = () => {
+    let cookie = '';
+    return async (method, url, body) => {
+      const res = await fetch(at + url, { method, headers: { 'content-type': 'application/json', ...(cookie && { cookie }) }, body: body && JSON.stringify(body) });
+      const set = res.headers.get('set-cookie');
+      if (set) cookie = set.split(';')[0];
+      return { status: res.status, body: await res.json() };
+    };
+  };
+  try {
+    const meta = (await as()('GET', '/meta')).body;
+    assert.deepEqual([meta.emailEnabled, meta.adminEmail], [false, 'admin@example.com']);
+
+    const kojo = as();
+    await kojo('POST', '/auth/register', { name: 'Kojo Asante', email: 'kojo@example.com', password: 'forgotten1' });
+    let r = await as()('POST', '/auth/forgot', { email: 'kojo@example.com' });
+    assert.equal(r.status, 503);
+    assert.match(r.body.error, /admin@example\.com/);
+
+    assert.equal((await kojo('GET', '/admin/users')).status, 403, 'members are not admins');
+    assert.equal((await kojo('GET', '/me')).body.user.isAdmin, false);
+
+    const admin = as();
+    r = await admin('POST', '/auth/register', { name: 'Club Admin', email: 'admin@example.com', password: 'adminpass1' });
+    assert.equal(r.body.user.isAdmin, true);
+    const kojoRow = (await admin('GET', '/admin/users')).body.users.find((u) => u.email === 'kojo@example.com');
+    r = await admin('POST', `/admin/users/${kojoRow.id}/reset-link`);
+    assert.equal(r.body.hours, 24);
+    const token = new URL(r.body.link.replace('/#/', '/')).searchParams.get('token');
+    assert.equal((await as()('POST', '/auth/reset', { token, password: 'remembered1' })).status, 200);
+    assert.equal((await as()('POST', '/auth/login', { email: 'kojo@example.com', password: 'remembered1' })).status, 200);
+  } finally {
+    srv.close();
+  }
+});

@@ -15,6 +15,9 @@ services:
         value: /var/data/fishing.db
       - key: UPLOAD_DIR
         value: /var/data/uploads
+      # The admin's email: shown to members who forget their password; that account is the admin.
+      - key: ADMIN_EMAIL
+        sync: false
       # Email for password resets; fill these in on the Render dashboard.
       - key: APP_URL
         sync: false

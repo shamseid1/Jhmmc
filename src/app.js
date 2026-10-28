@@ -43,7 +43,16 @@ function newCode() {
   return Array.from(crypto.randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCookies = false, mailer = createMailer(), appUrl = process.env.APP_URL } = {}) {
+function createApp({
+  dbFile = 'data/fishing.db',
+  uploadDir = 'uploads',
+  secureCookies = false,
+  mailer = createMailer(),
+  appUrl = process.env.APP_URL,
+  // The person members contact for help; their account is the app's admin.
+  adminEmail = process.env.ADMIN_EMAIL,
+} = {}) {
+  adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
   fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -93,7 +102,10 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   api.get('/meta', (_req, res) => {
     const species = db.prepare('SELECT id, name, scientific_name AS scientificName, category FROM species ORDER BY category, name').all();
-    res.json({ countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name });
+    res.json({
+      countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name,
+      emailEnabled: mailer.configured, adminEmail,
+    });
   });
 
   // ---- auth --------------------------------------------------------------
@@ -170,6 +182,13 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const email = str(req.body.email, 120)?.toLowerCase();
     // Same answer whether or not the account exists, so emails can't be probed.
     const reply = { ok: true, message: 'If an account uses that email, a reset link is on its way. Check your inbox and spam folder.' };
+    if (!mailer.configured) {
+      return res.status(503).json({
+        error: adminEmail
+          ? `Password reset by email isn't available yet. Email ${adminEmail} from the address you signed up with and the admin will send you a reset link.`
+          : "Password reset by email isn't available yet. Ask your club for help.",
+      });
+    }
     const user = email && db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email);
     if (!user) return res.json(reply);
     const link = `${baseUrl(req)}/#/reset?token=${auth.createResetToken(db, user.id)}`;
@@ -215,7 +234,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, ...rest } = me;
-    return { ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain };
+    return { ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain, isAdmin: !!adminEmail && me.email === adminEmail };
   }
 
   api.get('/me', (req, res) => {
@@ -248,6 +267,34 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     auth.createSession(db, res, req.user.id, secureCookies);
     passwordChangedEmail(getMe(req.user.id), req);
     res.json({ ok: true });
+  });
+
+  // ---- admin -------------------------------------------------------------
+
+  const ADMIN_LINK_HOURS = 24;
+
+  function requireAdmin(req, res, next) {
+    if (!adminEmail || req.user?.email?.toLowerCase() !== adminEmail) {
+      return res.status(403).json({ error: 'Only the club admin can do that.' });
+    }
+    next();
+  }
+
+  api.get('/admin/users', requireAdmin, (_req, res) => {
+    const users = db.prepare(`
+      SELECT u.id, u.name, u.email, u.created_at AS joinedAt, t.name AS teamName
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
+    `).all();
+    res.json({ users });
+  });
+
+  // A one-time link the admin passes on (e.g. by WhatsApp) to a member who forgot their password.
+  api.post('/admin/users/:id/reset-link', requireAdmin, (req, res) => {
+    const id = intId(req.params.id);
+    const user = id && db.prepare('SELECT id, name FROM users WHERE id = ?').get(id);
+    if (!user) return res.status(404).json({ error: 'Member not found.' });
+    const token = auth.createResetToken(db, user.id, ADMIN_LINK_HOURS * 60);
+    res.json({ link: `${baseUrl(req)}/#/reset?token=${token}`, hours: ADMIN_LINK_HOURS, name: user.name });
   });
 
   api.post('/me/photo', upload.single('photo'), (req, res) => {

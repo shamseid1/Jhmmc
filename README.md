@@ -39,6 +39,7 @@ Environment variables:
 | `DB_FILE`     | `data/fishing.db`  | SQLite database file                      |
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
+| `ADMIN_EMAIL` | —                  | Club admin's email. Members who forget their password are told to write to it, and the account with this email gets the admin Members page |
 | `APP_URL`     | the request's address | Public address used in emailed links, e.g. `https://west-africa-big-game.onrender.com` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | — | Email server for password resets. Without `SMTP_HOST`, emails are printed to the server log |
 | `MAIL_FROM`   | `SMTP_USER`        | Sender shown on emails, e.g. `JHMMC <noreply@jhmmc.com>` |
@@ -57,6 +58,9 @@ The repo includes `render.yaml`, which sets up one web service with a 1 GB persi
 Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Back up `/var/data` (the service's **Disks** tab offers snapshots).
 
 ## Email (password resets)
+
+Without email set up, "Forgot your password?" tells members to email the admin (`ADMIN_EMAIL`). The admin opens **More → Members**, finds the member and taps **Create reset link**: a one-time link valid for 24 hours, sent to the member by WhatsApp or email, with which they choose their own new password. Once SMTP is set up, members get reset links by email themselves.
+
 
 Members can reset a forgotten password from the sign-in page (a one-time link, valid for an hour) and change it under Edit profile; either way they get an email saying the password changed, and other devices are signed out. Any SMTP provider works:
 
@@ -87,6 +91,8 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET/PATCH | `/api/me`                  | Current angler, their boat and whether they are captain |
 | POST   | `/api/auth/forgot`, `/api/auth/reset` | `{email}` emails a reset link; `{token, password}` sets the new password |
 | POST   | `/api/me/password`            | `{current, password}` changes your password |
+| GET    | `/api/admin/users`            | Admin: every member |
+| POST   | `/api/admin/users/:id/reset-link` | Admin: one-time reset link (24 hours) to pass on |
 | GET/POST | `/api/teams`                | List boats, or register one (you become captain) |
 | GET/PATCH | `/api/teams/:id`           | Boat, crew and stats (invite code shown to crew only); captain edits details |
 | POST   | `/api/teams/join`             | `{code}` joins a boat's crew           |

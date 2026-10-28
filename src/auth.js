@@ -48,9 +48,9 @@ const RESET_MINUTES = 60;
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // Returns a fresh reset token for the user; only its hash is kept.
-function createResetToken(db, userId) {
+function createResetToken(db, userId, minutes = RESET_MINUTES) {
   const token = crypto.randomBytes(32).toString('base64url');
-  const expires = new Date(Date.now() + RESET_MINUTES * 60e3).toISOString();
+  const expires = new Date(Date.now() + minutes * 60e3).toISOString();
   db.prepare('DELETE FROM password_resets WHERE user_id = ? OR expires_at < ?').run(userId, new Date().toISOString());
   db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), userId, expires);
   return token;

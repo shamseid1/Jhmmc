@@ -709,6 +709,9 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
+      ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
+        ${item('#/members', 'key', 'Members', 'Find a member, make a password reset link')}
+      </div>`) : ''}
       <h2>Rules</h2>
       <div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
@@ -727,6 +730,48 @@ const pagesFor = (view) => ({
       state.me = null;
       state.clubs = null;
       location.hash = '#/';
+    });
+  },
+
+  // Admin only: every account, with a one-time password reset link to pass on.
+  async members() {
+    if (!state.me?.isAdmin) {
+      view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
+      return;
+    }
+    const { users } = await api('/admin/users');
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Members (${users.length})</h1>
+      <p class="small muted">When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
+      <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
+      <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
+        <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
+        <button data-act="reset-link">Create reset link</button>
+        <div class="reset-out" hidden></div>
+      </li>`))}</ul></div>`;
+    view.querySelector('.search input').addEventListener('input', (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      for (const li of view.querySelectorAll('.member-row')) li.hidden = !!term && !li.dataset.find.includes(term);
+    });
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const row = btn.closest('.member-row');
+      if (btn.dataset.act === 'copy-link') return copyText(row.dataset.link, 'Link copied');
+      if (btn.dataset.act !== 'reset-link') return;
+      try {
+        const { link, hours, name } = await api(`/admin/users/${row.dataset.id}/reset-link`, { method: 'POST' });
+        row.dataset.link = link;
+        const out = row.querySelector('.reset-out');
+        out.innerHTML = html`<p class="small muted">New link for ${name}, valid for ${hours} hours. Any older link stops working.</p>
+          <input readonly value="${link}" aria-label="Reset link">
+          <div class="actions"><button data-act="copy-link">Copy link</button>
+          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for West Africa Big Game. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
+        out.hidden = false;
+        out.querySelector('input').select();
+      } catch (ex) {
+        toast(ex.message);
+      }
     });
   },
 
@@ -882,6 +927,21 @@ const pagesFor = (view) => ({
   },
 
   async forgot() {
+    if (!state.meta.emailEnabled) {
+      // No email sending yet: the admin makes reset links by hand.
+      const admin = state.meta.adminEmail;
+      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - West Africa Big Game')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
+      view.innerHTML = html`<h1>Forgot your password?</h1>
+        <div class="card pad stack">
+          ${admin ? raw(html`<p style="margin:0">Email the club admin from the address you signed up with, and they'll send you a link to choose a new password.</p>
+            <p class="admin-mail" style="margin:0"><b>${admin}</b></p>
+            <div class="actions" style="margin:0"><a class="btn primary" href="${mail}">Write the email</a> <button id="copy-admin">Copy address</button></div>`)
+            : raw('<p style="margin:0">Ask your club admin to send you a password reset link.</p>')}
+        </div>
+        <p><a href="#/login">Back to sign in</a></p>`;
+      view.querySelector('#copy-admin')?.addEventListener('click', () => copyText(admin, 'Address copied'));
+      return;
+    }
     view.innerHTML = html`<h1>Reset your password</h1>
       <p class="muted">Enter the email you signed up with and we'll send you a link to choose a new password.</p>
       <form class="card pad stack" id="f">
@@ -947,6 +1007,7 @@ const ICONS = {
   clubs: '<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
   catch: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -970,7 +1031,7 @@ function renderNav(active) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'leaderboard',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
