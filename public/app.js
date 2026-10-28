@@ -971,7 +971,7 @@ const pagesFor = (view) => ({
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: only tournament fish count, registered by captains at the weigh station on the day and approved by the secretary.
+      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by captains at the weigh station on the day and approved by the secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>Points by boat</h2>
       <section class="card pad bars" aria-label="Season points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
@@ -1018,8 +1018,7 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li><b>Only tournament fish score.</b> Fish caught on days that aren't part of a tournament on the season calendar score no points.</li>
-          <li>A captain registers fish <b>on the tournament day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li>Every fishing day scores. A captain can only register fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
           <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
@@ -1053,11 +1052,7 @@ const pagesFor = (view) => ({
   // One boat and day, as many fish as it brought in, submitted together.
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (captains of JHMMC boats)');
-    const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
-    // Only tournament fish score, so registering is for tournament days.
-    const tournaments = events.filter((e) => e.kind === 'tournament');
-    const onNow = tournaments.find((e) => e.date <= today() && today() <= e.endDate);
-    const next = tournaments.find((e) => e.date > today());
+    const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
     const official = state.me.canReview;
     const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
@@ -1066,12 +1061,9 @@ const pagesFor = (view) => ({
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Register fish</h1>
-      <p class="small muted">One boat's fish for the day, like the paper registration form. Only tournament fish score. Registrations go to the secretary for points and don't appear on the feed.
+      <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
-      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)}</p>`) : ''}
-      ${!onNow && !official ? raw(html`<div class="card pad empty"><p><b>No tournament today.</b> Fish are registered for points on tournament days only.</p>
-        <p class="small muted">${next ? `Next: ${next.name}, ${fmtDays(next)}.` : 'No more tournaments on the calendar this season.'}</p></div>`) : ''}
-      <form class="card pad stack" id="sheet" ${!onNow && !official ? 'hidden' : ''}>
+      <form class="card pad stack" id="sheet">
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
             : raw(html`<label>Boat <select name="teamId" required>${raw(boatOptions(jhmmcBoats, null))}</select></label>`)}
@@ -1332,7 +1324,7 @@ const pagesFor = (view) => ({
     const editable = !!state.me?.canReview;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
-      <p class="small muted">Only fish caught on tournament days score, and captains can only register fish on those days. Each tournament gets its own results page and winner; the season table adds them up.</p>
+      <p class="small muted">Every fishing day scores. Tournaments listed here get their own results page and winner.</p>
       ${editable ? raw(html`<form class="card pad stack" id="season">
         <div class="row">
           <label>Season starts <input name="start" type="date" required value="${season.start}"></label>

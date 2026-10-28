@@ -72,7 +72,6 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.equal((await cap('GET', '/officials/pending')).status, 403);
     assert.equal((await sec('GET', '/officials/pending')).body.count, 0);
 
-    await boss('POST', '/events', { date: new Date().toISOString().slice(0, 10), kind: 'tournament', name: 'October Cup' });
     // The captain sends in a sheet of two fish.
     const fd = new FormData();
     fd.set('teamId', boat.id);

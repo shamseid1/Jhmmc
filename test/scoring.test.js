@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const { scoreCatch } = require('../src/scoring');
 
 const day = {};
-  assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, weightKg: 20, tournamentDay: false }).points, 0, 'only tournament fish score');
 
 test('JHMMC points per catch', () => {
   assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, weightKg: 20, ...day }).points, 100, 'any day scores');

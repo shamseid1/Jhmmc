@@ -57,8 +57,6 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     const species = (await capA('GET', '/meta')).body.species;
     const sp = (n) => species.find((x) => x.name === n).id;
 
-    // Today is a tournament, so fish can be registered.
-    await sec('POST', '/events', { date: new Date().toISOString().slice(0, 10), kind: 'tournament', name: 'October Cup' });
     // Captain A sends two fish, from the dock (the phone's position comes along).
     const fd = new FormData();
     for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: new Date().toISOString().slice(0, 10), declared: 'yes',
