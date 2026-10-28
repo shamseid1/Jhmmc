@@ -288,3 +288,17 @@ td.num, td.nw { white-space: nowrap; }
 .rulebook .notice { background: var(--bg); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
 .rulebook ol { padding-left: 22px; }
 .rulebook ol ol { padding-left: 18px; }
+
+/* ---- more menu ---- */
+.menu { overflow: hidden; }
+.menu-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+.menu-item:last-child { border-bottom: 0; }
+.menu-item:hover { background: var(--bg); }
+.mi-icon { font-size: 22px; width: 28px; text-align: center; }
+.mi-text { flex: 1; min-width: 0; display: grid; }
+.mi-text span { color: var(--muted); font-size: 14px; }
+.mi-go { color: var(--muted); font-size: 24px; }
+.me-card { display: flex; align-items: center; gap: 14px; }
+.me-card img, .me-ph { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: var(--line); font-size: 28px; flex: none; }
+.back { margin: 0 0 8px; }
+.back a { text-decoration: none; font-weight: 600; }

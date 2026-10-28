@@ -262,10 +262,9 @@ function noBoatBanner() {
   </div>`;
 }
 
-const boardTabs = (active) => `<div class="seg three" role="tablist">
+const boardTabs = (active) => `<div class="seg" role="tablist">
   <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
   <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
-  <a role="tab" href="#/rules" aria-selected="${active === 'rules'}">Rules</a>
 </div>`;
 
 // ---- pages ----------------------------------------------------------------
@@ -656,11 +655,51 @@ const pagesFor = (view) => ({
     });
   },
 
+  // The menu behind the last tab: your dashboard, rules, clubs, account.
+  async more() {
+    const me = state.me;
+    const item = (href, icon, label, sub = '') => `<a class="menu-item" href="${href}">
+      <span class="mi-icon" aria-hidden="true">${icon}</span>
+      <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
+      <span class="mi-go" aria-hidden="true">›</span></a>`;
+    view.innerHTML = html`<h1 class="center">More</h1>
+      ${me ? raw(html`<div class="card pad me-card">
+          ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw('<span class="me-ph">🎣</span>')}
+          <div><b>${me.name}</b><div class="muted small">${me.teamName ? `🚤 ${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
+        </div>`)
+        : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
+          <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
+      ${me ? raw(`<h2>You</h2><div class="card menu">
+        ${item(`#/user/${me.id}`, '📊', 'My dashboard', 'Your catches, releases and heaviest fish')}
+        ${me.teamId ? item(`#/boat/${me.teamId}`, '🚤', 'My boat', me.teamName) : item('#/crew', '🚤', 'Get on a boat', 'Join a crew or register your boat')}
+        ${item('#/profile', '✏️', 'Edit profile', 'Name, country, photo')}
+      </div>`) : ''}
+      <h2>Rules</h2>
+      <div class="card menu">
+        ${raw(item('#/rules?book=jhmmc', '📋', 'JHMMC rules', '2026-2027 season'))}
+        ${raw(item('#/rules?book=igfa', '⚖️', 'IGFA rules', 'International Angling Rules summary'))}
+      </div>
+      <h2>Records &amp; clubs</h2>
+      <div class="card menu">
+        ${raw(item('#/records?club=igfa', '🏆', 'IGFA world records'))}
+        ${raw(item('#/records', '🏅', 'Club records'))}
+        ${raw(item('#/clubs', '⚓', 'Clubs'))}
+        ${raw(item('#/participants?tab=boats', '🚤', 'All boats'))}
+      </div>
+      ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
+    view.querySelector('#logout')?.addEventListener('click', async () => {
+      await api('/auth/logout', { method: 'POST' });
+      state.me = null;
+      state.clubs = null;
+      location.hash = '#/';
+    });
+  },
+
   // The JHMMC season rules and a summary of the IGFA angling rules.
   async rules() {
     const which = new URLSearchParams(location.hash.split('?')[1] || '').get('book') === 'igfa' ? 'igfa' : 'jhmmc';
     const book = window.RULES[which];
-    view.innerHTML = html`${raw(boardTabs('rules'))}
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="seg" role="tablist">
         <a role="tab" href="#/rules?book=jhmmc" aria-selected="${which === 'jhmmc'}">JHMMC rules</a>
         <a role="tab" href="#/rules?book=igfa" aria-selected="${which === 'igfa'}">IGFA rules</a>
@@ -681,7 +720,8 @@ const pagesFor = (view) => ({
     const home = state.meta.homeClub.toLowerCase();
     const books = [...clubs].sort((a, b) => (b.name.toLowerCase() === home) - (a.name.toLowerCase() === home) || a.name.localeCompare(b.name));
     // Anglers whose boat is in a club open on their club's book; others on IGFA.
-    const book = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : 'igfa');
+    const homeId = books.find((c) => c.name.toLowerCase() === home)?.id;
+    const book = q.get('club') || String(state.me?.clubId || homeId || 'igfa');
     const isIgfa = book === 'igfa';
     const { species, lineRecords, checked, igfaUrl, club } = await api('/records' + (isIgfa ? '' : `?club=${encodeURIComponent(book)}`));
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
@@ -759,8 +799,7 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>
-      <p><a href="#/clubs">Clubs</a> · <a href="#/participants?tab=boats">All boats</a></p>
-      <p><button id="logout">Sign out</button></p>`;
+      <p><a href="#/more">‹ Back to More</a></p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {
       const { photo, ...fields } = formData(form);
@@ -773,12 +812,6 @@ const pagesFor = (view) => ({
       state.me = user;
       toast('Profile saved');
       location.hash = `#/user/${user.id}`;
-    });
-    view.querySelector('#logout').addEventListener('click', async () => {
-      await api('/auth/logout', { method: 'POST' });
-      state.me = null;
-      state.clubs = null;
-      location.hash = '#/';
     });
   },
 
@@ -829,7 +862,7 @@ const ICONS = {
   participants: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15 14.5c3 0 5.5 2.3 5.5 5.5"/>',
   clubs: '<path d="M4 21V5l8-2 8 2v16"/><path d="M9 21v-5h6v5"/>',
   catch: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
-  me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+  more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 };
 
 function renderNav(active) {
@@ -839,9 +872,11 @@ function renderNav(active) {
   ];
   if (state.me?.teamId) links.push(['#/new', 'Log catch', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
-  if (!state.me?.teamId) links.push(['#/clubs', 'Clubs', 'clubs', 'clubs']);
-  links.push(state.me ? ['#/profile', 'Me', 'profile', 'me'] : ['#/login', 'Sign in', 'login', 'me']);
-  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login', records: 'leaderboard', rules: 'leaderboard' }[active] || active;
+  links.push(['#/more', 'More', 'more', 'more']);
+  const current = {
+    boat: 'participants', user: 'participants', records: 'leaderboard',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more',
+  }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
       <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span></a>`)
