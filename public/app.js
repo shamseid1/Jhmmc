@@ -516,9 +516,6 @@ const pagesFor = (view) => ({
     toggle.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
       toggle.setAttribute('aria-expanded', String(!panel.hidden));
-      // Opened from the floating button further down the feed: bring the panel into view.
-      const top = panel.getBoundingClientRect().top;
-      if (!panel.hidden && top < 120) window.scrollTo({ top: window.scrollY + top - 140, behavior: 'smooth' });
     });
     panel.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -2111,12 +2108,6 @@ async function route() {
 document.addEventListener('click', (e) => {
   if (e.target.closest('a[data-return]')) state.afterLogin = location.hash;
 });
-
-// On phones the logo (and the feed's Filter button) stay pinned at the top;
-// once the page has scrolled they get a solid pill so they read over the feed.
-window.addEventListener('scroll', () => {
-  document.documentElement.classList.toggle('scrolled', window.scrollY > 8);
-}, { passive: true });
 
 (async function init() {
   [state.meta] = await Promise.all([api('/meta'), refreshMe()]);

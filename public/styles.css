@@ -2,7 +2,6 @@
   /* One dark theme: navy cards floating on a near-black background, bright blue for actions. */
   color-scheme: dark;
   --bg: #1d1e21;
-  --bg-top: #27282c;
   --surface: #18233a;
   --surface-2: #22334f;
   --text: #f3f5f9;
@@ -24,7 +23,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, var(--bg-top), var(--bg) 320px) var(--bg);
+  background: var(--bg);
   color: var(--text);
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -224,18 +223,15 @@ button.more[hidden] { display: none; }
 #nav a[aria-current="page"] { background: var(--surface-2); color: var(--accent); }
 
 @media (max-width: 640px) {
-  /* No top bar on phones (the menu is at the bottom): just the logo, pinned at
-     the top. (No transforms or blur here: they would trap the fixed tab bar.) */
+  /* No floating bar on phones (the menu is at the bottom): the logo stays pinned
+     at the top on the page's own colour. (No transforms or blur here: they
+     would trap the fixed tab bar.) */
   .topbar {
-    position: sticky; top: 8px; z-index: 15; justify-content: center; margin: 0; padding: 6px 0 0;
-    background: none; border: 0; box-shadow: none;
+    position: sticky; top: 0; z-index: 15; justify-content: center; margin: 0; padding: 10px 0 8px;
+    background: var(--bg); border: 0; border-radius: 0; box-shadow: none;
   }
   .brand .logo { height: 44px; margin: 0; }
-  .scrolled .brand { padding: 4px 14px; border-radius: 999px; background: #0f1727; border: 1px solid #3a5378; box-shadow: var(--shadow); }
-  /* The feed's Filter button stays pinned under the logo. */
-  .filter-bar { position: sticky; top: 74px; z-index: 14; }
-  .filter-bar .filter-toggle, .filter-bar .chip { box-shadow: var(--shadow); }
-  .scrolled .filter-bar .filter-toggle:not(.on), .scrolled .filter-bar .chip { background: #0f1727; border-color: #3a5378; color: var(--text); }
+
   /* The tab bar floats above the page, clear of the screen edges. */
   #nav {
     position: fixed; z-index: 20; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
