@@ -34,7 +34,7 @@ test('fish saved as "not a scoring day" get their points when the app starts', (
   }
 });
 
-test('the season table only adds up fish caught on tournament days', async () => {
+test('the season table adds up Sundays, public holidays and tournament days only', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-'));
   const dbFile = path.join(tmp, 'fishing.db');
   try {
@@ -44,11 +44,14 @@ test('the season table only adds up fish caught on tournament days', async () =>
     const team = db.prepare("INSERT INTO teams (name, club_id, join_code) VALUES ('Sea Hunter', ?, 'SH1')").run(club).lastInsertRowid;
     db.prepare("UPDATE settings SET value = '2026-09-01' WHERE key = 'season_start'").run();
     db.prepare("UPDATE settings SET value = '2027-08-31' WHERE key = 'season_end'").run();
-    db.prepare("INSERT INTO events (date, end_date, kind, name) VALUES ('2026-10-24', '2026-10-25', 'tournament', 'October Cup')").run();
-    // Approved before tournaments-only scoring: one in the tournament, one on an ordinary day.
+    db.prepare("INSERT INTO events (date, end_date, kind, name) VALUES ('2026-10-23', '2026-10-24', 'tournament', 'October Cup')").run();
+    db.prepare("INSERT INTO events (date, kind, name) VALUES ('2026-11-12', 'holiday', 'National Thanksgiving')").run();
+    // Approved fish: a tournament Friday, a Sunday, a public holiday (Thursday), and an ordinary Tuesday.
     const add = db.prepare(`INSERT INTO catches (species_id, angler_name, team_id, club_id, caught_on, weight_kg, status, points)
       VALUES (?, 'Guest', ?, ?, ?, 20, 'approved', 100)`);
+    add.run(wahoo, team, club, '2026-10-23');
     add.run(wahoo, team, club, '2026-10-25');
+    add.run(wahoo, team, club, '2026-11-12');
     add.run(wahoo, team, club, '2026-10-27');
     db.close();
 
@@ -57,7 +60,9 @@ test('the season table only adds up fish caught on tournament days', async () =>
     await new Promise((r) => srv.once('listening', r));
     try {
       const table = await (await fetch(`http://127.0.0.1:${srv.address().port}/api/points?division=ocean`)).json();
-      assert.deepEqual(table.boats.map((b) => [b.teamName, b.catches, b.points]), [['Sea Hunter', 1, 100]]);
+      assert.deepEqual(table.boats.map((b) => [b.teamName, b.catches, b.points]), [['Sea Hunter', 3, 300]], 'not the ordinary Tuesday');
+      const cup = table.tournaments.find((t) => t.name === 'October Cup');
+      assert.equal(cup.winner.points, 100, "the tournament's own results use only its days");
     } finally {
       srv.close();
     }

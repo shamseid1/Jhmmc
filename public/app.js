@@ -84,6 +84,19 @@ function logItems(entries) {
   </li>`).join('');
 }
 
+// Today's scoring day (a tournament first, else a public holiday, else
+// Sunday) and when the next one is, from the season calendar.
+function scoringDays(events) {
+  const now = today();
+  const covering = events.filter((e) => e.date <= now && now <= e.endDate);
+  const onNow = covering.find((e) => e.kind === 'tournament') || covering[0] || null;
+  const sunday = new Date(`${now}T12:00:00Z`).getUTCDay() === 0;
+  const nextSunday = new Date(Date.parse(`${now}T12:00:00Z`) + (7 - new Date(`${now}T12:00:00Z`).getUTCDay()) * 864e5).toISOString().slice(0, 10);
+  const event = events.find((e) => e.date > now && e.date < nextSunday);
+  const next = event ? `${event.kind === 'tournament' ? event.name : `${event.name} (public holiday)`}, ${fmtDays(event)}` : fmtDay(nextSunday);
+  return { onNow, sunday, next };
+}
+
 // The phone's position for the registration record, or null if it isn't
 // allowed or takes too long: never holds up sending.
 function phoneSpot(timeout = 8000) {
@@ -971,7 +984,7 @@ const pagesFor = (view) => ({
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: only tournament fish count, registered by captains at the weigh station on the day and approved by the secretary.
+      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish caught on Sundays, public holidays and tournament days, registered by captains at the weigh station on the day and approved by the secretary. Each tournament also has its own results below.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>Points by boat</h2>
       <section class="card pad bars" aria-label="Season points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
@@ -1018,8 +1031,9 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li><b>Only tournament fish score.</b> Fish caught on days that aren't part of a tournament on the season calendar score no points.</li>
-          <li>A captain registers fish <b>on the tournament day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li><b>Season points</b> come from fish caught on <b>Sundays, public holidays and tournament days</b>. Fish caught on other days score nothing.</li>
+          <li><b>Each tournament</b> has its own results from its days only, with its own winner.</li>
+          <li>A captain registers fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
           <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
@@ -1054,10 +1068,9 @@ const pagesFor = (view) => ({
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (captains of JHMMC boats)');
     const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
-    // Only tournament fish score, so registering is for tournament days.
-    const tournaments = events.filter((e) => e.kind === 'tournament');
-    const onNow = tournaments.find((e) => e.date <= today() && today() <= e.endDate);
-    const next = tournaments.find((e) => e.date > today());
+    // Points come from Sundays, public holidays and tournament days, so
+    // captains register on those days.
+    const { onNow, sunday, next } = scoringDays(events);
     const official = state.me.canReview;
     const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
@@ -1066,12 +1079,14 @@ const pagesFor = (view) => ({
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Register fish</h1>
-      <p class="small muted">One boat's fish for the day, like the paper registration form. Only tournament fish score. Registrations go to the secretary for points and don't appear on the feed.
+      <p class="small muted">One boat's fish for the day, like the paper registration form. Points come from Sundays, public holidays and tournaments. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
-      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)}</p>`) : ''}
-      ${!onNow && !official ? raw(html`<div class="card pad empty"><p><b>No tournament today.</b> Fish are registered for points on tournament days only.</p>
-        <p class="small muted">${next ? `Next: ${next.name}, ${fmtDays(next)}.` : 'No more tournaments on the calendar this season.'}</p></div>`) : ''}
-      <form class="card pad stack" id="sheet" ${!onNow && !official ? 'hidden' : ''}>
+      ${onNow ? raw(html`<p class="tournament-now">${raw(icon(onNow.kind === 'tournament' ? 'trophy' : 'calendar'))}
+        <b>${onNow.kind === 'tournament' ? onNow.name : `Public holiday: ${onNow.name}`}</b> · ${fmtDays(onNow)}</p>`)
+        : sunday ? raw(html`<p class="tournament-now">${raw(icon('calendar'))} <b>Sunday</b> · scores for the season</p>`) : ''}
+      ${!onNow && !sunday && !official ? raw(html`<div class="card pad empty"><p><b>Today isn't a scoring day.</b> Fish are registered for points on Sundays, public holidays and tournament days.</p>
+        <p class="small muted">Next: ${next}.</p></div>`) : ''}
+      <form class="card pad stack" id="sheet" ${!onNow && !sunday && !official ? 'hidden' : ''}>
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
             : raw(html`<label>Boat <select name="teamId" required>${raw(boatOptions(jhmmcBoats, null))}</select></label>`)}
@@ -1332,7 +1347,7 @@ const pagesFor = (view) => ({
     const editable = !!state.me?.canReview;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
-      <p class="small muted">Only fish caught on tournament days score, and captains can only register fish on those days. Each tournament gets its own results page and winner; the season table adds them up.</p>
+      <p class="small muted">Season points come from Sundays, public holidays and tournament days; captains register fish on those days. Add the public holidays and tournaments here. Each tournament gets its own results page and winner.</p>
       ${editable ? raw(html`<form class="card pad stack" id="season">
         <div class="row">
           <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
@@ -1340,20 +1355,20 @@ const pagesFor = (view) => ({
         </div>
         <p class="error"></p><div><button type="submit">Save season dates</button></div>
       </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
-      <h2>Tournaments</h2>
+      <h2>Tournaments and public holidays</h2>
       <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
         <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDays(ev)}</div></span>
         ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
       </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
-      ${editable ? raw(html`<h2>Add a tournament</h2>
+      ${editable ? raw(html`<h2>Add a tournament or public holiday</h2>
       <form class="card pad stack" id="event">
-        <input type="hidden" name="kind" value="tournament">
+        <label>What <select name="kind">${raw(options([['tournament', 'Tournament'], ['holiday', 'Public holiday']], 'tournament'))}</select></label>
         <div class="row">
           <label>First day <input name="date" type="date" required></label>
           <label>Last day <input name="endDate" type="date"></label>
         </div>
-        <p class="small muted">Leave the last day empty for a one-day tournament. Fish on every day of it count towards its results.</p>
-        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup"></label>
+        <p class="small muted">Leave the last day empty for a single day. Fish on every day of a tournament count towards its results.</p>
+        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup, or Independence Day"></label>
         <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
       </form>`) : ''}`;
     if (!editable) return;
@@ -1372,7 +1387,7 @@ const pagesFor = (view) => ({
     });
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act=delete-event]');
-      if (!btn || !confirm('Remove this tournament from the calendar? Its fish still count in the season.')) return;
+      if (!btn || !confirm('Remove this from the calendar? Fish caught on it will then only score if it was a Sunday.')) return;
       await api(`/events/${btn.closest('[data-id]').dataset.id}`, { method: 'DELETE' });
       route();
     });
