@@ -929,7 +929,7 @@ const pagesFor = (view) => ({
           <li>Every fishing day scores. A weighmaster can only register fish <b>on the day they are brought in</b>.</li>
           <li>Only fish <b>registered by a JHMMC weighmaster</b> at the dock count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
-          <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept has its points <b>deducted</b>.</li>
+          <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
           <li>Fish under <b>2 kg (ocean)</b> or <b>1 kg (river)</b> don't count. Ocean and river boats have separate standings.</li>
         </ul>
