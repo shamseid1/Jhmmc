@@ -90,8 +90,11 @@ function createApp({
   });
   app.use(auth.sessionMiddleware(db));
   app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
-  app.use(express.static(path.join(__dirname, '..', 'public')));
-  app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js')));
+  // The app's own files: browsers check for a newer version each time (a quick
+  // "not modified" when nothing changed), so an update shows up straight away.
+  const fresh = { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') };
+  app.use(express.static(path.join(__dirname, '..', 'public'), fresh));
+  app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js'), { headers: { 'Cache-Control': 'no-cache' } }));
 
   const api = express.Router();
 

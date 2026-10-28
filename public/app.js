@@ -1201,9 +1201,9 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
       <div class="card pad notify" id="notify"></div>
-      ${stations.length > 1 ? raw(html`<nav class="station-tabs" aria-label="Weigh stations">
-        ${raw(tab('All', '#/review', toReview.length, shown.length > 1))}
-        ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), shown.length === 1 && shown[0] === w)))}
+      ${stations.length ? raw(html`<nav class="station-tabs" aria-label="Weigh stations">
+        ${raw(tab('All', '#/review', toReview.length, !stations.includes(pick)))}
+        ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), pick === w)))}
       </nav>`) : ''}
       <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
       ${shown.length ? shown.map((w) => raw(html`<section class="station" data-station="${w}">
@@ -1841,8 +1841,12 @@ async function renderNotify(el) {
   // Re-send a live subscription, in case the server forgot it.
   if (sub) api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
   el.innerHTML = sub
-    ? `<div class="notify-row"><span>${icon('check')} <b>Notifications are on</b> for this phone.</span><button data-act="push-off">Turn off</button></div>`
+    ? `<p class="small muted">${icon('check')} Notifications on for this phone · <button class="link" data-act="push-off">Turn off</button></p>`
     : `<div class="notify-row"><span><b>Get a notification</b> on this phone when a weighmaster registers fish.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
+  // Once on, it's a quiet line rather than a card.
+  el.classList.toggle('card', !sub);
+  el.classList.toggle('pad', !sub);
+  el.classList.toggle('notify-on', !!sub);
   el.onclick = async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
