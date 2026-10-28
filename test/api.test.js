@@ -106,14 +106,18 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal((await kofi('POST', '/catches', kgLine)).status, 400, 'only listed pound classes');
   assert.ok((await kofi('GET', '/meta')).body.lineClasses.includes('100 lb'));
 
-  // Individual angler: can browse, like and comment but not log.
+  // Individual angler without a boat: posts to their own profile, with a weight.
   await ibra('POST', '/auth/register', { name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });
   const solo = new FormData();
   solo.set('speciesId', marlin.id);
   solo.set('caughtOn', '2026-06-14');
+  solo.set('weightKg', '150');
   r = await ibra('POST', '/catches', solo);
-  assert.equal(r.status, 403);
-  assert.match(r.body.error, /boat/);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual([r.body.catch.angler, r.body.catch.teamId, r.body.catch.clubId, r.body.catch.weightKg], ['Ibrahima Fall', null, null, 150]);
+  solo.set('anglerId', (await kofi('GET', '/me')).body.user.id);
+  assert.equal((await ibra('POST', '/catches', solo)).status, 400, 'without a boat, only your own catches or a guest');
+  await ibra('DELETE', `/catches/${r.body.catch.id}`);
   r = await ibra('GET', '/catches');
   assert.equal(r.body.catches.length, 1);
   assert.equal(r.body.catches[0].canDelete, false);
@@ -479,8 +483,13 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sp('Wahoo').pointsPerKg, 5);
     assert.equal(sp('Butter nose').pointsPerKg, 5);
 
-    // Crew posts are for the feed only, whatever the date: they never enter JHMMC scoring.
+    // Crew posts are for the feed only, whatever the date: they never enter JHMMC scoring,
+    // and JHMMC crews can't put a weight on them.
     let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '19' }));
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /weighmaster/);
+    assert.equal((await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', lineClass: '50 lb' }))).status, 400);
+    r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', notes: 'Fish on!' }));
     const post = r.body.catch;
     assert.equal(post.status, 'unofficial');
     r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
@@ -597,7 +606,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.
     const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
-    assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'registration, not the 19 kg post');
+    assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'from the registration');
     const lb = (await as()('GET', '/leaderboard')).body;
     assert.deepEqual(lb.records.filter((x) => x.species === 'Wahoo').map((x) => x.weightKg), [30], 'posts only');
 

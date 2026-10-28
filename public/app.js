@@ -385,8 +385,8 @@ const HERO = `<section class="hero">
 function noBoatBanner() {
   if (!state.me) return HERO;
   return state.me.teamId ? '' : `<div class="card pad banner">
-    <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed, like and comment. To log catches, join a boat's crew or register your boat.</span></div>
-    <a class="btn primary" href="#/crew">Get on a boat</a>
+    <div><b>You're an individual angler.</b><br><span class="muted small">Post your catches to your own profile with the Post button. If you fish as part of a crew, join your boat.</span></div>
+    <a class="btn" href="#/crew">Get on a boat</a>
   </div>`;
 }
 
@@ -469,15 +469,15 @@ const pagesFor = (view) => ({
   },
 
   async new() {
-    if (!state.me) return needLogin(view, 'log a catch');
-    if (!state.me.teamId) {
-      view.innerHTML = html`<h1>Log a catch</h1>${raw(noBoatBanner())}`;
-      return;
-    }
-    const { team } = await api(`/teams/${state.me.teamId}`);
+    if (!state.me) return needLogin(view, 'post a catch');
+    // Anglers without a boat post to their own profile.
+    const team = state.me.teamId ? (await api(`/teams/${state.me.teamId}`)).team : null;
+    const jhmmc = isJhmmc(team?.clubId);
+    const crew = team ? team.members : [{ id: state.me.id, name: state.me.name }];
     view.innerHTML = html`<h1>Post a catch</h1>
-      <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}. A photo and the species are enough; add the weight and details if you want.
-        ${isJhmmc(team.clubId) ? 'Posts are for the feed. JHMMC points only come from fish a weighmaster registers at the dock.' : ''}</p>
+      <p class="muted">${team ? raw(html`For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.`) : 'On your own profile.'}
+        ${jhmmc ? 'A photo and the species are enough. JHMMC weights come only from the weighmaster at the dock, so posts from JHMMC boats have no weight.'
+          : 'A photo and the species are enough; add the weight and details if you want.'}</p>
       <form class="card pad stack" id="f">
         <label class="photo-pick">
           <span class="photo-preview" hidden><img alt=""></span>
@@ -499,22 +499,22 @@ const pagesFor = (view) => ({
           <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
         </div>
         <details class="more-details">
-          <summary>Add weight and details</summary>
+          <summary>${jhmmc ? 'Add details' : 'Add weight and details'}</summary>
           <div class="stack">
-            <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
+            <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
             <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
-            <div class="row">
+            ${jhmmc ? '' : raw(`<div class="row">
               <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
               <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
-            </div>
+            </div>`)}
             <div class="row">
               <label class="check"><input type="checkbox" name="released"> Released alive</label>
               <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
             </div>
-            <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+            ${jhmmc ? '' : raw(html`<label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>`)}
             <div class="row">
               <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
-              <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
+              <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
             </div>
           </div>
         </details>
@@ -1572,7 +1572,7 @@ function renderNav(active) {
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
-  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  if (state.me) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {

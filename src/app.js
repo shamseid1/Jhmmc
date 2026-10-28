@@ -113,13 +113,6 @@ function createApp({
   const requireWeigh = requireOfficial(canWeigh, 'a JHMMC weighmaster or the secretary');
   const requireReview = requireOfficial(canReview, 'the JHMMC secretary');
 
-  function requireTeam(req, res, next) {
-    if (!req.user.teamId) {
-      return res.status(403).json({ error: 'Join or register a boat to log catches.' });
-    }
-    next();
-  }
-
   // ---- reference data (public, needed by the sign-up form) ---------------
 
   api.get('/meta', (_req, res) => {
@@ -714,9 +707,11 @@ function createApp({
   // Crews post their own boat's catches; weighmasters register fish for any
   // JHMMC boat at the dock.
   function checkCatch(user, b, file, { teamId, official }) {
-    const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId);
-    if (!team) return { error: 'Choose the boat.' };
-    if (official && team.club_id !== homeClubId()) return { error: 'Only JHMMC boats are registered for points.' };
+    // Posts from anglers without a boat go on their own profile.
+    const team = teamId ? db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId) : null;
+    if ((official || teamId) && !team) return { error: 'Choose the boat.' };
+    const jhmmcBoat = !!team && team.club_id === homeClubId();
+    if (official && !jhmmcBoat) return { error: 'Only JHMMC boats are registered for points.' };
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return { error: 'Choose a species.' };
@@ -727,9 +722,10 @@ function createApp({
     if (b.anglerId === 'other' && !anglerName) return { error: "Type the angler's name." };
     const anglerId = anglerName ? null : intId(b.anglerId) || (official ? null : user.id);
     if (!anglerId && !anglerName) return { error: 'Choose the angler.' };
-    if (anglerId && !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, teamId)) {
+    if (anglerId && team && !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, teamId)) {
       return { error: 'The angler must be on the boat, or choose "Guest" and type their name.' };
     }
+    if (anglerId && !team && anglerId !== user.id) return { error: 'Without a boat you can post your own catches, or a guest by name.' };
     const weightKg = num(b.weightKg);
     const lengthCm = num(b.lengthCm);
     if (Number.isNaN(weightKg) || Number.isNaN(lengthCm)) return { error: 'Weight and length must be positive numbers.' };
@@ -741,7 +737,11 @@ function createApp({
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
     const lineClass = str(b.lineClass, 20);
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
-    const country = str(b.country, 60) || team.country || user.country;
+    // JHMMC crews' weights come only from the weighmaster's registration.
+    if (!official && jhmmcBoat && (weightKg !== null || lengthCm !== null || lineClass)) {
+      return { error: "JHMMC boats can't add a weight to a post: the weighmaster records it at the dock." };
+    }
+    const country = str(b.country, 60) || team?.country || user.country;
     if (country && !COUNTRIES.includes(country)) return { error: 'Unknown country.' };
     const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
     const lat = coord(b.lat);
@@ -763,7 +763,7 @@ function createApp({
     // Crew posts are for the feed only; weighmaster registrations go to the secretary.
     return {
       values: [
-        anglerId, anglerName, user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
+        anglerId, anglerName, user.id, team ? teamId : null, team?.club_id ?? null, speciesId, weightKg, lengthCm, released,
         bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
         official ? null : file?.filename ?? null, official ? 'pending_review' : 'unofficial', station,
         weighed ? user.id : null, weighed ? new Date().toISOString() : null, official ? file?.filename ?? null : null,
@@ -788,8 +788,9 @@ function createApp({
     res.status(201).json({ catch: getCatch(insertCatchRow(checked.values), req.user) });
   }
 
-  api.post('/catches', requireTeam, upload.single('photo'), (req, res) => {
-    insertCatch(req, res, { teamId: req.user.teamId, official: false });
+  // Anyone signed in can post, with or without a boat.
+  api.post('/catches', upload.single('photo'), (req, res) => {
+    insertCatch(req, res, { teamId: req.user.teamId ?? null, official: false });
   });
 
   // ---- official scoring: weigh-in, approval, calendar, standings ---------
