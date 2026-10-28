@@ -529,7 +529,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     if (b.anglerId === 'other' && !anglerName) return fail("Type the angler's name.");
     const anglerId = anglerName ? null : intId(b.anglerId) || req.user.id;
     if (anglerId && !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, req.user.teamId)) {
-      return fail('The angler must be on your boat, or choose "Someone else" and type their name.');
+      return fail('The angler must be on your boat, or choose "Guest" and type their name.');
     }
     const weightKg = num(b.weightKg);
     const lengthCm = num(b.lengthCm);

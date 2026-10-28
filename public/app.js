@@ -331,7 +331,7 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Log a catch</h1>
       <p class="muted">Logging for 🚤 <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}</p>
       <form class="card pad stack" id="f">
-        <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Someone else (type a name)']], state.me.id))}</select></label>
+        <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <div class="row">
