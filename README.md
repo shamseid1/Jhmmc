@@ -123,6 +123,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/tournaments/:id`        | One tournament's results by boat |
 | GET    | `/api/club-members`           | Secretary: everyone, and whether they've paid this season's JHMMC membership |
 | PUT    | `/api/club-members/:userId`   | Secretary: `{paid}` marks a paid member for the current season (crew in tournaments follow this) |
+| POST/PUT/DELETE | `/api/club-members/named[/:id]` | Secretary: members without an account (children, say): `{name, teamId, paid}`; captains pick them for tournaments as `{personId}` |
 | GET    | `/api/tournaments`            | Captains and officials: the season's tournaments with boats, anglers, non-members and unpaid temporary memberships |
 | GET    | `/api/tournaments/:id/my-entry` | A JHMMC captain's entry: their boat, crew and anglers |
 | GET    | `/api/tournaments/:id/sheet`  | Secretary: the registration sheet, every JHMMC boat with its anglers |

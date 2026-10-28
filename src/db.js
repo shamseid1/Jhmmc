@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -193,12 +193,27 @@ CREATE TABLE IF NOT EXISTS tournament_anglers (
   event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  person_id INTEGER REFERENCES club_people(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   member INTEGER NOT NULL DEFAULT 0,
   paid INTEGER NOT NULL DEFAULT 0,
   position INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS tournament_anglers_entry ON tournament_anglers(event_id, team_id, position);
+
+-- Club members without an account (children, for example), kept by the
+-- secretary, with the boat they usually fish on.
+CREATE TABLE IF NOT EXISTS club_people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS club_people_paid (
+  person_id INTEGER NOT NULL REFERENCES club_people(id) ON DELETE CASCADE,
+  season TEXT NOT NULL,
+  PRIMARY KEY (person_id, season)
+);
 
 -- Paid JHMMC members, per season (keyed by the season's start date).
 CREATE TABLE IF NOT EXISTS club_members (
@@ -373,6 +388,12 @@ function openDb(file) {
   if (hasTables && version < 15) {
     // Captains now register their own boat's fish; there are no weighmasters.
     db.exec("UPDATE users SET role = NULL, weigh_station = NULL WHERE role = 'weighmaster'");
+  }
+  if (hasTables && version < 21) {
+    const cols = db.prepare('PRAGMA table_info(tournament_anglers)').all();
+    if (cols.length && !cols.some((c) => c.name === 'person_id')) {
+      db.exec('ALTER TABLE tournament_anglers ADD COLUMN person_id INTEGER REFERENCES club_people(id) ON DELETE SET NULL');
+    }
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

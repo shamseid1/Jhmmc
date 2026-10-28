@@ -86,9 +86,10 @@ function logItems(entries) {
 
 // The anglers on a boat for a tournament: crew to tick, guests by name, and
 // whether each is a JHMMC member (non-members pay a temporary membership).
-function anglerEditor(crew, anglers, official = false) {
+function anglerEditor(crew, anglers, official = false, named = []) {
   const on = (m) => anglers.find((a) => a.userId === m.id);
-  const guests = anglers.filter((a) => !a.userId);
+  const onPerson = (p) => anglers.find((a) => a.personId === p.id);
+  const guests = anglers.filter((a) => !a.userId && !a.personId);
   const guestRow = (g = { name: '', member: false }) => html`<div class="guest-row">
     <input name="guestName" maxlength="80" placeholder="Guest's name" value="${g.name}" aria-label="Guest's name">
     ${official ? raw(html`<label class="check"><input type="checkbox" name="guestMember" ${g.member ? 'checked' : ''}> Member</label>`)
@@ -97,7 +98,11 @@ function anglerEditor(crew, anglers, official = false) {
   return html`<div class="crew-pick">${crew.length ? crew.map((m) => raw(html`<div class="crew-row" data-user="${m.id}">
       <label class="check"><input type="checkbox" name="fishing" ${on(m) ? 'checked' : ''}> ${m.name}</label>
       <span class="badge ${m.member ? 'new' : 'guest'}">${m.member ? 'Paid member' : 'Not a paid member'}</span>
-    </div>`)) : raw('<p class="small muted">No crew with accounts yet: add the anglers as guests.</p>')}</div>
+    </div>`)) : raw('<p class="small muted">No crew with accounts yet: add the anglers as guests.</p>')}
+    ${named.map((p) => raw(html`<div class="crew-row" data-person="${p.id}">
+      <label class="check"><input type="checkbox" name="fishing" ${onPerson(p) ? 'checked' : ''}> ${p.name} <span class="muted small">(no account)</span></label>
+      <span class="badge ${p.member ? 'new' : 'guest'}">${p.member ? 'Paid member' : 'Not a paid member'}</span>
+    </div>`))}</div>
     <div class="guests">${guests.map((g) => raw(guestRow(g)))}</div>
     <div><button type="button" data-act="add-guest">+ Add a guest</button></div>
     <template class="guest-template">${raw(guestRow())}</template>`;
@@ -114,7 +119,7 @@ function wireAnglerEditor(form) {
 }
 function readAnglerEditor(form) {
   const crew = [...form.querySelectorAll('.crew-row')].filter((r) => r.querySelector('[name=fishing]').checked)
-    .map((r) => ({ userId: Number(r.dataset.user) }));
+    .map((r) => (r.dataset.person ? { personId: Number(r.dataset.person) } : { userId: Number(r.dataset.user) }));
   const guests = [...form.querySelectorAll('.guests .guest-row')].map((r) => ({
     name: r.querySelector('[name=guestName]').value.trim(), member: !!r.querySelector('[name=guestMember]')?.checked,
   })).filter((g) => g.name);
@@ -1708,7 +1713,7 @@ const pagesFor = (view) => ({
   // A captain enters their boat in a tournament with the anglers fishing on it.
   async enter(id) {
     if (!state.me?.canWeigh) return needLogin(view, 'enter tournaments (captains of JHMMC boats)');
-    const { tournament, team, crew, entered, anglers, open, fee } = await api(`/tournaments/${id}/my-entry`);
+    const { tournament, team, crew, named, entered, anglers, open, fee } = await api(`/tournaments/${id}/my-entry`);
     view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)} · <b>${team.name}</b> · ${team.division === 'river' ? 'River' : 'Ocean'}${team.station ? ` · ${team.station}` : ''}</p>
@@ -1716,7 +1721,7 @@ const pagesFor = (view) => ({
       ${open ? raw(html`<form class="card pad stack" id="entry">
         <h2>Anglers on ${team.name}</h2>
         <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Only people the secretary has marked as paid JHMMC members count as members; everyone else, guests included, pays a USD ${fee} temporary membership before the tournament day.</p>
-        ${raw(anglerEditor(crew, anglers))}
+        ${raw(anglerEditor(crew, anglers, false, named))}
         <p class="error"></p>
         <div class="actions"><button type="submit" class="primary">${entered ? 'Save changes' : 'Enter my boat'}</button>
           ${entered ? raw('<button type="button" class="danger" data-act="withdraw">Withdraw my boat</button>') : ''}</div>
@@ -1776,7 +1781,7 @@ const pagesFor = (view) => ({
           ${a.member ? '' : raw(html`<label class="check paid"><input type="checkbox" data-act="paid" ${a.paid ? 'checked' : ''}> Paid</label>`)}
         </li>`))}</ol>`) : raw('<p class="small muted">No anglers listed yet.</p>')}
         <button type="button" data-act="edit" class="link">Edit anglers</button>
-        <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers, true))}
+        <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers, true, b.named))}
           <p class="error"></p><div class="actions"><button type="submit" class="primary">Save anglers</button></div></form>
       </article>`))}</div>`) : raw('<div class="card pad empty">No boats in yet.</div>')}
       <h2>Not in (${outBoats.length})</h2>
@@ -1835,14 +1840,14 @@ const pagesFor = (view) => ({
   // The secretary's list of who has paid their JHMMC membership this season.
   async 'club-members'() {
     if (!state.me?.canReview) return needLogin(view, 'keep the membership list (the secretary and admin)');
-    const { season, people } = await api('/club-members');
+    const [{ season, people, named }, { teams }] = await Promise.all([api('/club-members'), api('/teams')]);
     const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
     const paid = people.filter((p) => p.paid).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Club members</h1>
       <p class="small muted">Tick everyone who has paid their JHMMC membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
-        In tournaments, crew who aren't ticked here count as non-members and pay the temporary membership.</p>
-      <div class="sheet-totals"><div><span>Paid members</span><b>${paid}</b></div><div><span>Not paid</span><b>${people.length - paid}</b></div></div>
+        In tournaments, anyone who isn't ticked here counts as a non-member and pays the temporary membership.</p>
+      <div class="sheet-totals"><div><span>Paid members</span><b>${paid + named.filter((p) => p.paid).length}</b></div><div><span>Not paid</span><b>${people.length - paid + named.filter((p) => !p.paid).length}</b></div></div>
       <div class="filter-bar member-filter">
         ${[['all', 'Everyone'], ['paid', 'Paid'], ['unpaid', 'Not paid']].map(([k, l]) => raw(html`<button type="button" class="${k === 'all' ? 'filter-toggle on' : 'filter-toggle'}" data-show="${k}">${l}</button>`))}
       </div>
@@ -1850,7 +1855,23 @@ const pagesFor = (view) => ({
       <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
         <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div></span>
         <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
-      </li>`))}</ul></div>`;
+      </li>`))}</ul></div>
+      <h2>Members without an account</h2>
+      <p class="small muted">Children and anyone else who doesn't use the app. Give them their boat so its captain can pick them for tournaments.</p>
+      <div class="card"><ul class="list">${named.length ? named.map((p) => raw(html`<li class="member member-pay" data-person="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.teamName || ''}`.toLowerCase()}">
+        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · no account</div></span>
+        <span class="actions"><label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
+          <button type="button" class="link danger" data-act="remove-person">Remove</button></span>
+      </li>`)) : raw('<li class="muted">None yet.</li>')}</ul></div>
+      <form class="card pad stack" id="add-person">
+        <h3>Add a member without an account</h3>
+        <div class="row">
+          <label>Name <input name="name" required maxlength="80" placeholder="e.g. Sami Eid"></label>
+          <label>Boat <select name="teamId">${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, t.name]), null, 'No boat'))}</select></label>
+        </div>
+        <label class="check"><input type="checkbox" name="paid" checked> Paid ${label}</label>
+        <p class="error"></p><div><button type="submit" class="primary">Add member</button></div>
+      </form>`;
     let show = 'all';
     const filter = () => {
       const term = view.querySelector('.search input').value.trim().toLowerCase();
@@ -1872,17 +1893,31 @@ const pagesFor = (view) => ({
       if (!box) return;
       const li = box.closest('.member-pay');
       try {
-        await api(`/club-members/${li.dataset.id}`, { method: 'PUT', body: { paid: box.checked } });
+        await api(li.dataset.person ? `/club-members/named/${li.dataset.person}` : `/club-members/${li.dataset.id}`, { method: 'PUT', body: { paid: box.checked } });
         li.dataset.paid = String(box.checked);
         const count = view.querySelectorAll('.member-pay[data-paid=true]').length;
         const [paidBox, unpaidBox] = view.querySelectorAll('.sheet-totals b');
         paidBox.textContent = count;
-        unpaidBox.textContent = people.length - count;
+        unpaidBox.textContent = view.querySelectorAll('.member-pay').length - count;
         toast(box.checked ? `${li.querySelector('b').textContent}: paid member` : 'Marked not paid');
       } catch (ex) {
         box.checked = !box.checked;
         toast(ex.message);
       }
+    });
+    const addForm = view.querySelector('#add-person');
+    bindForm(addForm, async () => {
+      await api('/club-members/named', { method: 'POST', body: { name: addForm.name.value, teamId: addForm.teamId.value || null, paid: addForm.paid.checked } });
+      toast(`${addForm.name.value} added`);
+      route();
+    });
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act=remove-person]');
+      if (!btn) return;
+      const li = btn.closest('[data-person]');
+      if (!confirm(`Remove ${li.querySelector('b').textContent} from the club list?`)) return;
+      await api(`/club-members/named/${li.dataset.person}`, { method: 'DELETE' });
+      route();
     });
   },
 

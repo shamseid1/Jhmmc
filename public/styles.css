@@ -536,3 +536,5 @@ button.link[hidden] { display: none; }
 .sheet-totals + .card { margin-top: 12px; }
 .member-pay[hidden] { display: none; }
 .member-filter { margin-top: 12px; }
+#add-person { margin-top: 12px; }
+#add-person h3 { margin: 0; }

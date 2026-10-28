@@ -96,6 +96,26 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
     sheet = (await sec('GET', `/tournaments/${memorial.id}/sheet`)).body;
     assert.equal(sheet.boats.find((b) => b.teamId === reel.id).entered, true);
     await sec('PUT', `/tournaments/${memorial.id}/entries/${reel.id}`, { entered: false });
+    // Members without an account (children): the secretary lists them, the captain picks them.
+    assert.equal((await cap('POST', '/club-members/named', { name: 'Sami', teamId: girl.id })).status, 403);
+    assert.equal((await sec('POST', '/club-members/named', { name: '' })).status, 400);
+    const sami = (await sec('POST', '/club-members/named', { name: 'Sami', teamId: girl.id })).body.id;
+    const lea = (await sec('POST', '/club-members/named', { name: 'Lea', teamId: girl.id, paid: false })).body.id;
+    assert.equal((await sec('POST', '/club-members/named', { name: 'sami', teamId: girl.id })).status, 409);
+    const named = (await sec('GET', '/club-members')).body.named;
+    assert.deepEqual(named.map((p) => [p.name, p.teamName, p.paid]), [['Lea', 'Liberian Girl', false], ['Sami', 'Liberian Girl', true]]);
+    assert.deepEqual((await cap('GET', `/tournaments/${memorial.id}/my-entry`)).body.named.map((p) => [p.name, p.member]), [['Lea', false], ['Sami', true]]);
+    r = await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true,
+      anglers: [{ userId: mine.crew[1].id }, { personId: sami, member: false }, { personId: lea, member: true }] });
+    assert.deepEqual(r.body.anglers.map((a) => [a.name, a.member]), [['Rayan Eid', true], ['Sami', true], ['Lea', false]],
+      'their membership comes from the paid list too');
+    await sec('PUT', `/club-members/named/${lea}`, { paid: true });
+    assert.equal((await sec('GET', `/tournaments/${memorial.id}/sheet`)).body.boats[1].anglers.find((a) => a.name === 'Lea').member, true);
+    counts = (await sec('GET', '/tournaments')).body.tournaments.find((t) => t.id === memorial.id);
+    assert.equal(counts.guests, 0, 'everyone on the boat is now a paid member');
+    await sec('DELETE', `/club-members/named/${lea}`);
+    assert.deepEqual((await sec('GET', '/club-members')).body.named.map((p) => p.name), ['Sami']);
+
     // A captain withdrawing removes the anglers too.
     await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: false });
     sheet = (await sec('GET', `/tournaments/${memorial.id}/sheet`)).body;
