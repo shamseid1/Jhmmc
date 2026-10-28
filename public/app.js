@@ -1044,10 +1044,7 @@ const pagesFor = (view) => ({
       <div class="scale-pick">
         <span class="scale-label">Photo on the scale</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
-        <div class="scale-buttons">
-          <label class="btn">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
-          <label class="btn">${raw(icon('image'))} <span>Choose photo</span><input type="file" accept="image/*" data-scale></label>
-        </div>
+        <label class="btn scale-button">${raw(icon('camera'))} <span>Add photo</span><input type="file" accept="image/*" data-scale></label>
       </div>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
@@ -1105,7 +1102,7 @@ const pagesFor = (view) => ({
         updatePoints();
       }
     });
-    // The scale photo, taken with the camera there and then or picked from the phone's photos.
+    // The scale photo: the phone offers its camera or its photos.
     const scalePhotos = new WeakMap();
     list.addEventListener('change', (e) => {
       if (e.target.matches('[data-scale]')) {
@@ -1118,9 +1115,7 @@ const pagesFor = (view) => ({
         URL.revokeObjectURL(img.src);
         img.src = URL.createObjectURL(file);
         img.hidden = false;
-        const [take, choose] = row.querySelectorAll('.scale-buttons span');
-        take.textContent = 'Retake';
-        choose.textContent = 'Change';
+        row.querySelector('.scale-button span').textContent = 'Change photo';
         return;
       }
       if (e.target.name === 'anglerId') e.target.closest('.fish').querySelector('.guest-name').hidden = e.target.value !== 'other';
@@ -1691,7 +1686,6 @@ const ICONS = {
   review: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
-  image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
