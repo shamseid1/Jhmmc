@@ -348,3 +348,13 @@ button.liked .icon { fill: currentColor; }
 .ppk { width: 90px; text-align: right; padding: 6px 8px; }
 .member-row .role { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .member-row .role select { width: auto; padding: 4px 8px; }
+
+/* ---- quick post ---- */
+.photo-pick { display: grid; gap: 8px; cursor: pointer; font-weight: 600; }
+.photo-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.photo-cta { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 18px; border: 2px dashed var(--line); border-radius: var(--radius); color: var(--accent); }
+.photo-pick:focus-within .photo-cta { border-color: var(--accent); }
+.photo-preview img { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); }
+.photo-preview[hidden] { display: none; }
+.more-details summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 4px 0; }
+.more-details[open] summary { margin-bottom: 10px; }

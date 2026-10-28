@@ -97,6 +97,33 @@ function bindForm(form, handler) {
   });
 }
 
+// Phone photos are often 3-8 MB; shrink them to 1600px JPEGs before upload so
+// posting works over Starlink or a weak signal. Falls back to the original.
+async function shrinkPhoto(file, max = 1600) {
+  if (!file?.size || !file.type.startsWith('image/')) return file;
+  try {
+    const img = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    if (scale === 1 && file.size < 1.5e6 && file.type === 'image/jpeg') return file;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((done) => canvas.toBlob(done, 'image/jpeg', 0.82));
+    return blob ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : file;
+  } catch {
+    return file;
+  }
+}
+
+// Replaces a photo field in form data with its shrunk version, or drops it if empty.
+async function preparePhoto(fd, field) {
+  const file = fd.get(field);
+  if (!file?.size) fd.delete(field);
+  else fd.set(field, await shrinkPhoto(file));
+  return fd;
+}
+
 async function copyText(text, done = 'Copied') {
   try {
     await navigator.clipboard.writeText(text);
@@ -381,31 +408,40 @@ const pagesFor = (view) => ({
       return;
     }
     const { team } = await api(`/teams/${state.me.teamId}`);
-    view.innerHTML = html`<h1>Log a catch</h1>
-      <p class="muted">Logging for <b>${team.name}</b>${isJhmmc(team.clubId) ? ` (${team.division === 'river' ? 'River' : 'Ocean'})` : ''}${team.clubName ? ` · ${team.clubName}` : ''}.
-        Posts go on the feed${isJhmmc(team.clubId) ? '. JHMMC points only come from fish a weighmaster registers at the dock' : ''}.</p>
+    view.innerHTML = html`<h1>Post a catch</h1>
+      <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}. A photo and the species are enough; add the weight and details if you want.
+        ${isJhmmc(team.clubId) ? 'Posts are for the feed. JHMMC points only come from fish a weighmaster registers at the dock.' : ''}</p>
       <form class="card pad stack" id="f">
-        <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
-        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
+        <label class="photo-pick">
+          <span class="photo-preview" hidden><img alt=""></span>
+          <span class="photo-cta">${raw(icon('camera'))} Add a photo</span>
+          <input name="photo" type="file" accept="image/*">
+        </label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
-        <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="e.g. 180"></label>
-          <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
-        </div>
-        <div class="row">
-          <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
-          <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
-        </div>
-        <label>Location / spot <input name="location" maxlength="120" placeholder="e.g. Bijagós, Banana Islands"></label>
-        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
-        <div class="row">
-          <label class="check"><input type="checkbox" name="released"> Released alive</label>
-          <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
-        </div>
-        <label>Photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
-        <label>Story / notes <textarea name="notes" maxlength="2000" placeholder="Lure, fight time, crew…"></textarea></label>
+        <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
+        <details class="more-details">
+          <summary>Add weight and details</summary>
+          <div class="stack">
+            <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
+            <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
+            <div class="row">
+              <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
+              <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
+            </div>
+            <div class="row">
+              <label class="check"><input type="checkbox" name="released"> Released alive</label>
+              <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
+            </div>
+            <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+            <label>Location / spot <input name="location" maxlength="120" placeholder="e.g. Banana Islands, Mesurado"></label>
+            <div class="row">
+              <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
+              <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
+            </div>
+          </div>
+        </details>
         <p class="error"></p>
-        <div><button type="submit" class="primary">Post catch</button></div>
+        <div><button type="submit" class="primary">Post</button></div>
       </form>`;
     const form = view.querySelector('#f');
     const nameBox = view.querySelector('#angler-name');
@@ -414,12 +450,25 @@ const pagesFor = (view) => ({
       form.anglerName.required = !nameBox.hidden;
       if (!nameBox.hidden) form.anglerName.focus();
     });
+    // Show the chosen photo so it's clear it's attached.
+    form.photo.addEventListener('change', () => {
+      const file = form.photo.files[0];
+      const preview = view.querySelector('.photo-preview');
+      preview.hidden = !file;
+      view.querySelector('.photo-cta').lastChild.textContent = file ? ' Change photo' : ' Add a photo';
+      if (file) preview.querySelector('img').src = URL.createObjectURL(file);
+    });
     bindForm(form, async () => {
-      const fd = new FormData(form);
-      if (!fd.get('photo')?.size) fd.delete('photo');
-      const { catch: c } = await api('/catches', { method: 'POST', form: fd });
-      toast('Catch posted. Tight lines!');
-      location.hash = `#/catch/${c.id}`;
+      const btn = form.querySelector('button[type=submit]');
+      btn.textContent = 'Posting…';
+      try {
+        const fd = await preparePhoto(new FormData(form), 'photo');
+        const { catch: c } = await api('/catches', { method: 'POST', form: fd });
+        toast('Posted. Tight lines!');
+        location.hash = `#/catch/${c.id}`;
+      } finally {
+        btn.textContent = 'Post';
+      }
     });
   },
 
@@ -644,7 +693,7 @@ const pagesFor = (view) => ({
       await api(`/teams/${id}`, { method: 'PATCH', body: fields });
       if (photo?.size) {
         const fd = new FormData();
-        fd.set('photo', photo);
+        fd.set('photo', await shrinkPhoto(photo));
         await api(`/teams/${id}/photo`, { method: 'POST', form: fd });
       }
       await refreshMe();
@@ -842,8 +891,7 @@ const pagesFor = (view) => ({
       view.querySelector('#rec-name').hidden = rec.anglerId.value !== 'other';
     });
     bindForm(rec, async () => {
-      const fd = new FormData(rec);
-      if (!fd.get('scalePhoto')?.size) fd.delete('scalePhoto');
+      const fd = await preparePhoto(new FormData(rec), 'scalePhoto');
       await api('/weigh', { method: 'POST', form: fd });
       toast('Registered. Sent to the secretary.');
       route();
@@ -1222,7 +1270,7 @@ const pagesFor = (view) => ({
       let { user } = await api('/me', { method: 'PATCH', body: fields });
       if (photo?.size) {
         const fd = new FormData();
-        fd.set('photo', photo);
+        fd.set('photo', await shrinkPhoto(photo));
         ({ user } = await api('/me/photo', { method: 'POST', form: fd }));
       }
       state.me = user;
@@ -1335,6 +1383,7 @@ const ICONS = {
   review: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -1353,7 +1402,7 @@ function renderNav(active) {
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
-  if (state.me?.teamId) links.push(['#/new', 'Log catch', 'new', 'catch', 'cta']);
+  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
