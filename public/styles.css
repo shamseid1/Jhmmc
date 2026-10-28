@@ -516,3 +516,21 @@ button.link[hidden] { display: none; }
 .book-list .muted.small { display: block; font-size: 13px; }
 .book-list .num { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .badge.new { background: rgba(63, 207, 142, .15); color: var(--good); margin-left: 6px; }
+
+/* ---- tournament entries & registration sheet ---- */
+.crew-pick, .guests { display: grid; gap: 8px; }
+.crew-row, .guest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: #111a2c; }
+.guest-row input[name=guestName] { flex: 1 1 160px; width: auto; }
+.crew-row label.check, .guest-row label.check { font-size: 14px; }
+.entry-anglers { margin: 8px 0; padding-left: 26px; display: grid; gap: 6px; font-size: 15px; }
+.entry-anglers li { padding-left: 4px; }
+.entry-anglers li > * { vertical-align: middle; }
+.entry-anglers .badge { margin-left: 6px; }
+.badge.guest { background: rgba(245, 165, 36, .15); color: var(--sun); }
+.entry-anglers .paid { display: inline-flex; margin-left: 8px; font-size: 13px; }
+.sheet-boat .catch-head label.check { font-size: 14px; }
+.angler-edit { margin-top: 10px; }
+.angler-edit[hidden] { display: none; }
+.sheet-totals div:nth-child(3):last-child { grid-column: 1 / -1; }
+.sheet-totals + .card { margin-top: 12px; }

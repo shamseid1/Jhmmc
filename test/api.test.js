@@ -639,8 +639,9 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // Today is a tournament: the secretary adds it to the calendar.
     assert.equal((await cap('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).status, 403);
     const cup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).body.event;
-    // Sea Hunter is entered; only the secretary manages entries, for JHMMC boats.
-    assert.equal((await cap('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 403);
+    // Sea Hunter is entered; captains enter their own boat, the secretary any JHMMC boat.
+    assert.equal((await rcap('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 403, "not another captain's boat");
+    assert.match((await cap('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).body.error, /anglers/, 'captains list their anglers');
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${visitor.id}`, { entered: true })).status, 400);
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 200);
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,

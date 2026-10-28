@@ -84,6 +84,42 @@ function logItems(entries) {
   </li>`).join('');
 }
 
+// The anglers on a boat for a tournament: crew to tick, guests by name, and
+// whether each is a JHMMC member (non-members pay a temporary membership).
+function anglerEditor(crew, anglers) {
+  const on = (m) => anglers.find((a) => a.userId === m.id);
+  const guests = anglers.filter((a) => !a.userId);
+  const guestRow = (g = { name: '', member: false }) => html`<div class="guest-row">
+    <input name="guestName" maxlength="80" placeholder="Guest's name" value="${g.name}" aria-label="Guest's name">
+    <label class="check"><input type="checkbox" name="guestMember" ${g.member ? 'checked' : ''}> Member</label>
+    <button type="button" class="link danger" data-act="drop-guest">Remove</button></div>`;
+  return html`<div class="crew-pick">${crew.length ? crew.map((m) => raw(html`<div class="crew-row" data-user="${m.id}">
+      <label class="check"><input type="checkbox" name="fishing" ${on(m) ? 'checked' : ''}> ${m.name}</label>
+      <label class="check"><input type="checkbox" name="member" ${on(m) ? (on(m).member ? 'checked' : '') : 'checked'}> Member</label>
+    </div>`)) : raw('<p class="small muted">No crew with accounts yet: add the anglers as guests.</p>')}</div>
+    <div class="guests">${guests.map((g) => raw(guestRow(g)))}</div>
+    <div><button type="button" data-act="add-guest">+ Add a guest</button></div>
+    <template class="guest-template">${raw(guestRow())}</template>`;
+}
+function wireAnglerEditor(form) {
+  form.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act=add-guest]')) {
+      form.querySelector('.guests').append(form.querySelector('.guest-template').content.cloneNode(true));
+      form.querySelector('.guests .guest-row:last-child input').focus();
+    } else if (e.target.closest('[data-act=drop-guest]')) {
+      e.target.closest('.guest-row').remove();
+    }
+  });
+}
+function readAnglerEditor(form) {
+  const crew = [...form.querySelectorAll('.crew-row')].filter((r) => r.querySelector('[name=fishing]').checked)
+    .map((r) => ({ userId: Number(r.dataset.user), member: r.querySelector('[name=member]').checked }));
+  const guests = [...form.querySelectorAll('.guests .guest-row')].map((r) => ({
+    name: r.querySelector('[name=guestName]').value.trim(), member: r.querySelector('[name=guestMember]').checked,
+  })).filter((g) => g.name);
+  return [...crew, ...guests];
+}
+
 // The phone's position for the registration record, or null if it isn't
 // allowed or takes too long: never holds up sending.
 function phoneSpot(timeout = 8000) {
@@ -1035,13 +1071,9 @@ const pagesFor = (view) => ({
 
   async tournament(id) {
     const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
-    const [{ tournament, results, entries: allEntries }, boats] = await Promise.all([
-      api(`/tournaments/${id}?division=${division}`),
-      // Each tab enters and lists only its own division's boats.
-      state.me?.canReview ? api('/teams').then(({ teams }) => teams.filter((t) => isJhmmc(t.clubId) && t.division === division)) : null,
-    ]);
+    const { tournament, results, entries: allEntries } = await api(`/tournaments/${id}?division=${division}`);
+    // Each tab lists only its own division's boats.
     const entries = allEntries.filter((e) => e.division === division);
-    const entered = new Set(entries.map((e) => e.teamId));
     const side = division === 'river' ? 'River' : 'Ocean';
     view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
       <h1>${tournament.name}</h1>
@@ -1054,24 +1086,9 @@ const pagesFor = (view) => ({
       </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
       <h2>${side} boats entered (${entries.length})</h2>
       <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
-      ${boats ? raw(html`<div class="card"><ul class="list entries">${boats.length ? boats.map((t) => raw(html`<li>
-        <label class="check"><input type="checkbox" data-team="${t.id}" ${entered.has(t.id) ? 'checked' : ''}>
-          <span>${t.name}</span></label>
-      </li>`)) : raw(html`<li class="muted">No JHMMC ${side} boats yet.</li>`)}</ul></div>`)
-        : raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
+      ${state.me?.canReview ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
+      ${raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
           : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}`;
-    view.querySelector('.entries')?.addEventListener('change', async (e) => {
-      const box = e.target.closest('input[data-team]');
-      if (!box) return;
-      try {
-        await api(`/tournaments/${id}/entries/${box.dataset.team}`, { method: 'PUT', body: { entered: box.checked } });
-        toast(box.checked ? 'Entered' : 'Taken out');
-        route();
-      } catch (ex) {
-        box.checked = !box.checked;
-        toast(ex.message);
-      }
-    });
   },
 
   // Points per kg for each species; the secretary can edit it.
@@ -1515,6 +1532,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+        ${item('#/tournaments', 'trophy', me.canReview ? 'Tournaments' : 'Tournament entry', me.canReview ? "Who's in, anglers, members and guests" : 'Enter your boat and anglers')}
         ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
         ${me.canReview ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision') : ''}
@@ -1663,6 +1681,153 @@ const pagesFor = (view) => ({
       if (more.nextBefore) e.target.dataset.before = more.nextBefore;
       else e.target.remove();
     });
+  },
+
+  // Tournaments for captains (enter your boat) and officials (the registration sheet).
+  async tournaments() {
+    if (!state.me?.canWeigh) return needLogin(view, 'enter tournaments (captains of JHMMC boats)');
+    const official = state.me.canReview;
+    const { tournaments, fee } = await api('/tournaments');
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>${official ? 'Tournaments' : 'Tournament entry'}</h1>
+      <p class="small muted">${official
+        ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
+        : `Enter your boat and say who's fishing on it. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`}</p>
+      ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="#/${official ? 'sheet' : 'enter'}/${t.id}">
+        <span class="mi-icon">${raw(icon('trophy'))}</span>
+        <span class="mi-text"><b>${t.name}</b><span>${fmtDays(t)}${t.open ? '' : ' · over'}</span>
+          <span>${official ? `${plural(t.boats, 'boat')} · ${plural(t.anglers, 'angler')} · ${t.guests} non-member${t.guests === 1 ? '' : 's'}${t.unpaid ? ` · ${t.unpaid} unpaid` : ''}`
+            : t.mine ? 'Your boat is entered' : t.open ? 'Not entered yet' : 'You did not enter'}</span></span>
+        ${t.mine && !official ? raw(`<span class="badge new">In</span>`) : ''}
+        <span class="mi-go" aria-hidden="true">›</span></a>`))}</div>`)
+        : raw(html`<div class="card pad empty">No tournaments on the calendar this season yet.${official ? raw(' <a href="#/calendar">Add one</a>') : ''}</div>`)}`;
+  },
+
+  // A captain enters their boat in a tournament with the anglers fishing on it.
+  async enter(id) {
+    if (!state.me?.canWeigh) return needLogin(view, 'enter tournaments (captains of JHMMC boats)');
+    const { tournament, team, crew, entered, anglers, open, fee } = await api(`/tournaments/${id}/my-entry`);
+    view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
+      <h1>${tournament.name}</h1>
+      <p class="muted">${fmtDays(tournament)} · <b>${team.name}</b> · ${team.division === 'river' ? 'River' : 'Ocean'}${team.station ? ` · ${team.station}` : ''}</p>
+      <p class="tournament-now">${raw(icon(entered ? 'check' : 'trophy'))} ${entered ? 'Your boat is entered.' : 'Your boat is not entered yet.'}</p>
+      ${open ? raw(html`<form class="card pad stack" id="entry">
+        <h2>Anglers on ${team.name}</h2>
+        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Mark who is a JHMMC member: non-members pay a USD ${fee} temporary membership before the tournament day.</p>
+        ${raw(anglerEditor(crew, anglers))}
+        <p class="error"></p>
+        <div class="actions"><button type="submit" class="primary">${entered ? 'Save changes' : 'Enter my boat'}</button>
+          ${entered ? raw('<button type="button" class="danger" data-act="withdraw">Withdraw my boat</button>') : ''}</div>
+      </form>`) : raw(html`<div class="card pad">${anglers.length ? raw(html`<ol class="entry-anglers">${anglers.map((a) => raw(html`<li>${a.name} <span class="muted small">· ${a.member ? 'member' : 'non-member'}</span></li>`))}</ol>`)
+        : raw('<p class="muted">This tournament is over.</p>')}</div>`)}`;
+    const form = view.querySelector('#entry');
+    if (!form) return;
+    wireAnglerEditor(form);
+    bindForm(form, async () => {
+      await api(`/tournaments/${id}/entries/${team.id}`, { method: 'PUT', body: { entered: true, anglers: readAnglerEditor(form) } });
+      toast(entered ? 'Saved' : `${team.name} is entered`);
+      route();
+    });
+    form.querySelector('[data-act=withdraw]')?.addEventListener('click', async () => {
+      if (!confirm(`Withdraw ${team.name} from ${tournament.name}?`)) return;
+      await api(`/tournaments/${id}/entries/${team.id}`, { method: 'PUT', body: { entered: false } });
+      toast('Withdrawn');
+      route();
+    });
+  },
+
+  // The secretary's registration sheet, like the club's "Teams registered" list.
+  async sheet(id) {
+    if (!state.me?.canReview) return needLogin(view, 'see the registration sheet (the secretary and admin)');
+    const { tournament, boats, fee } = await api(`/tournaments/${id}/sheet`);
+    const inBoats = boats.filter((b) => b.entered);
+    const outBoats = boats.filter((b) => !b.entered);
+    const all = inBoats.flatMap((b) => b.anglers);
+    const guests = all.filter((a) => !a.member);
+    const unpaid = guests.filter((a) => !a.paid);
+    // Boats in, by weigh station and Ocean / River.
+    const stations = [...new Set(inBoats.map((b) => b.station || 'No station'))];
+    const count = (st, div) => inBoats.filter((b) => (b.station || 'No station') === st && (!div || b.division === div)).length;
+    let n = 0;
+    view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
+      <h1>${tournament.name}</h1>
+      <p class="muted">${fmtDays(tournament)} · <a href="#/tournament/${tournament.id}">Results</a></p>
+      <div class="sheet-totals">
+        <div><span>Boats in</span><b>${inBoats.length}</b></div>
+        <div><span>Anglers</span><b>${all.length}</b><small>${all.length - guests.length} members · ${guests.length} non-members</small></div>
+        <div><span>Temporary memberships</span><b>USD ${unpaid.length * fee}</b><small>${unpaid.length ? `${unpaid.length} of ${guests.length} still to pay` : guests.length ? 'all paid' : 'none due'}</small></div>
+      </div>
+      ${inBoats.length ? raw(html`<div class="card table-wrap"><table>
+        <thead><tr><th>Station</th><th class="num">Ocean</th><th class="num">River</th><th class="num">Total</th></tr></thead>
+        <tbody>${stations.map((st) => raw(html`<tr><td>${st}</td><td class="num">${count(st, 'ocean') || ''}</td><td class="num">${count(st, 'river') || ''}</td><td class="num"><b>${count(st)}</b></td></tr>`))}
+          <tr><td><b>Total</b></td><td class="num"><b>${inBoats.filter((b) => b.division === 'ocean').length}</b></td><td class="num"><b>${inBoats.filter((b) => b.division === 'river').length}</b></td><td class="num"><b>${inBoats.length}</b></td></tr></tbody>
+      </table></div>
+      <p><button type="button" data-act="copy-sheet">Copy the list for WhatsApp</button></p>`) : ''}
+      <h2>Boats in (${inBoats.length})</h2>
+      ${inBoats.length ? raw(html`<div class="stack">${inBoats.map((b) => raw(html`<article class="card pad sheet-boat" data-team="${b.teamId}">
+        <div class="catch-head"><h3 class="catch-title"><a href="#/boat/${b.teamId}">${b.teamName}</a></h3>
+          <label class="check"><input type="checkbox" data-act="in" checked> In</label></div>
+        <p class="meta">${b.division === 'river' ? 'River' : 'Ocean'} · ${b.station || 'no weigh station'}</p>
+        ${b.anglers.length ? raw(html`<ol class="entry-anglers">${b.anglers.map((a) => raw(html`<li data-angler="${a.id}" value="${++n}">
+          <span>${a.name}</span>
+          <span class="badge ${a.member ? 'new' : 'guest'}">${a.member ? 'Member' : 'Non-member'}</span>
+          ${a.member ? '' : raw(html`<label class="check paid"><input type="checkbox" data-act="paid" ${a.paid ? 'checked' : ''}> Paid</label>`)}
+        </li>`))}</ol>`) : raw('<p class="small muted">No anglers listed yet.</p>')}
+        <button type="button" data-act="edit" class="link">Edit anglers</button>
+        <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers))}
+          <p class="error"></p><div class="actions"><button type="submit" class="primary">Save anglers</button></div></form>
+      </article>`))}</div>`) : raw('<div class="card pad empty">No boats in yet.</div>')}
+      <h2>Not in (${outBoats.length})</h2>
+      <div class="card"><ul class="list">${outBoats.length ? outBoats.map((b) => raw(html`<li class="member" data-team="${b.teamId}">
+        <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
+        <button type="button" data-act="put-in">Put in</button></li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>`;
+    const put = (teamId, body) => api(`/tournaments/${id}/entries/${teamId}`, { method: 'PUT', body });
+    view.addEventListener('change', async (e) => {
+      const box = e.target.closest('input[data-act]');
+      if (!box || box.closest('.angler-edit')) return;
+      const teamId = box.closest('[data-team]').dataset.team;
+      try {
+        if (box.dataset.act === 'in') {
+          if (!confirm('Take this boat out of the tournament? Its anglers are removed too.')) { box.checked = true; return; }
+          await put(teamId, { entered: false });
+          route();
+        } else if (box.dataset.act === 'paid') {
+          await api(`/tournaments/${id}/anglers/${box.closest('[data-angler]').dataset.angler}`, { method: 'PATCH', body: { paid: box.checked } });
+          toast(box.checked ? 'Marked paid' : 'Marked unpaid');
+          route();
+        }
+      } catch (ex) {
+        box.checked = !box.checked;
+        toast(ex.message);
+      }
+    });
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      if (btn.dataset.act === 'put-in') {
+        await put(btn.closest('[data-team]').dataset.team, { entered: true });
+        toast('In');
+        route();
+      } else if (btn.dataset.act === 'edit') {
+        const f = btn.nextElementSibling;
+        f.hidden = !f.hidden;
+      } else if (btn.dataset.act === 'copy-sheet') {
+        let i = 0;
+        const text = [`${tournament.name}: boats registered (${inBoats.length})`, ...inBoats.map((b) => [
+          `\n${b.teamName} · ${b.division === 'river' ? 'River' : 'Ocean'} · ${b.station || 'no station'}`,
+          ...b.anglers.map((a) => `${++i}. ${a.name}${a.member ? '' : ` (non-member${a.paid ? ', paid' : ''})`}`),
+        ].join('\n')), `\nAll temporary memberships should be paid before the tournament day.`].join('\n');
+        copyText(text, 'List copied');
+      }
+    });
+    for (const f of view.querySelectorAll('.angler-edit')) {
+      wireAnglerEditor(f);
+      bindForm(f, async () => {
+        await put(f.closest('[data-team]').dataset.team, { entered: true, anglers: readAnglerEditor(f) });
+        toast('Anglers saved');
+        route();
+      });
+    }
   },
 
   async members() {
@@ -2142,7 +2307,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>

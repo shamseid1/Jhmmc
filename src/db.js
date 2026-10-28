@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 19;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -185,6 +185,20 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
   team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   PRIMARY KEY (event_id, team_id)
 );
+
+-- Who fishes on an entered boat in a tournament: crew with accounts or guests
+-- by name. Non-members pay a temporary membership, ticked off when paid.
+CREATE TABLE IF NOT EXISTS tournament_anglers (
+  id INTEGER PRIMARY KEY,
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  member INTEGER NOT NULL DEFAULT 0,
+  paid INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS tournament_anglers_entry ON tournament_anglers(event_id, team_id, position);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,

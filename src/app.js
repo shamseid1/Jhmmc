@@ -1257,16 +1257,130 @@ function createApp({
     res.json({ tournament: event, division, entries, results: [...boats.values()].sort((a, b) => b.points - a.points) });
   });
 
-  // The secretary enters a JHMMC boat in a tournament, or takes it out.
-  api.put('/tournaments/:id/entries/:teamId', requireReview, (req, res) => {
-    const event = db.prepare("SELECT id FROM events WHERE id = ? AND kind = 'tournament'").get(intId(req.params.id) ?? 0);
+  // ---- tournament registration ------------------------------------------
+  // Captains enter their boat with the anglers fishing on it; the secretary
+  // sees every boat on one sheet, puts boats in or out and ticks off the
+  // temporary memberships non-members pay (rule 1: USD 50 per tournament).
+  const TEMP_MEMBERSHIP_USD = 50;
+  const MAX_TOURNAMENT_ANGLERS = 12;
+  const tournamentById = (id) => db.prepare(`SELECT id, name, date, COALESCE(end_date, date) AS endDate FROM events
+    WHERE id = ? AND kind = 'tournament'`).get(intId(id) ?? 0);
+  const anglersOf = db.prepare(`SELECT id, user_id AS userId, name, member, paid FROM tournament_anglers
+    WHERE event_id = ? AND team_id = ? ORDER BY position, id`);
+  const isEntered = (eventId, teamId) => !!db.prepare('SELECT 1 FROM tournament_entries WHERE event_id = ? AND team_id = ?').get(eventId, teamId);
+  const listAnglers = (eventId, teamId) => anglersOf.all(eventId, teamId).map((a) => ({ ...a, member: !!a.member, paid: !!a.paid }));
+  const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+  // The season's tournaments with how many boats and anglers are in.
+  api.get('/tournaments', requireWeigh, (req, res) => {
+    const myTeam = req.user.teamId;
+    const rows = db.prepare(`SELECT e.id, e.name, e.date, COALESCE(e.end_date, e.date) AS endDate,
+        (SELECT COUNT(*) FROM tournament_entries te WHERE te.event_id = e.id) AS boats,
+        (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
+          WHERE ta.event_id = e.id) AS anglers,
+        (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
+          WHERE ta.event_id = e.id AND ta.member = 0) AS guests,
+        (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
+          WHERE ta.event_id = e.id AND ta.member = 0 AND ta.paid = 0) AS unpaid
+      FROM events e WHERE e.kind = 'tournament' AND COALESCE(e.end_date, e.date) >= ? AND e.date <= ? ORDER BY e.date`)
+      .all(setting('season_start'), setting('season_end'));
+    res.json({
+      fee: TEMP_MEMBERSHIP_USD,
+      tournaments: rows.map((t) => ({ ...t, open: t.endDate >= todayUtc(), mine: myTeam ? isEntered(t.id, myTeam) : false })),
+    });
+  });
+
+  // The secretary's registration sheet: every JHMMC boat, entered ones first.
+  api.get('/tournaments/:id/sheet', requireReview, (req, res) => {
+    const event = tournamentById(req.params.id);
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
-    const team = db.prepare('SELECT id, club_id AS clubId FROM teams WHERE id = ?').get(intId(req.params.teamId) ?? 0);
+    const boats = db.prepare(`SELECT id AS teamId, name AS teamName, division, weigh_station AS station FROM teams
+      WHERE club_id = ? ORDER BY name COLLATE NOCASE`).all(homeClubId())
+      .map((t) => ({ ...t, entered: isEntered(event.id, t.teamId), anglers: listAnglers(event.id, t.teamId),
+        crew: db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE').all(t.teamId) }));
+    res.json({ tournament: event, fee: TEMP_MEMBERSHIP_USD, boats });
+  });
+
+  // A captain's own entry for a tournament, with the crew to choose from.
+  api.get('/tournaments/:id/my-entry', requireWeigh, (req, res) => {
+    const event = tournamentById(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Tournament not found.' });
+    const team = db.prepare(`SELECT id, name, division, weigh_station AS station FROM teams
+      WHERE captain_id = ? AND club_id = ?`).get(req.user.id, homeClubId());
+    if (!team) return res.status(403).json({ error: 'Only captains of JHMMC boats enter tournaments.' });
+    const crew = db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE').all(team.id);
+    res.json({ tournament: event, fee: TEMP_MEMBERSHIP_USD, team, crew, entered: isEntered(event.id, team.id),
+      anglers: listAnglers(event.id, team.id), open: event.endDate >= todayUtc() });
+  });
+
+  // Enter a boat (with its anglers) or take it out: its captain, until the
+  // tournament is over, or the secretary at any time.
+  api.put('/tournaments/:id/entries/:teamId', (req, res) => {
+    const event = tournamentById(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Tournament not found.' });
+    const team = db.prepare('SELECT id, club_id AS clubId, captain_id AS captainId FROM teams WHERE id = ?').get(intId(req.params.teamId) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
     if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats can enter club tournaments.' });
-    if (req.body.entered) db.prepare('INSERT OR IGNORE INTO tournament_entries (event_id, team_id) VALUES (?, ?)').run(event.id, team.id);
-    else db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
-    res.json({ ok: true, entered: !!req.body.entered });
+    const official = canReview(req.user);
+    if (!official && team.captainId !== req.user.id) return res.status(403).json({ error: "Only the boat's captain or the secretary can do that." });
+    if (!official && event.endDate < todayUtc()) return res.status(400).json({ error: 'This tournament is over; ask the secretary for changes.' });
+    if (!req.body.entered) {
+      db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
+      db.prepare('DELETE FROM tournament_anglers WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
+      return res.json({ ok: true, entered: false, anglers: [] });
+    }
+    // The anglers: crew members by account, anyone else by name.
+    let anglers = null;
+    if (Array.isArray(req.body.anglers)) {
+      if (req.body.anglers.length > MAX_TOURNAMENT_ANGLERS) return res.status(400).json({ error: `At most ${MAX_TOURNAMENT_ANGLERS} anglers on a boat.` });
+      anglers = [];
+      for (const a of req.body.anglers) {
+        const userId = intId(a?.userId);
+        let name = str(a?.name, 80);
+        if (userId) {
+          const u = db.prepare('SELECT name FROM users WHERE id = ? AND team_id = ?').get(userId, team.id);
+          if (!u) return res.status(400).json({ error: 'Anglers with an account must be on the boat\'s crew; add anyone else as a guest.' });
+          name = u.name;
+        }
+        if (!name) return res.status(400).json({ error: "Type each guest angler's name." });
+        if (anglers.some((x) => (userId && x.userId === userId) || x.name.toLowerCase() === name.toLowerCase())) {
+          return res.status(400).json({ error: `${name} is on the list twice.` });
+        }
+        anglers.push({ userId: userId || null, name, member: !!a.member });
+      }
+    }
+    if (!official && !anglers?.length) return res.status(400).json({ error: 'List the anglers fishing on your boat.' });
+    db.exec('BEGIN');
+    try {
+      db.prepare('INSERT OR IGNORE INTO tournament_entries (event_id, team_id) VALUES (?, ?)').run(event.id, team.id);
+      if (anglers) {
+        // Keep the "paid" tick for anglers who stay on the list.
+        const before = listAnglers(event.id, team.id);
+        db.prepare('DELETE FROM tournament_anglers WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
+        const add = db.prepare(`INSERT INTO tournament_anglers (event_id, team_id, user_id, name, member, paid, position)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        anglers.forEach((a, i) => {
+          const was = before.find((b) => (a.userId && b.userId === a.userId) || b.name.toLowerCase() === a.name.toLowerCase());
+          add.run(event.id, team.id, a.userId, a.name, a.member ? 1 : 0, !a.member && was?.paid ? 1 : 0, i);
+        });
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    res.json({ ok: true, entered: true, anglers: listAnglers(event.id, team.id) });
+  });
+
+  // The secretary ticks off a temporary membership as paid, or corrects member status.
+  api.patch('/tournaments/:id/anglers/:anglerId', requireReview, (req, res) => {
+    const row = db.prepare('SELECT id, member, paid FROM tournament_anglers WHERE id = ? AND event_id = ?')
+      .get(intId(req.params.anglerId) ?? 0, intId(req.params.id) ?? 0);
+    if (!row) return res.status(404).json({ error: 'Angler not found.' });
+    const member = 'member' in req.body ? !!req.body.member : !!row.member;
+    const paid = !member && ('paid' in req.body ? !!req.body.paid : !!row.paid);
+    db.prepare('UPDATE tournament_anglers SET member = ?, paid = ? WHERE id = ?').run(member ? 1 : 0, paid ? 1 : 0, row.id);
+    res.json({ ok: true, member, paid });
   });
 
   function getCatch(id, viewer) {
