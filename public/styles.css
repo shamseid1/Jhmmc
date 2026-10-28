@@ -390,3 +390,41 @@ button.link[hidden] { display: none; }
 .points-preview.good { color: var(--good); }
 .points-preview.bad { color: var(--danger); }
 .sheet-totals small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
+
+/* ---- season race graph ---- */
+.race {
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --grid: #e8eef2; --axis: #c5d1d9;
+}
+@media (prefers-color-scheme: dark) {
+  .race {
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --grid: #1d2e38; --axis: #33495a;
+  }
+}
+.race p { margin: 0 0 8px; }
+.race-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; margin: 0 0 8px; padding: 0; font-size: 14px; }
+.race-legend li { display: flex; align-items: center; gap: 6px; }
+.race .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.race-plot { position: relative; }
+.race-plot svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+.race .grid { stroke: var(--grid); stroke-width: 1; }
+.race .base { stroke: var(--axis); stroke-width: 1; }
+.race .tick { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.race .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.race .dot { stroke: var(--surface); stroke-width: 2; }
+.race .cross { stroke: var(--axis); stroke-width: 1; }
+.race .hit { fill: transparent; cursor: crosshair; }
+.race-tip {
+  position: absolute; top: 0; z-index: 2; min-width: 160px; max-width: 240px; pointer-events: none;
+  padding: 8px 10px; border-radius: 8px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(10, 40, 60, .16); font-size: 13px;
+}
+.race-tip[hidden] { display: none; }
+.race-tip div { display: flex; align-items: center; gap: 6px; }
+.race-tip .num-right { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+.race .line.s1 { stroke: var(--s1); } .race .key.s1, .race .dot.s1 { background: var(--s1); fill: var(--s1); }
+.race .line.s2 { stroke: var(--s2); } .race .key.s2, .race .dot.s2 { background: var(--s2); fill: var(--s2); }
+.race .line.s3 { stroke: var(--s3); } .race .key.s3, .race .dot.s3 { background: var(--s3); fill: var(--s3); }
+.race .line.s4 { stroke: var(--s4); } .race .key.s4, .race .dot.s4 { background: var(--s4); fill: var(--s4); }
+.race .line.s5 { stroke: var(--s5); } .race .key.s5, .race .dot.s5 { background: var(--s5); fill: var(--s5); }

@@ -605,6 +605,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const oceanTable = (await as()('GET', '/points?division=ocean')).body;
     assert.deepEqual(oceanTable.boats.map((b) => [b.teamName, b.points]), [['Sea Hunter', 725]]);
     assert.equal(oceanTable.tournaments[0].name, 'October Cup');
+    assert.deepEqual(oceanTable.race.boats.map((b) => [b.teamName, b.days.reduce((t, d) => t + d.points, 0)]), [['Sea Hunter', 725]], 'graph data per day');
+    assert.equal(oceanTable.race.end, TODAY);
     assert.deepEqual([oceanTable.tournaments[0].winner.teamName, oceanTable.tournaments[0].winner.points], ['Sea Hunter', 725]);
     const riverTable = (await as()('GET', '/points?division=river')).body;
     assert.deepEqual(riverTable.boats.map((b) => [b.teamName, b.points]), [['Lofa Runner', 7.5]]);

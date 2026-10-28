@@ -59,6 +59,7 @@ function createApp({
 
   const MAX_FISH_PER_SHEET = 30;
   const MAX_EVENT_DAYS = 14;
+  const RACE_BOATS = 5;
   const photoUploads = (files) => multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -999,7 +1000,16 @@ function createApp({
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
-    res.json({ division, season: { start, end }, boats, anglers, tournaments, pending });
+    // The season race graph: each top boat's points per day, for a running total.
+    const raceEnd = [end, new Date().toISOString().slice(0, 10)].sort()[0];
+    const daily = db.prepare(`SELECT k.caught_on AS date, ROUND(SUM(k.points), 1) AS points
+      ${base} AND t.id = :team GROUP BY k.caught_on ORDER BY k.caught_on`);
+    const race = {
+      start,
+      end: raceEnd,
+      boats: boats.slice(0, RACE_BOATS).map((b) => ({ teamId: b.teamId, teamName: b.teamName, days: daily.all({ ...params, team: b.teamId }) })),
+    };
+    res.json({ division, season: { start, end }, boats, anglers, tournaments, pending, race });
   });
 
   // One tournament's results: boats ranked, with their approved catches.
