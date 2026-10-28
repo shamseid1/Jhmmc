@@ -47,16 +47,16 @@ test('the secretary gets a phone notification when fish are registered', async (
     await boss('POST', '/auth/register', { name: 'Boss', email: 'boss@example.com', password: 'password1' });
     const sec = as();
     await sec('POST', '/auth/register', { name: 'Robert', email: 'sec@example.com', password: 'password1' });
-    const wm = as();
-    await wm('POST', '/auth/register', { name: 'Moses', email: 'wm@example.com', password: 'password1' });
+    const crew = as();
+    await crew('POST', '/auth/register', { name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
     const cap = as();
-    await cap('POST', '/auth/register', { name: 'Captain', email: 'cap@example.com', password: 'password1' });
+    await cap('POST', '/auth/register', { name: 'Moses', email: 'cap@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
     await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' });
-    await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster', weighStation: 'Extreme' });
     const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
-    const boat = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc })).body.team;
+    const boat = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
+    await crew('POST', '/teams/join', { code: boat.joinCode });
     const wahoo = (await cap('GET', '/meta')).body.species.find((s) => s.name === 'Wahoo').id;
 
     assert.equal((await as()('GET', '/push/key')).body.publicKey, 'test-key');
@@ -67,12 +67,12 @@ test('the secretary gets a phone notification when fish are registered', async (
     await sec('POST', '/push/subscribe', sub('sec-old-phone-gone'));
     await boss('POST', '/push/subscribe', sub('boss-phone'));
     await cap('POST', '/push/subscribe', sub('cap-phone'));
-    await wm('POST', '/push/subscribe', sub('wm-phone'));
+    await crew('POST', '/push/subscribe', sub('crew-phone'));
 
     assert.equal((await cap('GET', '/officials/pending')).status, 403);
     assert.equal((await sec('GET', '/officials/pending')).body.count, 0);
 
-    // The weighmaster sends in a sheet of two fish.
+    // The captain sends in a sheet of two fish.
     const fd = new FormData();
     fd.set('teamId', boat.id);
     fd.set('caughtOn', new Date().toISOString().slice(0, 10));
@@ -82,11 +82,11 @@ test('the secretary gets a phone notification when fish are registered', async (
     ]));
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'a.png');
     fd.set('scale_1', new Blob([PNG], { type: 'image/png' }), 'b.png');
-    assert.equal((await wm('POST', '/weigh/sheet', fd)).status, 201);
+    assert.equal((await cap('POST', '/weigh/sheet', fd)).status, 201);
     await settle();
 
     assert.deepEqual(sent.map((s) => s.endpoint).sort(), [sub('boss-phone'), sub('sec-old-phone-gone'), sub('sec-phone')].map((s) => s.endpoint).sort(),
-      'the secretary and the admin, not crews or the weighmaster');
+      'the secretary and the admin, not the captain or crews');
     const note = sent.find((s) => s.endpoint.endsWith('sec-phone'));
     assert.deepEqual([note.title, note.body, note.url], ['Fish to review', 'Sea Hunter: 2 fish registered by Moses. 2 waiting in total.', '/#/review']);
     assert.equal((await sec('GET', '/officials/pending')).body.count, 2);
@@ -98,7 +98,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     for (const [k, v] of Object.entries({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', speciesId: wahoo, weightKg: '9',
       caughtOn: new Date().toISOString().slice(0, 10) })) one.set(k, v);
     one.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'c.png');
-    assert.equal((await wm('POST', '/weigh', one)).status, 201);
+    assert.equal((await cap('POST', '/weigh', one)).status, 201);
     await settle();
     assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.body]), [['boss-phone', 'Sea Hunter: 1 fish registered by Moses. 3 waiting in total.']]);
   } finally {

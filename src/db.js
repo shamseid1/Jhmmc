@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -70,7 +70,7 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   notes TEXT,
   photo TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  -- Official scoring: weighed at the dock by a weighmaster, then approved by the secretary.
+  -- Official scoring: registered at the weigh station by the captain, then approved by the secretary.
   status TEXT NOT NULL DEFAULT 'pending_review',
   -- Where the fish was caught (phone GPS). Private to the boat unless spot_public.
   lat REAL,
@@ -299,6 +299,10 @@ function openDb(file) {
     db.prepare(`UPDATE teams SET weigh_station = (SELECT value FROM json_each(?) WHERE lower(value) = lower(trim(teams.home_port)))
       WHERE club_id = ? AND weigh_station IS NULL`).run(JSON.stringify(WEIGH_STATIONS), home ?? -1);
     db.prepare('UPDATE teams SET home_port = weigh_station WHERE club_id = ? AND weigh_station IS NOT NULL').run(home ?? -1);
+  }
+  if (hasTables && version < 15) {
+    // Captains now register their own boat's fish; there are no weighmasters.
+    db.exec("UPDATE users SET role = NULL, weigh_station = NULL WHERE role = 'weighmaster'");
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

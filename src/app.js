@@ -109,17 +109,19 @@ function createApp({
   const homeClubId = () => db.prepare('SELECT id FROM clubs WHERE name = ? COLLATE NOCASE').get(HOME_CLUB.name)?.id ?? null;
   // Two separate books: members' feed posts (status 'unofficial') make the
   // West Africa feed, leaderboards and records; JHMMC's own figures come only
-  // from weighmaster registrations the secretary approved.
+  // from captains' registrations the secretary approved.
   const clubBook = (clubId) => (clubId === homeClubId() ? 'approved' : 'unofficial');
 
-  // Club officials: the admin (ADMIN_EMAIL), secretaries who approve points,
-  // and weighmasters who record official weights at the dock.
+  // Club officials: the admin (ADMIN_EMAIL) and secretaries, who approve
+  // points. Captains of JHMMC boats register their own boat's fish at the
+  // weigh station; the secretary and admin can register any boat's.
   const isAdminUser = (u) => !!adminEmail && u?.email?.toLowerCase() === adminEmail;
   const canReview = (u) => isAdminUser(u) || u?.role === 'secretary';
-  const canWeigh = (u) => canReview(u) || u?.role === 'weighmaster';
+  const captainsJhmmcBoat = (u) => !!u && !!db.prepare('SELECT 1 FROM teams WHERE captain_id = ? AND club_id = ?').get(u.id, homeClubId());
+  const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
-  const requireWeigh = requireOfficial(canWeigh, 'a JHMMC weighmaster or the secretary');
+  const requireWeigh = requireOfficial(canWeigh, 'the captain of a JHMMC boat or the secretary');
   const requireReview = requireOfficial(canReview, 'the JHMMC secretary');
 
   // ---- reference data (public, needed by the sign-up form) ---------------
@@ -257,7 +259,8 @@ function createApp({
   function getMe(id) {
     const me = db.prepare(`
       SELECT u.id, u.name, u.email, u.country, u.bio, u.photo,
-        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.weigh_station AS weighStation
+        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role,
+        t.weigh_station AS weighStation
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, ...rest } = me;
@@ -297,7 +300,7 @@ function createApp({
   });
 
   // Tells the secretary (and the admin) that new registrations are waiting.
-  // Sent in the background: a slow push service never holds up the weighmaster.
+  // Sent in the background: a slow push service never holds up the captain.
   function notifyReviewers(teamId, count, by) {
     const reviewers = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscriptions s JOIN users u ON u.id = s.user_id
       WHERE (u.role = 'secretary' OR lower(u.email) = ?) AND u.id != ?`).all(adminEmail ?? '', by.id);
@@ -354,7 +357,7 @@ function createApp({
 
   api.get('/admin/users', requireAdmin, (_req, res) => {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.role, u.weigh_station AS weighStation, u.created_at AS joinedAt, t.name AS teamName
+      SELECT u.id, u.name, u.email, u.role, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
     `).all();
     res.json({ users });
@@ -362,16 +365,12 @@ function createApp({
 
   api.patch('/admin/users/:id', requireAdmin, (req, res) => {
     const id = intId(req.params.id);
-    const cur = id && db.prepare('SELECT role, weigh_station FROM users WHERE id = ?').get(id);
+    const cur = id && db.prepare('SELECT role FROM users WHERE id = ?').get(id);
     if (!cur) return res.status(404).json({ error: 'Member not found.' });
     const role = 'role' in req.body ? req.body.role || null : cur.role;
-    if (role && !['weighmaster', 'secretary'].includes(role)) return res.status(400).json({ error: 'Unknown role.' });
-    // Each weighmaster works at one weigh station, chosen here by the admin.
-    let station = 'weighStation' in req.body ? req.body.weighStation || null : cur.weigh_station;
-    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
-    if (!role) station = null;
-    db.prepare('UPDATE users SET role = ?, weigh_station = ? WHERE id = ?').run(role, station, id);
-    res.json({ ok: true, role, weighStation: station });
+    if (role && role !== 'secretary') return res.status(400).json({ error: 'Unknown role.' });
+    db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
+    res.json({ ok: true, role });
   });
 
   // The admin's Boats page: a JHMMC boat's weigh station (its home port) and Ocean or River.
@@ -738,8 +737,8 @@ function createApp({
   function canDelete(row, user) {
     if (!user) return false;
     if (canReview(user)) return true;
-    // JHMMC registrations belong to the officials: the weighmaster who made
-    // one can withdraw it until the secretary decides.
+    // JHMMC registrations belong to the officials: the captain who made one
+    // can withdraw it until the secretary decides.
     if (row.status !== 'unofficial') return row.status === 'pending_review' && row.loggedBy === user.id;
     if (row.userId === user.id || row.loggedBy === user.id) return true;
     const team = row.teamId && db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(row.teamId);
@@ -800,23 +799,23 @@ function createApp({
     res.json({ catches: rows.map((r) => present(r, req.user)), nextBefore: rows.length === limit ? rows.at(-1).id : null });
   });
 
-  // Where an official registration is weighed: a weighmaster's assigned
-  // station; the secretary and admin, who have none, choose one.
-  function stationFor(user, chosen) {
-    if (user.weighStation) return { station: user.weighStation };
-    if (canReview(user) && WEIGH_STATIONS.includes(chosen)) return { station: chosen };
-    if (canReview(user)) return { error: 'Choose the weigh station.' };
-    return { error: 'You have no weigh station yet. Ask the admin to assign you one.' };
+  // Where an official registration is weighed: the boat's weigh station (its
+  // home port). The secretary may name another; a boat without one chooses.
+  function stationFor(user, chosen, boatStation) {
+    const pick = WEIGH_STATIONS.includes(chosen) ? chosen : null;
+    const station = canReview(user) ? pick || boatStation : boatStation || pick;
+    return station ? { station } : { error: 'Choose the weigh station.' };
   }
 
   // Checks one catch for a boat and returns the values to save, or an error.
-  // Crews post their own boat's catches; weighmasters register fish for any
-  // JHMMC boat at the dock.
+  // Crews post their own boat's catches; a JHMMC captain registers their own
+  // boat's fish for points, and the secretary any JHMMC boat's.
   function checkCatch(user, b, file, { teamId, official }) {
-    const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId);
+    const team = db.prepare('SELECT club_id, country, captain_id, weigh_station FROM teams WHERE id = ?').get(teamId);
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
     if (official && !jhmmcBoat) return { error: 'Only JHMMC boats are registered for points.' };
+    if (official && !canReview(user) && team.captain_id !== user.id) return { error: "Captains register their own boat's fish only." };
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return { error: 'Choose a species.' };
@@ -839,16 +838,16 @@ function createApp({
       return { error: 'Enter the date of the catch.' };
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
-    // Weighmasters register at the dock on the day: today only (Monrovia time is UTC).
+    // Captains register at the weigh station on the day: today only (Monrovia time is UTC).
     // The secretary may enter an earlier day's paper form.
     if (official && !canReview(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
       return { error: "Registrations are for today's fish only." };
     }
     const lineClass = str(b.lineClass, 20);
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
-    // JHMMC crews' weights come only from the weighmaster's registration.
+    // JHMMC weights come only from the registration at the weigh station.
     if (!official && jhmmcBoat && (weightKg !== null || lengthCm !== null || lineClass)) {
-      return { error: "JHMMC boats can't add a weight to a post: the weighmaster records it at the dock." };
+      return { error: "JHMMC boats can't add a weight to a post: the captain registers it at the weigh station with a scale photo." };
     }
     const country = str(b.country, 60) || team.country || user.country;
     if (country && !COUNTRIES.includes(country)) return { error: 'Unknown country.' };
@@ -861,7 +860,7 @@ function createApp({
     const released = bool(b.released);
     let station = null;
     if (official) {
-      const s = stationFor(user, str(b.weighStation, 40));
+      const s = stationFor(user, str(b.weighStation, 40), team.weigh_station);
       if (s.error) return s;
       station = s.station;
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
@@ -869,7 +868,7 @@ function createApp({
       if (!released && !file) return { error: 'Add the photo of the fish hanging on the scale.' };
     }
     const weighed = official && !released;
-    // Crew posts are for the feed only; weighmaster registrations go to the secretary.
+    // Crew posts are for the feed only; registrations go to the secretary.
     return {
       values: [
         anglerId, anglerName, user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
@@ -902,7 +901,7 @@ function createApp({
     res.status(201).json({ catch: getCatch(id, req.user) });
   }
 
-  // A registration gets its points as soon as the weighmaster records it;
+  // A registration gets its points as soon as it is recorded;
   // they count once the secretary approves.
   function scoreRegistration(id) {
     const { points, note } = suggestPoints(id);
@@ -939,7 +938,7 @@ function createApp({
     db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(points, note, id);
   }
 
-  // Weighmaster: register a fish at the dock for a JHMMC boat (the digital Fish Registration Form).
+  // Captain (or secretary): register a fish for a JHMMC boat (the digital Fish Registration Form).
   api.post('/weigh', requireWeigh, upload.single('scalePhoto'), (req, res) => {
     const teamId = intId(req.body.teamId);
     if (!teamId) {
@@ -949,7 +948,7 @@ function createApp({
     insertCatch(req, res, { teamId, official: true });
   });
 
-  // Weighmaster: a whole boat's fish in one submission, like one paper form.
+  // Captain (or secretary): a whole boat's fish in one submission, like one paper form.
   // Each fish's scale photo arrives as file field "scale_<n>". All or nothing:
   // if any fish is wrong, none are saved and the error names the fish.
   api.post('/weigh/sheet', requireWeigh, sheetUpload.any(), (req, res) => {
@@ -989,12 +988,12 @@ function createApp({
     }
   });
 
-  // Weighmaster and secretary work lists.
+  // The secretary's work list; captains see their own registrations waiting.
   api.get('/officials/queue', requireWeigh, (req, res) => {
     const toReview = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.caught_on, t.name, k.id`)
       .all({ viewer: req.user.id })
       .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn) }));
-    // Weighmasters see what they registered that the secretary hasn't decided yet.
+    // Captains see what they registered that the secretary hasn't decided yet.
     res.json({ toReview: canReview(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
   });
 

@@ -64,8 +64,7 @@ function options(items, selected, placeholder) {
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
 
-// JHMMC boats for the weigh sheet, grouped by the weigh station the admin put
-// them under; the weighmaster's own station comes first.
+// JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
 function boatOptions(boats, mine) {
   const label = (t) => `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`;
   const order = [...new Set([mine, ...state.meta.weighStations].filter(Boolean)), null];
@@ -511,7 +510,7 @@ const pagesFor = (view) => ({
     const crew = team.members;
     view.innerHTML = html`<h1>Post a catch</h1>
       <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.
-        ${jhmmc ? 'A photo and the species are enough. JHMMC weights come only from the weighmaster at the dock, so posts from JHMMC boats have no weight.'
+        ${jhmmc ? 'A photo and the species are enough. JHMMC weights are registered by the captain at the weigh station, so posts from JHMMC boats have no weight.'
           : 'A photo and the species are enough; add the weight and details if you want.'}</p>
       <form class="card pad stack" id="f">
         <div class="photo-pick">
@@ -793,7 +792,7 @@ const pagesFor = (view) => ({
       </form>`) : ''}
       ${team.isMember ? raw('<p><button data-act="leave" class="danger">Leave this boat</button></p>') : ''}
       ${isJhmmc(team.clubId) ? raw(html`<h2>JHMMC registrations</h2>
-      <p class="small muted">Fish registered by a weighmaster for JHMMC points.</p>
+      <p class="small muted">Fish the captain registered at the weigh station for JHMMC points.</p>
       <div class="card"><ul class="list" id="regs"><li class="muted">Loading…</li></ul></div>`) : ''}
       <h2>Posts</h2>
       <div id="feed"></div>`;
@@ -935,7 +934,7 @@ const pagesFor = (view) => ({
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by weighmasters on the day and approved by the secretary.
+      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by captains at the weigh station on the day and approved by the secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>Points by boat</h2>
       <section class="card pad bars" aria-label="Season points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
@@ -982,8 +981,8 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li>Every fishing day scores. A weighmaster can only register fish <b>on the day they are brought in</b>.</li>
-          <li>Only fish <b>registered by a JHMMC weighmaster</b> at the dock count, once the secretary approves them. Posts on the feed never count.</li>
+          <li>Every fishing day scores. A captain can only register fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
@@ -1011,31 +1010,31 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Weighmaster: the digital JHMMC Fish Registration Form. One boat and day,
-  // as many fish as it brought in, submitted together.
+  // The digital JHMMC Fish Registration Form. A captain registers their own
+  // boat's fish for today; the secretary any JHMMC boat, any earlier day.
+  // One boat and day, as many fish as it brought in, submitted together.
   async weigh() {
-    if (!state.me?.canWeigh) return needLogin(view, 'register fish (JHMMC weighmasters only)');
+    if (!state.me?.canWeigh) return needLogin(view, 'register fish (captains of JHMMC boats)');
     const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
-    const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
-    const station = state.me.weighStation;
-    if (!station && !state.me.canReview) {
-      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Register fish</h1>
-        <div class="card pad empty">You have no weigh station yet. Ask the club admin to assign you one on the Members page.</div>`;
-      return;
-    }
-    let crew = [];
+    const official = state.me.canReview;
+    const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
+    const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
+    // A captain's own boat, with its weigh station (its home port).
+    const own = official ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
+    let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
       <form class="card pad stack" id="sheet">
         <div class="row">
-          <label>Boat <select name="teamId" required>${raw(boatOptions(teams.filter((t) => isJhmmc(t.clubId)), station))}</select></label>
-          ${state.me.canReview
+          ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
+            : raw(html`<label>Boat <select name="teamId" required>${raw(boatOptions(jhmmcBoats, null))}</select></label>`)}
+          ${official
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
         </div>
-        ${station ? raw(html`<p class="station-fixed">Weigh station: <b>${station}</b></p>`)
+        ${own?.weighStation ? raw(html`<p class="station-fixed">Weigh station: <b>${own.weighStation}</b></p>`)
           : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
@@ -1155,9 +1154,11 @@ const pagesFor = (view) => ({
       }
       if (e.target.name === 'anglerId') e.target.closest('.fish').querySelector('.guest-name').hidden = e.target.value !== 'other';
     });
-    // The angler lists follow the boat chosen at the top.
+    // The secretary picks the boat: the angler lists and weigh station follow it.
     sheet.teamId.addEventListener('change', async () => {
-      crew = sheet.teamId.value ? (await api(`/teams/${sheet.teamId.value}`)).team.members : [];
+      const boat = jhmmcBoats.find((t) => String(t.id) === sheet.teamId.value);
+      if (boat?.weighStation && sheet.weighStation) sheet.weighStation.value = boat.weighStation;
+      crew = boat ? (await api(`/teams/${boat.id}`)).team.members : [];
       for (const sel of list.querySelectorAll('[name=anglerId]')) sel.innerHTML = anglerOptions(sel.value);
     });
     bindForm(sheet, async () => {
@@ -1384,8 +1385,8 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
-      ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Register fish', me.weighStation ? `At ${me.weighStation}` : 'JHMMC registration at the dock')}
+      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
+        ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
         ${me.canReview ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
@@ -1472,14 +1473,13 @@ const pagesFor = (view) => ({
     const { users } = await api('/admin/users');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})</h1>
-      <p class="small muted">Set who are weighmasters and the secretary. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
+      <p class="small muted">Choose who is the secretary. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
         <div class="role">
-          <label>Role <select data-act="role">${raw(options([['', 'Member'], ['weighmaster', 'Weighmaster'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
-          <label class="station" ${u.role === 'weighmaster' ? '' : 'hidden'}>Weigh station <select data-act="station">${raw(options(state.meta.weighStations, u.weighStation, 'Choose…'))}</select></label>
+          <label>Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
         </div>
         <div class="reset-out" hidden></div>
         ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
@@ -1489,18 +1489,12 @@ const pagesFor = (view) => ({
       for (const li of view.querySelectorAll('.member-row')) li.hidden = !!term && !li.dataset.find.includes(term);
     });
     view.addEventListener('change', async (e) => {
-      const sel = e.target.closest('select[data-act=role], select[data-act=station]');
+      const sel = e.target.closest('select[data-act=role]');
       if (!sel) return;
       const row = sel.closest('.member-row');
-      const isRole = sel.dataset.act === 'role';
       try {
-        await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: isRole ? { role: sel.value } : { weighStation: sel.value } });
-        if (isRole) {
-          row.querySelector('.station').hidden = sel.value !== 'weighmaster';
-          toast(sel.value === 'weighmaster' ? 'Now a weighmaster. Choose their weigh station.' : sel.value ? `Now a ${sel.value}` : 'Now a member');
-        } else {
-          toast(sel.value ? `Weighs at ${sel.value}` : 'No weigh station');
-        }
+        await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: { role: sel.value } });
+        toast(sel.value ? `Now the ${sel.value}` : 'Now a member');
       } catch (ex) {
         toast(ex.message);
       }
@@ -1867,7 +1861,7 @@ async function renderNotify(el) {
   if (sub) api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
   el.innerHTML = sub
     ? `<p class="small muted">${icon('check')} Notifications on for this phone · <button class="link" data-act="push-off">Turn off</button></p>`
-    : `<div class="notify-row"><span><b>Get a notification</b> on this phone when a weighmaster registers fish.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
+    : `<div class="notify-row"><span><b>Get a notification</b> on this phone when a captain registers fish.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
   // Once on, it's a quiet line rather than a card.
   el.classList.toggle('card', !sub);
   el.classList.toggle('pad', !sub);

@@ -439,7 +439,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     for (const [k, v] of Object.entries(fields)) fd.set(k, v);
     return fd;
   };
-  // Weighmasters attach the photo of the fish on the scale.
+  // Registrations carry the photo of the fish on the scale.
   const weighed = (fields) => {
     const fd = form(fields);
     fd.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'scale.png');
@@ -454,11 +454,11 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await wm('POST', '/auth/register', { name: 'Weigh Master', email: 'wm@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
-    assert.equal((await sec('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' })).status, 403, 'only the admin sets roles');
+    assert.equal((await sec('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'secretary' })).status, 403, 'only the admin sets roles');
     await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' });
-    await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' });
-    assert.equal((await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { weighStation: 'Nowhere' })).status, 400);
-    assert.deepEqual([(await wm('GET', '/me')).body.user.canWeigh, (await wm('GET', '/me')).body.user.canReview], [true, false]);
+    assert.equal((await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' })).status, 400, 'there are no weighmasters');
+    // Members who aren't JHMMC captains can't register fish.
+    assert.deepEqual([(await wm('GET', '/me')).body.user.canWeigh, (await wm('GET', '/me')).body.user.canReview], [false, false]);
     assert.equal((await sec('GET', '/me')).body.user.canReview, true);
 
     const cap = as();
@@ -466,6 +466,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
     const ocean = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc })).body.team;
     assert.equal(ocean.division, 'ocean');
+    assert.equal((await cap('GET', '/me')).body.user.canWeigh, true, 'JHMMC captains register their fish');
     const rcap = as();
     await rcap('POST', '/auth/register', { name: 'River Captain', email: 'rc@example.com', password: 'password1' });
     const river = (await rcap('POST', '/teams', { name: 'Lofa Runner', division: 'river', clubId: jhmmc })).body.team;
@@ -486,32 +487,33 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // and JHMMC crews can't put a weight on them.
     let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '19' }));
     assert.equal(r.status, 400);
-    assert.match(r.body.error, /weighmaster/);
+    assert.match(r.body.error, /weigh station/);
     assert.equal((await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', lineClass: '50 lb' }))).status, 400);
     r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', notes: 'Fish on!' }));
     const post = r.body.catch;
     assert.equal(post.status, 'unofficial');
     r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
     assert.equal(r.body.catch.status, 'unofficial');
-    assert.equal((await wm('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: '2026-10-25', weightKg: '30', weighStation: 'Extreme' }))).status, 400, 'only JHMMC boats are registered');
+    assert.equal((await sec('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
+      caughtOn: TODAY, weightKg: '30', weighStation: 'Extreme' }))).status, 400, 'only JHMMC boats are registered');
+    assert.equal((await other('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
+      caughtOn: TODAY, weightKg: '30' }))).status, 403, "other clubs' captains don't register");
 
-    // Sunday 25 Oct 2026: the weighmaster registers a wahoo and a released marlin for Sea Hunter.
+    // The captain registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;
     const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY };
-    r = await wm('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
+    r = await cap('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
     assert.match(r.body.error ?? '', /today/, 'only today can be registered');
     r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(-3), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
     assert.equal(r.status, 201, 'the secretary may enter an earlier day');
     assert.equal((await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(2), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }))).status, 400, 'but not a future one');
     assert.equal((await sec('DELETE', `/catches/${r.body.catch.id}`)).status, 200, 'the secretary can remove it');
-    assert.equal((await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
-    r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
-    assert.match(r.body.error, /no weigh station/, 'weighmasters need an assigned station');
-    // The admin assigns the weighmaster to Extreme; what they send for a station is ignored.
-    await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { weighStation: 'Extreme' });
+    assert.equal((await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
+    r = await rcap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
+    assert.match(r.body.error, /own boat/, "captains register their own boat's fish only");
+    r = await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21' }));
+    assert.match(r.body.error, /weigh station/, 'a boat without a station has to name one');
     await sec('PATCH', '/settings/season', { start: day(-180), end: day(180) });
-    assert.equal((await wm('GET', '/me')).body.user.weighStation, 'Extreme');
     // The admin puts each JHMMC boat under a weigh station.
     assert.equal((await sec('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 403, 'admin only');
     assert.equal((await boss('PATCH', `/admin/teams/${visitor.id}`, { weighStation: 'Extreme' })).status, 400, 'JHMMC boats only');
@@ -531,13 +533,15 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(t.homePort, 'Extreme');
     t = (await other('GET', `/teams/${visitor.id}`)).body.team;
     assert.equal(t.weighStation, null, 'other clubs have no weigh station');
-    assert.equal((await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
-    r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Beerville', lineClass: '50 lb' }));
+    assert.equal((await cap('GET', '/me')).body.user.weighStation, 'Extreme', "the captain's sheet uses the boat's station");
+    assert.equal((await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21' }))).status, 400, 'scale photo needed');
+    // The station comes from the boat: what a captain sends is ignored.
+    r = await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Beerville', lineClass: '50 lb' }));
     const wahoo = r.body.catch;
     assert.match(wahoo.scalePhotoUrl, /^\/uploads\//);
     assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
     assert.deepEqual([wahoo.points, wahoo.pointsNote], [105, '21 kg × 5 points per kg.'], 'points worked out at registration');
-    r = await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
+    r = await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
     assert.equal(r.status, 201, 'released fish need no weight or scale photo');
     const marlin = r.body.catch;
 
@@ -577,7 +581,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual(feed, [post.id]);
     const regs = (await as()('GET', `/catches?team=${ocean.id}&official=1`)).body.catches.map((c) => c.id);
     assert.deepEqual(regs.sort(), [wahoo.id, marlin.id].sort());
-    assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'crews cannot remove registrations');
+    assert.equal((await rcap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'other crews cannot remove registrations');
 
     // The secretary, who has no station, registers a river fish at Lofa River for a guest.
     r = await sec('POST', '/weigh', weighed({ teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
@@ -585,7 +589,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const snapper = r.body.catch;
     // Every day scores now: a barracuda the secretary will reject.
-    r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
+    r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
       caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville' }));
     const extra = r.body.catch;
 
@@ -607,20 +611,20 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
       { speciesId: sp('Atlantic sailfish').id, anglerId: capId, released: 'on' },
     ];
     const before = (await sec('GET', '/officials/queue')).body.toReview.length;
-    r = await wm('POST', '/weigh/sheet', sheet(three, [0]));
+    r = await cap('POST', '/weigh/sheet', sheet(three, [0]));
     assert.equal(r.status, 400);
     assert.match(r.body.error, /^Fish 2: .*scale/, 'names the fish that is wrong');
     assert.equal((await sec('GET', '/officials/queue')).body.toReview.length, before, 'nothing saved');
-    r = await wm('POST', '/weigh/sheet', sheet(three, [0, 1]));
+    r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1]));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation, c.points]),
       [['Dorado (mahi-mahi)', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Atlantic sailfish', 'Extreme', 125]]);
     for (const c of r.body.catches) await sec('POST', `/catches/${c.id}/review`, { decision: 'reject', note: 'Test sheet' });
 
-    const wmQueue = (await wm('GET', '/officials/queue')).body.toReview;
-    assert.ok(wmQueue.length > 0 && wmQueue.every((c) => c.loggedBy === idOf('wm@example.com')), 'weighmasters see only their own registrations');
+    const capQueue = (await cap('GET', '/officials/queue')).body.toReview;
+    assert.ok(capQueue.length > 0 && capQueue.every((c) => c.loggedBy === capId), 'captains see only their own registrations');
 
-    assert.equal((await wm('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' })).status, 403);
+    assert.equal((await cap('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' })).status, 403);
     assert.equal((await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve', points: 90 })).status, 400, 'changed points need a note');
     r = await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' });
     assert.deepEqual([r.body.catch.status, r.body.catch.points], ['approved', 105]);
@@ -628,12 +632,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await sec('POST', `/catches/${snapper.id}/review`, { decision: 'approve' });
     assert.equal((await sec('POST', `/catches/${extra.id}/review`, { decision: 'reject' })).status, 400, 'rejections need a reason');
     await sec('POST', `/catches/${extra.id}/review`, { decision: 'reject', note: 'Wrong species' });
-    assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'approved catches are locked for crews');
+    assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'approved registrations are locked');
 
     // Today is a tournament: the secretary adds it to the calendar.
     assert.equal((await cap('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).status, 403);
     const cup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).body.event;
-    r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
+    r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
       caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
 
