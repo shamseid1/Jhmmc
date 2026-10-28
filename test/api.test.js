@@ -124,6 +124,16 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   other.set('anglerId', (await ibra('GET', '/me')).body.user.id);
   assert.equal((await awa('POST', '/catches', other)).status, 400);
 
+  r = await ibra('GET', '/records');
+  const blue = r.body.species.find((x) => x.name === 'Atlantic blue marlin');
+  assert.equal(blue.igfa.display, '1,402 lb 2 oz');
+  assert.equal(blue.igfa.kg, 636);
+  assert.equal(blue.best.weightKg, 212.5);
+  assert.equal(r.body.species.find((x) => x.name === 'Atlantic tarpon').igfa.african, true);
+  assert.equal(r.body.species.find((x) => x.name === 'Little tunny').igfa, null, 'unconfirmed records are left out');
+  assert.deepEqual(r.body.lineRecords.map((x) => [x.species, x.lineClass, x.weightKg]), [['Atlantic blue marlin', '80 lb', 212.5]]);
+  assert.equal(c.worldRecordKg, 636);
+
   r = await ibra('GET', '/leaderboard');
   assert.equal(r.body.teams[0].teamName, 'Sea Hunter');
   assert.equal(r.body.anglers[0].angler, 'Awa Diop');

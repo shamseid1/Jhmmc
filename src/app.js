@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { openDb, COUNTRIES, LINE_CLASSES } = require('./db');
 const auth = require('./auth');
+const igfa = require('./igfa-records');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 // No 0/O or 1/I so codes survive being read out over the radio or WhatsApp.
@@ -450,6 +451,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       liked: !!row.liked,
       photoUrl: photoUrl(row.photo),
       canDelete: canDelete(row, viewer),
+      worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
     };
   }
 
@@ -573,6 +575,40 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       .run(id, req.user.id, body);
     res.status(201).json({
       comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.name },
+    });
+  });
+
+  // ---- records -----------------------------------------------------------
+
+  // IGFA all-tackle world records beside the heaviest fish logged here, plus
+  // the app's own records for each species and line class.
+  api.get('/records', (_req, res) => {
+    const best = db.prepare(`
+      SELECT * FROM (
+        SELECT k.species_id AS speciesId, k.line_class AS lineClass, k.id AS catchId, k.weight_kg AS weightKg,
+          k.caught_on AS caughtOn, u.id AS userId, u.name AS angler, t.id AS teamId, t.name AS teamName,
+          ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
+          ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
+        FROM catches k JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
+        WHERE k.weight_kg IS NOT NULL
+      ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
+    `).all();
+    const species = db.prepare('SELECT id, name, category FROM species ORDER BY category, name').all();
+    const names = Object.fromEntries(species.map((s) => [s.id, s.name]));
+    const strip = ({ overall, inClass, ...r }) => r;
+    const lineOrder = (c) => (c === 'Unlimited' ? 1e9 : parseFloat(c));
+
+    res.json({
+      checked: igfa.CHECKED,
+      igfaUrl: igfa.IGFA_SEARCH_URL,
+      species: species.filter((s) => s.name !== 'Other').map((s) => {
+        const top = best.find((b) => b.speciesId === s.id && b.overall === 1);
+        return { ...s, igfa: igfa.igfaRecord(s.name), best: top ? strip(top) : null };
+      }),
+      lineRecords: best
+        .filter((b) => b.inClass === 1 && b.lineClass)
+        .map((b) => ({ species: names[b.speciesId], ...strip(b) }))
+        .sort((a, b) => a.species.localeCompare(b.species) || lineOrder(a.lineClass) - lineOrder(b.lineClass)),
     });
   });
 

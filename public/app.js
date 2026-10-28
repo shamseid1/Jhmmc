@@ -161,6 +161,7 @@ function catchCard(c, { full = false } = {}) {
         ${c.lengthCm ? raw(html`<span class="badge">${c.lengthCm} cm</span>`) : ''}
         ${c.lineClass ? raw(html`<span class="badge">${c.lineClass} line</span>`) : ''}
       </div>
+      ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}">♥ <span>${c.likes}</span></button>
@@ -260,6 +261,11 @@ function noBoatBanner() {
     <a class="btn primary" href="#/crew">Get on a boat</a>
   </div>`;
 }
+
+const boardTabs = (active) => `<div class="seg" role="tablist">
+  <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
+  <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
+</div>`;
 
 // ---- pages ----------------------------------------------------------------
 
@@ -594,7 +600,7 @@ const pagesFor = (view) => ({
     const year = new Date().getFullYear();
     const years = Array.from({ length: 6 }, (_, i) => String(year - i));
     const nothing = (cols) => raw(`<tr><td colspan="${cols}" class="muted">Nothing yet.</td></tr>`);
-    view.innerHTML = html`<h1>Leaderboard</h1>
+    view.innerHTML = html`${raw(boardTabs('leaderboard'))}
       <div class="filters">
         <select name="year" aria-label="Season">${raw(options(years, q.year, 'All time'))}</select>
         <select name="country" aria-label="Country">${raw(options(state.meta.countries, q.country, 'All countries'))}</select>
@@ -633,6 +639,40 @@ const pagesFor = (view) => ({
       else p.delete(e.target.name);
       location.hash = '#/leaderboard?' + p;
     });
+  },
+
+  async records() {
+    const { species, lineRecords, checked, igfaUrl } = await api('/records');
+    const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
+    const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
+    const month = new Date(checked + '-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    view.innerHTML = html`${raw(boardTabs('records'))}
+      <h2>IGFA all-tackle world records</h2>
+      <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association, next to the biggest one logged here. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
+      <div class="records">
+        ${species.map((s) => raw(html`<article class="card pad record">
+          <div class="record-head"><b>${s.name}</b>${s.igfa?.african ? raw('<span class="badge release">Caught in Africa</span>') : ''}</div>
+          ${s.igfa ? raw(html`<div class="wr"><span class="wr-lb">${s.igfa.display}</span> <span class="muted">${kg(s.igfa.kg)}</span></div>
+            <div class="small muted">${s.igfa.angler} · ${s.igfa.place} · ${s.igfa.date.slice(0, 4)}${s.igfa.note ? ` · ${s.igfa.note}` : ''}</div>`)
+            : raw(html`<div class="small muted">No confirmed all-tackle record here. <a href="${igfaUrl}" target="_blank" rel="noopener">Look it up on IGFA</a></div>`)}
+          <div class="ours">
+            ${s.best ? raw(html`<span>Best here: <a href="#/catch/${s.best.catchId}">${kg(s.best.weightKg)} · ${lb(s.best.weightKg)}</a> by <a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` (${s.best.teamName})` : ''}</span>
+              ${s.igfa ? raw(html`<div class="bar blue" title="Share of the world record"><i style="width:${Math.min(100, Math.max(2, (s.best.weightKg / s.igfa.kg) * 100))}%"></i></div>
+              <span class="small muted">${Math.round((s.best.weightKg / s.igfa.kg) * 100)}% of the world record</span>`) : ''}`)
+              : raw('<span class="small muted">None weighed here yet.</span>')}
+          </div>
+        </article>`))}
+      </div>
+      <h2>Our records by line class</h2>
+      <p class="small muted">The heaviest weighed fish logged here for each species and IGFA line class.</p>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Species</th><th>Line</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
+        <tbody>${lineRecords.length ? lineRecords.map((r) => raw(html`<tr>
+          <td>${r.species}</td><td>${r.lineClass}</td>
+          <td class="num"><a href="#/catch/${r.catchId}">${kg(r.weightKg)}</a><div class="muted small">${lb(r.weightKg)}</div></td>
+          <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
+        </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
+      </table></div>`;
   },
 
   async user(id) {
@@ -745,7 +785,7 @@ function renderNav(active) {
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   if (!state.me?.teamId) links.push(['#/clubs', 'Clubs', 'clubs', 'clubs']);
   links.push(state.me ? ['#/profile', 'Me', 'profile', 'me'] : ['#/login', 'Sign in', 'login', 'me']);
-  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login' }[active] || active;
+  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login', records: 'leaderboard' }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
       <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span></a>`)
