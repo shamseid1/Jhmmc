@@ -1257,6 +1257,36 @@ function createApp({
     res.json({ tournament: event, division, entries, results: [...boats.values()].sort((a, b) => b.points - a.points) });
   });
 
+  // ---- club membership ------------------------------------------------------
+  // The secretary keeps the list of paid JHMMC members for the current season.
+  const memberSeason = () => setting('season_start');
+  const isPaidMember = (userId) => !!db.prepare('SELECT 1 FROM club_members WHERE user_id = ? AND season = ?').get(userId, memberSeason());
+  const crewWithMembership = (teamId) => db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE')
+    .all(teamId).map((u) => ({ ...u, member: isPaidMember(u.id) }));
+
+  api.get('/club-members', requireReview, (_req, res) => {
+    const season = { start: setting('season_start'), end: setting('season_end') };
+    const people = db.prepare(`SELECT u.id, u.name, u.email, t.name AS teamName,
+        EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE`).all(season.start)
+      .map((p) => ({ ...p, paid: !!p.paid }));
+    res.json({ season, people });
+  });
+
+  api.put('/club-members/:userId', requireReview, (req, res) => {
+    const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
+    if (!user) return res.status(404).json({ error: 'Member not found.' });
+    if (req.body.paid) {
+      db.prepare('INSERT OR IGNORE INTO club_members (user_id, season, marked_by) VALUES (?, ?, ?)').run(user.id, memberSeason(), req.user.id);
+    } else {
+      db.prepare('DELETE FROM club_members WHERE user_id = ? AND season = ?').run(user.id, memberSeason());
+    }
+    // A paid member doesn't owe a temporary membership: refresh their tournament rows.
+    db.prepare('UPDATE tournament_anglers SET member = ?, paid = CASE WHEN ? THEN 0 ELSE paid END WHERE user_id = ?')
+      .run(req.body.paid ? 1 : 0, req.body.paid ? 1 : 0, user.id);
+    res.json({ ok: true, paid: !!req.body.paid });
+  });
+
   // ---- tournament registration ------------------------------------------
   // Captains enter their boat with the anglers fishing on it; the secretary
   // sees every boat on one sheet, puts boats in or out and ticks off the
@@ -1268,7 +1298,10 @@ function createApp({
   const anglersOf = db.prepare(`SELECT id, user_id AS userId, name, member, paid FROM tournament_anglers
     WHERE event_id = ? AND team_id = ? ORDER BY position, id`);
   const isEntered = (eventId, teamId) => !!db.prepare('SELECT 1 FROM tournament_entries WHERE event_id = ? AND team_id = ?').get(eventId, teamId);
-  const listAnglers = (eventId, teamId) => anglersOf.all(eventId, teamId).map((a) => ({ ...a, member: !!a.member, paid: !!a.paid }));
+  // Anglers with an account are members if the secretary has them as paid
+  // this season; guests are as the captain marked them.
+  const listAnglers = (eventId, teamId) => anglersOf.all(eventId, teamId)
+    .map((a) => ({ ...a, member: a.userId ? isPaidMember(a.userId) : !!a.member, paid: !!a.paid }));
   const todayUtc = () => new Date().toISOString().slice(0, 10);
 
   // The season's tournaments with how many boats and anglers are in.
@@ -1279,11 +1312,11 @@ function createApp({
         (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
           WHERE ta.event_id = e.id) AS anglers,
         (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
-          WHERE ta.event_id = e.id AND ta.member = 0) AS guests,
+          WHERE ta.event_id = e.id AND (CASE WHEN ta.user_id IS NOT NULL THEN NOT EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = ta.user_id AND m.season = :season) ELSE ta.member = 0 END)) AS guests,
         (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
-          WHERE ta.event_id = e.id AND ta.member = 0 AND ta.paid = 0) AS unpaid
-      FROM events e WHERE e.kind = 'tournament' AND COALESCE(e.end_date, e.date) >= ? AND e.date <= ? ORDER BY e.date`)
-      .all(setting('season_start'), setting('season_end'));
+          WHERE ta.event_id = e.id AND (CASE WHEN ta.user_id IS NOT NULL THEN NOT EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = ta.user_id AND m.season = :season) ELSE ta.member = 0 END) AND ta.paid = 0) AS unpaid
+      FROM events e WHERE e.kind = 'tournament' AND COALESCE(e.end_date, e.date) >= :start AND e.date <= :end ORDER BY e.date`)
+      .all({ start: setting('season_start'), end: setting('season_end'), season: memberSeason() });
     res.json({
       fee: TEMP_MEMBERSHIP_USD,
       tournaments: rows.map((t) => ({ ...t, open: t.endDate >= todayUtc(), mine: myTeam ? isEntered(t.id, myTeam) : false })),
@@ -1297,7 +1330,7 @@ function createApp({
     const boats = db.prepare(`SELECT id AS teamId, name AS teamName, division, weigh_station AS station FROM teams
       WHERE club_id = ? ORDER BY name COLLATE NOCASE`).all(homeClubId())
       .map((t) => ({ ...t, entered: isEntered(event.id, t.teamId), anglers: listAnglers(event.id, t.teamId),
-        crew: db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE').all(t.teamId) }));
+        crew: crewWithMembership(t.teamId) }));
     res.json({ tournament: event, fee: TEMP_MEMBERSHIP_USD, boats });
   });
 
@@ -1308,7 +1341,7 @@ function createApp({
     const team = db.prepare(`SELECT id, name, division, weigh_station AS station FROM teams
       WHERE captain_id = ? AND club_id = ?`).get(req.user.id, homeClubId());
     if (!team) return res.status(403).json({ error: 'Only captains of JHMMC boats enter tournaments.' });
-    const crew = db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE').all(team.id);
+    const crew = crewWithMembership(team.id);
     res.json({ tournament: event, fee: TEMP_MEMBERSHIP_USD, team, crew, entered: isEntered(event.id, team.id),
       anglers: listAnglers(event.id, team.id), open: event.endDate >= todayUtc() });
   });
@@ -1346,7 +1379,7 @@ function createApp({
         if (anglers.some((x) => (userId && x.userId === userId) || x.name.toLowerCase() === name.toLowerCase())) {
           return res.status(400).json({ error: `${name} is on the list twice.` });
         }
-        anglers.push({ userId: userId || null, name, member: !!a.member });
+        anglers.push({ userId: userId || null, name, member: userId ? isPaidMember(userId) : !!a.member });
       }
     }
     if (!official && !anglers?.length) return res.status(400).json({ error: 'List the anglers fishing on your boat.' });
@@ -1374,10 +1407,11 @@ function createApp({
 
   // The secretary ticks off a temporary membership as paid, or corrects member status.
   api.patch('/tournaments/:id/anglers/:anglerId', requireReview, (req, res) => {
-    const row = db.prepare('SELECT id, member, paid FROM tournament_anglers WHERE id = ? AND event_id = ?')
+    const row = db.prepare('SELECT id, user_id AS userId, member, paid FROM tournament_anglers WHERE id = ? AND event_id = ?')
       .get(intId(req.params.anglerId) ?? 0, intId(req.params.id) ?? 0);
     if (!row) return res.status(404).json({ error: 'Angler not found.' });
-    const member = 'member' in req.body ? !!req.body.member : !!row.member;
+    // Members with an account come from the club membership list, not this sheet.
+    const member = row.userId ? isPaidMember(row.userId) : 'member' in req.body ? !!req.body.member : !!row.member;
     const paid = !member && ('paid' in req.body ? !!req.body.paid : !!row.paid);
     db.prepare('UPDATE tournament_anglers SET member = ?, paid = ? WHERE id = ?').run(member ? 1 : 0, paid ? 1 : 0, row.id);
     res.json({ ok: true, member, paid });

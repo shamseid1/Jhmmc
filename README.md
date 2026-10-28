@@ -121,10 +121,12 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
 | GET    | `/api/points`                 | `division=ocean|river`, `scope=overall|tournaments`: standings for boats and anglers (every day, or tournament fish only), tournaments with winners |
 | GET    | `/api/tournaments/:id`        | One tournament's results by boat |
+| GET    | `/api/club-members`           | Secretary: everyone, and whether they've paid this season's JHMMC membership |
+| PUT    | `/api/club-members/:userId`   | Secretary: `{paid}` marks a paid member for the current season (crew in tournaments follow this) |
 | GET    | `/api/tournaments`            | Captains and officials: the season's tournaments with boats, anglers, non-members and unpaid temporary memberships |
 | GET    | `/api/tournaments/:id/my-entry` | A JHMMC captain's entry: their boat, crew and anglers |
 | GET    | `/api/tournaments/:id/sheet`  | Secretary: the registration sheet, every JHMMC boat with its anglers |
-| PUT    | `/api/tournaments/:id/entries/:teamId` | The boat's captain (until the tournament is over) or the secretary: `{entered, anglers: [{userId} or {name}, member]}`; only entered boats compete |
+| PUT    | `/api/tournaments/:id/entries/:teamId` | The boat's captain (until the tournament is over) or the secretary: `{entered, anglers: [{userId} or {name, member}]}`; crew are members if paid up this season; only entered boats compete |
 | PATCH  | `/api/tournaments/:id/anglers/:anglerId` | Secretary: `{paid, member}` for an angler's temporary membership |
 | GET    | `/api/events`                 | Season dates and tournaments (first and last day) |
 | POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add a tournament (`date`, optional `endDate`, up to 14 days) or remove one |

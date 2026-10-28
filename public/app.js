@@ -95,7 +95,7 @@ function anglerEditor(crew, anglers) {
     <button type="button" class="link danger" data-act="drop-guest">Remove</button></div>`;
   return html`<div class="crew-pick">${crew.length ? crew.map((m) => raw(html`<div class="crew-row" data-user="${m.id}">
       <label class="check"><input type="checkbox" name="fishing" ${on(m) ? 'checked' : ''}> ${m.name}</label>
-      <label class="check"><input type="checkbox" name="member" ${on(m) ? (on(m).member ? 'checked' : '') : 'checked'}> Member</label>
+      <span class="badge ${m.member ? 'new' : 'guest'}">${m.member ? 'Paid member' : 'Not a paid member'}</span>
     </div>`)) : raw('<p class="small muted">No crew with accounts yet: add the anglers as guests.</p>')}</div>
     <div class="guests">${guests.map((g) => raw(guestRow(g)))}</div>
     <div><button type="button" data-act="add-guest">+ Add a guest</button></div>
@@ -113,7 +113,7 @@ function wireAnglerEditor(form) {
 }
 function readAnglerEditor(form) {
   const crew = [...form.querySelectorAll('.crew-row')].filter((r) => r.querySelector('[name=fishing]').checked)
-    .map((r) => ({ userId: Number(r.dataset.user), member: r.querySelector('[name=member]').checked }));
+    .map((r) => ({ userId: Number(r.dataset.user) }));
   const guests = [...form.querySelectorAll('.guests .guest-row')].map((r) => ({
     name: r.querySelector('[name=guestName]').value.trim(), member: r.querySelector('[name=guestMember]').checked,
   })).filter((g) => g.name);
@@ -1536,6 +1536,7 @@ const pagesFor = (view) => ({
         ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
         ${me.canReview ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision') : ''}
+        ${me.canReview ? item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -1713,7 +1714,7 @@ const pagesFor = (view) => ({
       <p class="tournament-now">${raw(icon(entered ? 'check' : 'trophy'))} ${entered ? 'Your boat is entered.' : 'Your boat is not entered yet.'}</p>
       ${open ? raw(html`<form class="card pad stack" id="entry">
         <h2>Anglers on ${team.name}</h2>
-        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Mark who is a JHMMC member: non-members pay a USD ${fee} temporary membership before the tournament day.</p>
+        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Crew show whether they've paid this season's JHMMC membership (the secretary keeps that list); for guests, tick Member if they are one. Non-members pay a USD ${fee} temporary membership before the tournament day.</p>
         ${raw(anglerEditor(crew, anglers))}
         <p class="error"></p>
         <div class="actions"><button type="submit" class="primary">${entered ? 'Save changes' : 'Enter my boat'}</button>
@@ -1828,6 +1829,60 @@ const pagesFor = (view) => ({
         route();
       });
     }
+  },
+
+  // The secretary's list of who has paid their JHMMC membership this season.
+  async 'club-members'() {
+    if (!state.me?.canReview) return needLogin(view, 'keep the membership list (the secretary and admin)');
+    const { season, people } = await api('/club-members');
+    const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
+    const paid = people.filter((p) => p.paid).length;
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Club members</h1>
+      <p class="small muted">Tick everyone who has paid their JHMMC membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
+        In tournaments, crew who aren't ticked here count as non-members and pay the temporary membership.</p>
+      <div class="sheet-totals"><div><span>Paid members</span><b>${paid}</b></div><div><span>Not paid</span><b>${people.length - paid}</b></div></div>
+      <div class="filter-bar member-filter">
+        ${[['all', 'Everyone'], ['paid', 'Paid'], ['unpaid', 'Not paid']].map(([k, l]) => raw(html`<button type="button" class="${k === 'all' ? 'filter-toggle on' : 'filter-toggle'}" data-show="${k}">${l}</button>`))}
+      </div>
+      <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search people" autocomplete="off"></label>
+      <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
+        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div></span>
+        <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
+      </li>`))}</ul></div>`;
+    let show = 'all';
+    const filter = () => {
+      const term = view.querySelector('.search input').value.trim().toLowerCase();
+      for (const li of view.querySelectorAll('.member-pay')) {
+        const isPaid = li.dataset.paid === 'true';
+        li.hidden = (term && !li.dataset.find.includes(term)) || (show === 'paid' && !isPaid) || (show === 'unpaid' && isPaid);
+      }
+    };
+    view.querySelector('.search input').addEventListener('input', filter);
+    view.querySelector('.member-filter').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-show]');
+      if (!btn) return;
+      show = btn.dataset.show;
+      for (const b of view.querySelectorAll('.member-filter [data-show]')) b.classList.toggle('on', b === btn);
+      filter();
+    });
+    view.addEventListener('change', async (e) => {
+      const box = e.target.closest('.member-pay input[type=checkbox]');
+      if (!box) return;
+      const li = box.closest('.member-pay');
+      try {
+        await api(`/club-members/${li.dataset.id}`, { method: 'PUT', body: { paid: box.checked } });
+        li.dataset.paid = String(box.checked);
+        const count = view.querySelectorAll('.member-pay[data-paid=true]').length;
+        const [paidBox, unpaidBox] = view.querySelectorAll('.sheet-totals b');
+        paidBox.textContent = count;
+        unpaidBox.textContent = people.length - count;
+        toast(box.checked ? `${li.querySelector('b').textContent}: paid member` : 'Marked not paid');
+      } catch (ex) {
+        box.checked = !box.checked;
+        toast(ex.message);
+      }
+    });
   },
 
   async members() {
@@ -2307,7 +2362,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
