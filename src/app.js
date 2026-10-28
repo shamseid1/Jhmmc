@@ -299,24 +299,27 @@ function createApp({
     res.json({ ok: true });
   });
 
-  // Tells the secretary (and the admin) that new registrations are waiting.
+  // Phone notifications to the secretary (and the admin), except whoever acted.
   // Sent in the background: a slow push service never holds up the captain.
-  function notifyReviewers(teamId, count, by) {
+  function pushToReviewers(payload, by) {
     const reviewers = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscriptions s JOIN users u ON u.id = s.user_id
       WHERE (u.role = 'secretary' OR lower(u.email) = ?) AND u.id != ?`).all(adminEmail ?? '', by.id);
-    if (!reviewers.length) return;
-    const boat = db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId)?.name ?? 'A boat';
-    const waiting = db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status = 'pending_review'").get().n;
-    const payload = {
-      title: 'Fish to review',
-      body: `${boat}: ${count === 1 ? '1 fish' : `${count} fish`} registered by ${by.name}. ${waiting} waiting in total.`,
-      url: '/#/review',
-    };
     for (const r of reviewers) {
       pusher.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload)
         .then((alive) => { if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(r.endpoint); })
         .catch((err) => console.warn(`Notification failed: ${err.message}`));
     }
+  }
+
+  // New registrations are waiting.
+  function notifyReviewers(teamId, count, by) {
+    const boat = db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId)?.name ?? 'A boat';
+    const waiting = db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status = 'pending_review'").get().n;
+    pushToReviewers({
+      title: 'Fish to review',
+      body: `${boat}: ${count === 1 ? '1 fish' : `${count} fish`} registered by ${by.name}. ${waiting} waiting in total.`,
+      url: '/#/review',
+    }, by);
   }
 
   api.patch('/me', (req, res) => {
@@ -888,7 +891,7 @@ function createApp({
   `).run(...values).lastInsertRowid);
 
   function insertCatch(req, res, opts) {
-    const checked = checkCatch(req.user, req.body, req.file, opts);
+    const checked = opts.official && !declared(req.user, req.body) ? { error: DECLARATION } : checkCatch(req.user, req.body, req.file, opts);
     if (checked.error) {
       removeUpload(req.file?.filename);
       return res.status(400).json({ error: checked.error });
@@ -896,10 +899,49 @@ function createApp({
     const id = insertCatchRow(checked.values);
     if (opts.official) {
       scoreRegistration(id);
+      logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
       notifyReviewers(opts.teamId, 1, req.user);
     }
     res.status(201).json({ catch: getCatch(id, req.user) });
   }
+
+  // ---- the registration record ------------------------------------------
+  // Every registration, withdrawal, dispute and decision, with who did it,
+  // when, the fish as it stood and (when the phone allowed it) where they
+  // were. Names and figures are copied in so the record outlives deletions.
+  const DISPUTE_HOURS = 24;
+  function snapshot(id) {
+    return db.prepare(`
+      SELECT k.team_id AS teamId, t.name AS boat, s.name AS species, COALESCE(u.name, k.angler_name) AS angler,
+        k.weight_kg AS weightKg, k.released, k.line_class AS lineClass, k.caught_on AS caughtOn,
+        k.weigh_station AS station, k.points, k.status, k.scale_photo AS scalePhoto
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id
+      LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?
+    `).get(id);
+  }
+  function logRegistration(catchId, action, user, { note = null, where = null, fish = snapshot(catchId) } = {}) {
+    if (!fish) return;
+    const { teamId, ...details } = fish;
+    db.prepare(`INSERT INTO registration_log (catch_id, team_id, action, user_id, user_name, details, lat, lng)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(catchId, teamId, action, user.id, user.name, JSON.stringify({ ...details, released: !!details.released, ...(note && { note }) }),
+        where?.lat ?? null, where?.lng ?? null);
+  }
+  // Where the phone was when the sheet was sent, if the captain allowed it.
+  function deviceSpot(b) {
+    const lat = Number(b.deviceLat);
+    const lng = Number(b.deviceLng);
+    return b.deviceLat != null && b.deviceLat !== '' && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+  }
+  // Captains declare their sheet is true; the secretary and admin don't need to.
+  const DECLARATION = 'Tick the declaration that these fish are true before sending.';
+  const declared = (user, b) => canReview(user) || b.declared === 'yes';
+  // When disputes close: 24 hours after the fish was registered.
+  const disputeUntil = (createdAt) => new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + DISPUTE_HOURS * 3600e3).toISOString();
+  const disputesFor = db.prepare(`
+    SELECT d.id, d.reason, d.created_at AS createdAt, u.id AS userId, u.name AS author, t.name AS boat
+    FROM disputes d JOIN users u ON u.id = d.user_id LEFT JOIN teams t ON t.id = u.team_id
+    WHERE d.catch_id = ? ORDER BY d.id`);
 
   // A registration gets its points as soon as it is recorded;
   // they count once the secretary approves.
@@ -966,6 +1008,7 @@ function createApp({
       return fail('The list of fish could not be read.');
     }
     if (!Array.isArray(fish) || !fish.length) return fail('Add at least one fish.');
+    if (!declared(req.user, req.body)) return fail(DECLARATION);
     if (fish.length > MAX_FISH_PER_SHEET) return fail(`At most ${MAX_FISH_PER_SHEET} fish at a time.`);
     const rows = [];
     for (const [i, f] of fish.entries()) {
@@ -978,7 +1021,11 @@ function createApp({
     db.exec('BEGIN');
     try {
       const ids = rows.map(insertCatchRow);
-      ids.forEach(scoreRegistration);
+      const where = deviceSpot(req.body);
+      for (const id of ids) {
+        scoreRegistration(id);
+        logRegistration(id, 'registered', req.user, { where });
+      }
       db.exec('COMMIT');
       notifyReviewers(teamId, ids.length, req.user);
       res.status(201).json({ catches: ids.map((id) => getCatch(id, req.user)) });
@@ -992,9 +1039,73 @@ function createApp({
   api.get('/officials/queue', requireWeigh, (req, res) => {
     const toReview = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.caught_on, t.name, k.id`)
       .all({ viewer: req.user.id })
-      .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn) }));
+      .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn),
+        disputes: disputesFor.all(r.id), disputeUntil: disputeUntil(r.createdAt) }));
     // Captains see what they registered that the secretary hasn't decided yet.
     res.json({ toReview: canReview(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
+  });
+
+  // Every boat's registrations waiting for the secretary, open to all JHMMC
+  // captains so they can dispute one within 24 hours.
+  api.get('/registrations/pending', requireWeigh, (req, res) => {
+    const now = Date.now();
+    const rows = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.created_at DESC, k.id DESC`).all({ viewer: req.user.id });
+    res.json({
+      registrations: rows.map((r) => {
+        const disputes = disputesFor.all(r.id);
+        const until = disputeUntil(r.createdAt);
+        return {
+          ...present(r, req.user), disputeUntil: until, disputes: disputes.length,
+          disputedByMe: disputes.some((d) => d.userId === req.user.id),
+          canDispute: r.teamId !== req.user.teamId && !canReview(req.user) && now < Date.parse(until)
+            && !disputes.some((d) => d.userId === req.user.id),
+        };
+      }),
+    });
+  });
+
+  // A JHMMC captain disputes another boat's registration, with a reason.
+  api.post('/catches/:id/disputes', (req, res) => {
+    const row = db.prepare('SELECT id, team_id AS teamId, status, created_at AS createdAt FROM catches WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!row || row.status === 'unofficial') return res.status(404).json({ error: 'Registration not found.' });
+    if (!captainsJhmmcBoat(req.user)) return res.status(403).json({ error: 'Only captains of JHMMC boats can dispute a registration.' });
+    if (row.teamId === req.user.teamId) return res.status(400).json({ error: "You can't dispute your own boat's fish; withdraw it instead." });
+    if (row.status !== 'pending_review') return res.status(400).json({ error: 'The secretary has already decided on this fish.' });
+    if (Date.now() >= Date.parse(disputeUntil(row.createdAt))) {
+      return res.status(400).json({ error: `Disputes close ${DISPUTE_HOURS} hours after a fish is registered.` });
+    }
+    const reason = str(req.body.reason, 500);
+    if (!reason) return res.status(400).json({ error: 'Say why you are disputing this fish.' });
+    if (db.prepare('SELECT 1 FROM disputes WHERE catch_id = ? AND user_id = ?').get(row.id, req.user.id)) {
+      return res.status(409).json({ error: 'You have already disputed this fish.' });
+    }
+    db.prepare('INSERT INTO disputes (catch_id, user_id, reason) VALUES (?, ?, ?)').run(row.id, req.user.id, reason);
+    logRegistration(row.id, 'disputed', req.user, { note: reason });
+    const fish = snapshot(row.id);
+    pushToReviewers({
+      title: 'Registration disputed',
+      body: `${req.user.name} disputes ${fish.boat}'s ${fish.species}: ${reason}`,
+      url: '/#/review',
+    }, req.user);
+    res.status(201).json({ ok: true });
+  });
+
+  // The record, newest first: for one fish, one boat, or everything.
+  api.get('/registrations/log', requireReview, (req, res) => {
+    const catchId = intId(req.query.catch);
+    const teamId = intId(req.query.team);
+    const before = intId(req.query.before);
+    const rows = db.prepare(`SELECT id, catch_id AS catchId, team_id AS teamId, action, user_id AS userId, user_name AS userName,
+        details, lat, lng, created_at AS createdAt FROM registration_log
+      WHERE (:catchId IS NULL OR catch_id = :catchId) AND (:teamId IS NULL OR team_id = :teamId) AND (:before IS NULL OR id < :before)
+      ORDER BY id DESC LIMIT 100`).all({ catchId: catchId ?? null, teamId: teamId ?? null, before: before ?? null });
+    res.json({
+      entries: rows.map(({ details, ...r }) => {
+        const { scalePhoto, ...d } = JSON.parse(details);
+        return { ...r, ...d, scalePhotoUrl: photoUrl(scalePhoto) };
+      }),
+      nextBefore: rows.length === 100 ? rows.at(-1).id : null,
+    });
   });
 
   // How many registrations wait for the secretary: the badge in the menu.
@@ -1017,11 +1128,13 @@ function createApp({
       const given = req.body.points === undefined || req.body.points === '' ? suggested.points : Number(req.body.points);
       if (!Number.isFinite(given)) return res.status(400).json({ error: 'Points must be a number.' });
       if (given !== suggested.points && !note) return res.status(400).json({ error: 'Add a note explaining the changed points.' });
+      if (!note && disputesFor.all(id).length) return res.status(400).json({ error: 'This fish was disputed: add a note on how the dispute was settled.' });
       db.prepare(`UPDATE catches SET status = 'approved', points = ?, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`)
         .run(given, note || suggested.note, req.user.id, new Date().toISOString(), id);
     } else {
       return res.status(400).json({ error: 'Approve or reject.' });
     }
+    logRegistration(id, req.body.decision === 'reject' ? 'rejected' : 'approved', req.user, { note });
     res.json({ catch: getCatch(id, req.user) });
   });
 
@@ -1157,7 +1270,11 @@ function createApp({
         ? 'This is a JHMMC registration; ask the secretary to remove it.'
         : 'Only the angler, whoever logged it, or the boat captain can delete this catch.' });
     }
+    if (item.status !== 'unofficial') {
+      logRegistration(id, item.loggedBy === req.user.id && !canReview(req.user) ? 'withdrawn' : 'deleted', req.user);
+    }
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
+    // A registration's scale photo stays as evidence in the record.
     removeUpload(item.photo);
     res.json({ ok: true });
   });

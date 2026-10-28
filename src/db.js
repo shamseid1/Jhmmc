@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -182,6 +182,33 @@ CREATE TABLE IF NOT EXISTS likes (
   catch_id INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, catch_id)
 );
+
+-- Another JHMMC captain questioning a registration within 24 hours.
+CREATE TABLE IF NOT EXISTS disputes (
+  id INTEGER PRIMARY KEY,
+  catch_id INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (catch_id, user_id)
+);
+
+-- Everything that happened to a JHMMC registration: kept even if the fish or
+-- the person is later deleted, so names and figures are copied in.
+CREATE TABLE IF NOT EXISTS registration_log (
+  id INTEGER PRIMARY KEY,
+  catch_id INTEGER NOT NULL,
+  team_id INTEGER,
+  action TEXT NOT NULL CHECK (action IN ('registered', 'withdrawn', 'deleted', 'disputed', 'approved', 'rejected')),
+  user_id INTEGER,
+  user_name TEXT NOT NULL,
+  details TEXT NOT NULL,
+  lat REAL,
+  lng REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS registration_log_catch ON registration_log(catch_id);
+CREATE INDEX IF NOT EXISTS registration_log_team ON registration_log(team_id, id DESC);
 
 -- Phones and browsers that asked for notifications (Web Push).
 CREATE TABLE IF NOT EXISTS push_subscriptions (

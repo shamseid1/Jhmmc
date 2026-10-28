@@ -51,6 +51,8 @@ const kgToLb = (kg) => Math.round(kg * 2.20462);
 const fmtWeight = (kg) => (kg == null ? '' : `${+kg.toFixed(1)} kg · ${kgToLb(kg)} lb`);
 const fmtDate = (d) =>
   new Date(d + (d.length === 10 ? 'T12:00:00' : 'Z')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+// A stored time ("2026-10-28 14:05:00", UTC) as local day and time.
+const fmtWhen = (d) => new Date(`${d.replace(' ', 'T')}Z`).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const today = () => new Date().toISOString().slice(0, 10);
 const plural = (n, word) => `${n} ${word}${n === 1 || word === 'fish' ? '' : word.endsWith('ch') ? 'es' : 's'}`;
 
@@ -63,6 +65,38 @@ function options(items, selected, placeholder) {
 
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
+
+// Entries of the registration record, as list items.
+const LOG_ACTIONS = {
+  registered: 'Registered', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
+};
+function logItems(entries) {
+  if (!entries.length) return '<li class="muted">Nothing recorded yet.</li>';
+  return entries.map((e) => html`<li class="log-entry">
+    <div><span class="badge log-${e.action}">${LOG_ACTIONS[e.action]}</span> <b>${e.species}</b>
+      ${e.weightKg ? ` · ${fmtWeight(e.weightKg)}` : e.released ? ' · released' : ''}${e.points != null ? ` · ${fmtPoints(e.points)}` : ''}</div>
+    <div class="small muted">${e.boat || 'Boat removed'} · ${e.angler}${e.station ? ` · ${e.station}` : ''} · caught ${fmtDay(e.caughtOn)}</div>
+    <div class="small">By <b>${e.userName}</b>, ${fmtWhen(e.createdAt)}
+      ${e.lat != null ? raw(html` · <a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=15/${e.lat}/${e.lng}" target="_blank" rel="noopener">where the phone was</a>`) : ''}
+      ${e.scalePhotoUrl ? raw(html` · <a href="${e.scalePhotoUrl}" target="_blank" rel="noopener">scale photo</a>`) : ''}
+      ${e.catchId && !['withdrawn', 'deleted'].includes(e.action) ? raw(html` · <a href="#/catch/${e.catchId}">the fish</a>`) : ''}</div>
+    ${e.note ? raw(html`<div class="small log-note">${e.note}</div>`) : ''}
+  </li>`).join('');
+}
+
+// The phone's position for the registration record, or null if it isn't
+// allowed or takes too long: never holds up sending.
+function phoneSpot(timeout = 8000) {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const done = setTimeout(() => resolve(null), timeout + 500);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(done); resolve({ lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5) }); },
+      () => { clearTimeout(done); resolve(null); },
+      { enableHighAccuracy: true, timeout, maximumAge: 60000 },
+    );
+  });
+}
 
 // JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
 function boatOptions(boats, mine) {
@@ -467,8 +501,11 @@ const pagesFor = (view) => ({
 
   async catch(id) {
     const { catch: c, comments } = await api(`/catches/${id}`);
+    // The secretary and admin see a registration's record on its page.
+    const record = c.status !== 'unofficial' && state.me?.canReview ? (await api(`/registrations/log?catch=${c.id}`)).entries : null;
     view.innerHTML = html`
       <div class="feed">${raw(catchCard(c, { full: true }))}</div>
+      ${record ? raw(html`<h2>Registration history</h2><div class="card"><ul class="list log">${raw(logItems(record))}</ul></div>`) : ''}
       <h2>Comments</h2>
       <div class="card pad">
         ${comments.length ? comments.map((m) => raw(html`<div class="comment" data-cid="${m.id}">
@@ -1042,6 +1079,9 @@ const pagesFor = (view) => ({
           <div><span>Total weight</span><b id="total-weight">0 kg</b></div>
           <div><span>Total points</span><b id="total-points">0 pts</b></div>
         </div>
+        ${official ? '' : raw(html`<label class="check declare"><input type="checkbox" name="declared" value="yes" required>
+          <span>I declare these fish were caught today by the anglers named, under the club rules, and weighed on this station's scale.
+          A false registration disqualifies the boat (<a href="#/rules?section=app-registrations">rule</a>).</span></label>`)}
         <p class="error"></p>
         <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
@@ -1166,6 +1206,13 @@ const pagesFor = (view) => ({
       fd.set('teamId', sheet.teamId.value);
       fd.set('caughtOn', sheet.caughtOn.value);
       if (sheet.weighStation) fd.set('weighStation', sheet.weighStation.value);
+      if (sheet.declared?.checked) fd.set('declared', 'yes');
+      // Where the phone is, for the record, if the captain allows it.
+      const spot = await phoneSpot();
+      if (spot) {
+        fd.set('deviceLat', spot.lat);
+        fd.set('deviceLng', spot.lng);
+      }
       const fish = [];
       for (const [i, row] of [...list.querySelectorAll('.fish')].entries()) {
         const get = (name) => row.querySelector(`[name=${name}]`);
@@ -1226,6 +1273,12 @@ const pagesFor = (view) => ({
             ${c.photoUrl ? raw(html`<a href="${c.photoUrl}" target="_blank" rel="noopener"><img src="${c.photoUrl}" alt="Catch photo"></a>`) : ''}
             ${!c.scalePhotoUrl && !c.photoUrl ? raw('<span class="small muted">No photo</span>') : ''}
           </div>
+          ${c.disputes.length ? raw(html`<div class="disputes">
+            <p><b>${raw(icon('flag'))} Disputed</b>: approving needs a note on how it was settled.</p>
+            ${c.disputes.map((d) => raw(html`<p class="small"><b>${d.author}</b>${d.boat ? ` (${d.boat})` : ''}, ${fmtWhen(d.createdAt)}: ${d.reason}</p>`))}
+          </div>`) : ''}
+          <p class="small muted">Registered ${fmtWhen(c.createdAt)}.
+            ${Date.parse(c.disputeUntil) > Date.now() ? `Other captains can dispute it until ${new Date(c.disputeUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.` : 'Disputes are closed.'}</p>
           ${raw(reviewForm(c))}
         </article>`))}
       </section>`))}
@@ -1387,7 +1440,9 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+        ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
         ${me.canReview ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
+        ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -1465,6 +1520,76 @@ const pagesFor = (view) => ({
     });
   },
 
+  // Every boat's registrations waiting for the secretary, for JHMMC captains:
+  // open for anyone to check, and for 24 hours to dispute.
+  async pending() {
+    if (!state.me?.canWeigh) return needLogin(view, 'see pending registrations (captains of JHMMC boats)');
+    const { registrations } = await api('/registrations/pending');
+    const until = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Pending registrations</h1>
+      <p class="small muted">Fish every JHMMC boat has registered that the secretary hasn't decided on yet. If something looks wrong,
+        dispute it within 24 hours with a reason; the secretary sees it before approving. <a href="#/rules?section=app-registrations">The rule</a></p>
+      ${registrations.length ? raw(html`<div class="stack">${registrations.map((c) => raw(html`<article class="card pad pending-item" data-id="${c.id}">
+        <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
+          <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
+        <p class="meta"><a href="#/boat/${c.teamId}">${c.teamName}</a> · ${c.angler}${c.weighStation ? ` · ${c.weighStation}` : ''} · registered ${fmtWhen(c.createdAt)}</p>
+        ${c.scalePhotoUrl ? raw(html`<div class="thumbs"><a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a></div>`) : ''}
+        <p class="small ${c.disputes ? 'dispute-note' : 'muted'}">${c.disputes ? raw(`${icon('flag')} `) : ''}${c.disputes ? `${plural(c.disputes, 'dispute')} so far.` : 'No disputes.'}
+          ${c.disputedByMe ? ' You disputed this fish.' : ''}
+          ${c.canDispute ? ` Open for disputes until ${until(c.disputeUntil)}.` : ''}</p>
+        ${c.canDispute ? raw(html`<button data-act="dispute" class="danger">${raw(icon('flag'))} Dispute</button>
+        <form class="dispute-form stack" hidden>
+          <label>Why are you disputing this fish? <textarea name="reason" required maxlength="500" placeholder="e.g. Not announced on the radio; the photo is from another day"></textarea></label>
+          <p class="error"></p>
+          <div class="actions"><button type="submit" class="danger">Send dispute</button> <button type="button" data-act="cancel">Cancel</button></div>
+        </form>`) : ''}
+      </article>`))}</div>`) : raw('<div class="card pad empty">Nothing is waiting for the secretary.</div>')}`;
+    view.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act=dispute], button[data-act=cancel]');
+      if (!btn) return;
+      const item = btn.closest('.pending-item');
+      const open = btn.dataset.act === 'dispute';
+      item.querySelector('.dispute-form').hidden = !open;
+      item.querySelector('[data-act=dispute]').hidden = open;
+      if (open) item.querySelector('textarea').focus();
+    });
+    view.addEventListener('submit', async (e) => {
+      const form = e.target.closest('.dispute-form');
+      if (!form) return;
+      e.preventDefault();
+      try {
+        await api(`/catches/${form.closest('.pending-item').dataset.id}/disputes`, { method: 'POST', body: formData(form) });
+        toast('Dispute sent to the secretary');
+        route();
+      } catch (ex) {
+        form.querySelector('.error').textContent = ex.message;
+      }
+    });
+  },
+
+  // The registration record for the secretary and admin, newest first.
+  async history() {
+    if (!state.me?.canReview) return needLogin(view, 'see the registration record (the secretary and admin)');
+    const team = new URLSearchParams(location.hash.split('?')[1] || '').get('team') || '';
+    const [{ teams }, { entries, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Registration history</h1>
+      <p class="small muted">Everything that happened to JHMMC registrations: who registered, withdrew, disputed, approved or rejected each fish, when, and where the phone was when the captain allowed it. Nothing here can be changed.</p>
+      <label class="log-filter">Boat <select id="log-team">${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, t.name]), team, 'All boats'))}</select></label>
+      <div class="card"><ul class="list log" id="log">${raw(logItems(entries))}</ul></div>
+      ${nextBefore ? raw(html`<p><button id="log-more" data-before="${nextBefore}">Show older</button></p>`) : ''}`;
+    view.querySelector('#log-team').addEventListener('change', (e) => {
+      location.hash = e.target.value ? `#/history?team=${e.target.value}` : '#/history';
+    });
+    view.querySelector('#log-more')?.addEventListener('click', async (e) => {
+      const more = await api(`/registrations/log?team=${encodeURIComponent(team)}&before=${e.target.dataset.before}`);
+      view.querySelector('#log').insertAdjacentHTML('beforeend', logItems(more.entries));
+      if (more.nextBefore) e.target.dataset.before = more.nextBefore;
+      else e.target.remove();
+    });
+  },
+
   async members() {
     if (!state.me?.isAdmin) {
       view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
@@ -1535,7 +1660,8 @@ const pagesFor = (view) => ({
 
   // The JHMMC season rules and a summary of the IGFA angling rules.
   async rules() {
-    const which = new URLSearchParams(location.hash.split('?')[1] || '').get('book') === 'igfa' ? 'igfa' : 'jhmmc';
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const which = q.get('book') === 'igfa' ? 'igfa' : 'jhmmc';
     const book = window.RULES[which];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="seg" role="tablist">
@@ -1548,6 +1674,8 @@ const pagesFor = (view) => ({
         ${raw(book.html)}
         ${book.url ? raw(html`<p><a class="btn primary" href="${book.url}" target="_blank" rel="noopener">Read the full IGFA rules</a></p>`) : ''}
       </article>`;
+    // A link can open the rules at one section (?section=...).
+    if (q.get('section')) view.querySelector(`#${CSS.escape(q.get('section'))}`)?.scrollIntoView();
   },
 
   // One page, many record books: IGFA's world records, or any club's own.
@@ -1771,6 +1899,9 @@ const ICONS = {
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
@@ -1903,7 +2034,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>

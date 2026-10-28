@@ -75,6 +75,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     // The captain sends in a sheet of two fish.
     const fd = new FormData();
     fd.set('teamId', boat.id);
+    fd.set('declared', 'yes');
     fd.set('caughtOn', new Date().toISOString().slice(0, 10));
     fd.set('fish', JSON.stringify([
       { speciesId: wahoo, anglerId: 'other', anglerName: 'Guest', weightKg: '20' },
@@ -95,7 +96,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     sent.length = 0;
     await sec('DELETE', '/push/subscribe', { endpoint: sub('sec-phone').endpoint });
     const one = new FormData();
-    for (const [k, v] of Object.entries({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', speciesId: wahoo, weightKg: '9',
+    for (const [k, v] of Object.entries({ teamId: boat.id, declared: 'yes', anglerId: 'other', anglerName: 'Guest', speciesId: wahoo, weightKg: '9',
       caughtOn: new Date().toISOString().slice(0, 10) })) one.set(k, v);
     one.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'c.png');
     assert.equal((await cap('POST', '/weigh', one)).status, 201);

@@ -466,3 +466,24 @@ button.link[hidden] { display: none; }
 .boat-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .boat-fields label { font-size: 14px; }
 @media (max-width: 420px) { .boat-fields { grid-template-columns: 1fr; } }
+
+/* ---- disputes & the registration record ---- */
+.disputes { margin: 10px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.disputes p { margin: 0 0 6px; }
+.disputes p:last-child { margin-bottom: 0; }
+.disputes .icon, .dispute-note .icon { width: 16px; height: 16px; color: var(--danger); vertical-align: -3px; }
+.dispute-note { color: var(--danger); }
+.pending-item .meta { margin: 4px 0 8px; }
+.pending-item [data-act=dispute] { display: inline-flex; align-items: center; gap: 6px; }
+.pending-item [data-act=dispute] .icon { width: 16px; height: 16px; vertical-align: 0; }
+.pending-item [data-act=dispute][hidden], .dispute-form[hidden] { display: none; }
+.dispute-form { margin-top: 10px; }
+.log-entry { display: grid; gap: 2px; }
+.log-note { padding: 6px 10px; margin-top: 4px; border-left: 3px solid var(--line); color: var(--text); }
+.badge.log-approved { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); }
+.badge.log-rejected, .badge.log-disputed, .badge.log-deleted { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
+.badge.log-withdrawn { color: var(--muted); }
+.check.declare { align-items: flex-start; font-size: 14px; }
+.check.declare input { margin-top: 3px; flex: none; }
+.rulebook .app-rules { margin-top: 24px; padding-top: 12px; border-top: 2px solid var(--line); }
+.log-filter { display: block; margin-bottom: 12px; }
