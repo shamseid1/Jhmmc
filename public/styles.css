@@ -456,3 +456,5 @@ button.link[hidden] { display: none; }
 .notify.notify-on p { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .notify.notify-on .icon { width: 16px; height: 16px; color: var(--good); }
 .notify.notify-on button.link { font-size: inherit; }
+.station-tab.none:not([aria-current="page"]) { color: var(--muted); font-weight: 500; }
+.station:not(:has(.review-item)) .station-head { color: var(--muted); font-size: 1rem; }

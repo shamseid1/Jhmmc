@@ -1184,7 +1184,8 @@ const pagesFor = (view) => ({
     // Split by weigh station, then grouped by day and boat like the paper forms.
     const NONE = 'No station';
     const stationOf = (c) => c.weighStation || NONE;
-    const stations = [...state.meta.weighStations, NONE].filter((w) => toReview.some((c) => stationOf(c) === w));
+    // Every station always shows, so the secretary sees where nothing is waiting too.
+    const stations = [...state.meta.weighStations, ...(toReview.some((c) => !c.weighStation) ? [NONE] : [])];
     const pick = new URLSearchParams(location.hash.split('?')[1] || '').get('station');
     const shown = stations.includes(pick) ? [pick] : stations;
     const count = (w) => toReview.filter((c) => stationOf(c) === w).length;
@@ -1197,17 +1198,17 @@ const pagesFor = (view) => ({
       }
       return [...groups.values()];
     };
-    const tab = (label, href, n, on) => html`<a href="${href}" class="station-tab" ${on ? raw('aria-current="page"') : ''} data-count-for="${label}">${label} <span class="tab-count">${n}</span></a>`;
+    const tab = (label, href, n, on) => html`<a href="${href}" class="station-tab${n ? '' : ' none'}" ${on ? raw('aria-current="page"') : ''} data-count-for="${label}">${label} <span class="tab-count">${n}</span></a>`;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
       <div class="card pad notify" id="notify"></div>
-      ${stations.length ? raw(html`<nav class="station-tabs" aria-label="Weigh stations">
+      ${raw(html`<nav class="station-tabs" aria-label="Weigh stations">
         ${raw(tab('All', '#/review', toReview.length, !stations.includes(pick)))}
         ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), pick === w)))}
-      </nav>`) : ''}
+      </nav>`)}
       <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
-      ${shown.length ? shown.map((w) => raw(html`<section class="station" data-station="${w}">
-        <h2 class="station-head">${w} <span class="muted small" data-left>${plural(count(w), 'fish')}</span></h2>
+      ${shown.map((w) => raw(html`<section class="station" data-station="${w}">
+        <h2 class="station-head">${w} <span class="muted small" data-left>${count(w) ? plural(count(w), 'fish') : 'nothing waiting'}</span></h2>
         ${sheetsAt(w).map((g) => raw(html`<section class="sheet">
         <h3>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h3>
         ${g.catches.map((c) => raw(html`<article class="card pad review-item">
@@ -1222,12 +1223,12 @@ const pagesFor = (view) => ({
           ${raw(reviewForm(c))}
         </article>`))}
       </section>`))}
-      </section>`)) : raw('<div class="card pad empty">Nothing to review. Fish the weighmasters register appear here.</div>')}`;
+      </section>`))}`;
     // After a decision, the station tabs and headings count down.
     const recount = (station) => {
       const left = view.querySelectorAll(`.station[data-station="${CSS.escape(station)}"] .review-item`).length;
       const head = view.querySelector(`.station[data-station="${CSS.escape(station)}"] [data-left]`);
-      if (head) head.textContent = left ? plural(left, 'fish') : 'all done';
+      if (head) head.textContent = left ? plural(left, 'fish') : 'nothing waiting';
       const chip = view.querySelector(`.station-tab[data-count-for="${CSS.escape(station)}"] .tab-count`);
       if (chip) chip.textContent = Number(chip.textContent) - 1;
       const allChip = view.querySelector('.station-tab[data-count-for="All"] .tab-count');
