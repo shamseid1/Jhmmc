@@ -180,6 +180,7 @@ function wireCards(root, byId) {
     if (!btn) return;
     const c = byId.get(btn.closest('[data-id]').dataset.id);
     if (btn.dataset.act === 'share') return shareCatch(c);
+    if (btn.dataset.act === 'like' && !state.me) return askToSignIn('Sign in to like catches.');
     if (btn.dataset.act === 'like') {
       try {
         const r = await api(`/catches/${c.id}/like`, { method: 'POST' });
@@ -230,8 +231,30 @@ async function renderFeed(container, query = {}) {
   await page();
 }
 
-// Shown to anglers who are signed in but not on a boat.
+// Sends a visitor to sign in, then back to where they were.
+function askToSignIn(msg = 'Sign in to do that.') {
+  state.afterLogin = location.hash;
+  toast(msg);
+  location.hash = '#/login';
+}
+
+function needLogin(view, what) {
+  state.afterLogin = location.hash;
+  view.innerHTML = html`<div class="card pad empty">
+    <p>Sign in to ${what}.</p>
+    <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create an account</a>
+  </div>`;
+}
+
+const HERO = `<section class="hero">
+  <h1>Every big fish in West Africa, in one place</h1>
+  <p>Follow the boats and anglers, see every catch, and check the leaderboard, from Dakar to Lagos. Crews sign in to log their catches.</p>
+  <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
+</section>`;
+
+// Shown to anglers who are signed in but not on a boat, and to visitors.
 function noBoatBanner() {
+  if (!state.me) return HERO;
   return state.me.teamId ? '' : `<div class="card pad banner">
     <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed, like and comment. To log catches, join a boat's crew or register your boat.</span></div>
     <a class="btn primary" href="#/crew">Get on a boat</a>
@@ -243,19 +266,6 @@ function noBoatBanner() {
 // Each navigation renders into its own element, so a slow page that finishes
 // after the user has moved on writes into a detached node instead.
 const pagesFor = (view) => ({
-  async welcome() {
-    view.innerHTML = html`<section class="hero">
-        <h1>Every big fish in West Africa, in one place</h1>
-        <p>Log your boat's catches, follow the other crews, and climb the leaderboard, from Dakar to Lagos.</p>
-        <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
-      </section>
-      <div class="how">
-        <div class="card pad"><h3>🚤 Crews by boat</h3><p class="muted small">Each boat is a team. The captain registers it and shares an invite code with the crew.</p></div>
-        <div class="card pad"><h3>🎣 Log every fish</h3><p class="muted small">Species, weight, line class, tag and release, photo and the story behind it.</p></div>
-        <div class="card pad"><h3>🏆 Leaderboards</h3><p class="muted small">Heaviest fish by species, top boats, anglers and clubs by season and country.</p></div>
-      </div>`;
-  },
-
   async home() {
     const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
@@ -287,21 +297,22 @@ const pagesFor = (view) => ({
         ${comments.length ? comments.map((m) => raw(html`<div class="comment">
           <a href="#/user/${m.userId}"><b>${m.author}</b></a> <span class="muted small">${fmtDate(m.createdAt)}</span>
           <div>${m.body}</div></div>`)) : raw('<p class="muted">No comments yet.</p>')}
-        <form class="stack" id="comment">
+        ${state.me ? raw(`<form class="stack" id="comment">
           <textarea name="body" required maxlength="1000" placeholder="Congratulate the angler…"></textarea>
           <p class="error"></p>
           <div><button type="submit" class="primary">Post comment</button></div>
-        </form>
+        </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to comment.</p>')}
       </div>`;
     wireCards(view.querySelector('.feed'), new Map([[String(c.id), c]]));
     const form = view.querySelector('#comment');
-    bindForm(form, async () => {
+    if (form) bindForm(form, async () => {
       await api(`/catches/${id}/comments`, { method: 'POST', body: formData(form) });
       route();
     });
   },
 
   async new() {
+    if (!state.me) return needLogin(view, 'log a catch');
     if (!state.me.teamId) {
       view.innerHTML = html`<h1>Log a catch</h1>${raw(noBoatBanner())}`;
       return;
@@ -343,6 +354,7 @@ const pagesFor = (view) => ({
 
   // Join a crew with a code, register a boat, or carry on as an individual.
   async crew() {
+    if (!state.me) return needLogin(view, 'join or register a boat');
     if (state.me.teamId) {
       location.hash = `#/boat/${state.me.teamId}`;
       return;
@@ -360,6 +372,10 @@ const pagesFor = (view) => ({
         <form class="card pad stack" id="create">
           <h2>Register a boat</h2>
           <label>Boat name <input name="name" required maxlength="80" placeholder="e.g. Sea Hunter II"></label>
+          <div class="row">
+            <label>Length (feet) <input name="lengthFt" type="number" min="10" max="200" step="1" inputmode="numeric" placeholder="e.g. 42"></label>
+            <label>Make / model <input name="make" maxlength="60" placeholder="e.g. Bertram"></label>
+          </div>
           <div class="row">
             <label>Home port <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
             <label>Country <select name="country">${raw(options(state.meta.countries, state.me.country, 'Choose…'))}</select></label>
@@ -382,22 +398,60 @@ const pagesFor = (view) => ({
   },
 
   async boats() {
-    const { teams } = await api('/teams');
-    view.innerHTML = html`<h1>Boats</h1>
-      ${state.me.teamId ? '' : raw('<p><a class="btn primary" href="#/crew">Join or register a boat</a></p>')}
-      <div class="card"><ul class="list">
-        ${teams.length ? teams.map((t) => raw(html`<li>
-          <a href="#/boat/${t.id}"><b>🚤 ${t.name}</b></a>
-          <div class="muted small">${[t.homePort, t.country].filter(Boolean).join(', ')}${t.clubName ? ` · ${t.clubName}` : ''} · ${t.members} crew · ${plural(t.catches, 'catch')}</div>
-        </li>`)) : raw('<li class="muted">No boats registered yet.</li>')}
-      </ul></div>`;
+    location.replace('#/participants?tab=boats');
+  },
+
+  // Everyone taking part, as photo cards: anglers or boats, with a search box.
+  async participants() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const tab = q.get('tab') === 'boats' ? 'boats' : 'anglers';
+    const { anglers } = tab === 'anglers' ? await api('/anglers') : { anglers: [] };
+    const { teams } = tab === 'boats' ? await api('/teams') : { teams: [] };
+    const items = tab === 'anglers'
+      ? anglers.map((a) => ({ href: `#/user/${a.id}`, name: a.name, sub: a.teamName || 'Individual angler', ...a }))
+      : teams.map((t) => ({
+        href: `#/boat/${t.id}`, ...t,
+        sub: [t.lengthFt ? `${+t.lengthFt}'` : '', t.make].filter(Boolean).join(' ') || t.homePort || '',
+      }));
+    const max = Math.max(1, ...items.map((i) => Math.max(i.released, i.weighed)));
+    const bar = (label, n, cls) => (n ? `<div class="tally"><span>${label}</span><b>${n}</b></div>
+      <div class="bar ${cls}"><i style="width:${Math.max(6, (n / max) * 100)}%"></i></div>` : '');
+    const card = (i) => html`<a class="pcard" href="${i.href}" data-name="${(i.name + ' ' + i.sub).toLowerCase()}">
+      ${i.photoUrl ? raw(html`<img src="${i.photoUrl}" alt="" loading="lazy">`) : raw(`<div class="ph">${tab === 'boats' ? '🚤' : '🎣'}</div>`)}
+      <div class="pbody">
+        <div class="pname">${i.name}</div>
+        <div class="psub">${i.sub}</div>
+        ${raw(bar('Released', i.released, 'green'))}${raw(bar('Weighed', i.weighed, 'blue'))}
+      </div>
+    </a>`;
+    view.innerHTML = html`<h1 class="center">Participants</h1>
+      <div class="seg" role="tablist">
+        <a role="tab" href="#/participants?tab=anglers" aria-selected="${tab === 'anglers'}">Anglers</a>
+        <a role="tab" href="#/participants?tab=boats" aria-selected="${tab === 'boats'}">Boats</a>
+      </div>
+      <label class="search"><span aria-hidden="true">⌕</span>
+        <input type="search" placeholder="Search ${tab}" aria-label="Search ${tab}" autocomplete="off"></label>
+      <div class="pgrid">${items.map((i) => raw(card(i)))}</div>
+      <p class="muted empty" id="none" ${items.length ? 'hidden' : ''}>${items.length ? `No ${tab} match that search.` : tab === 'boats' ? 'No boats registered yet.' : 'No anglers yet.'}</p>
+      ${tab === 'boats' && state.me && !state.me.teamId ? raw('<p class="center"><a class="btn primary" href="#/crew">Join or register a boat</a></p>') : ''}`;
+    view.querySelector('.search input').addEventListener('input', (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      let shown = 0;
+      for (const el of view.querySelectorAll('.pcard')) {
+        el.hidden = !!term && !el.dataset.name.includes(term);
+        if (!el.hidden) shown++;
+      }
+      view.querySelector('#none').hidden = shown > 0;
+    });
   },
 
   async boat(id) {
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
     const inviteMsg = `Join our boat ${team.name} on West Africa Big Game: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
-    view.innerHTML = html`<h1>🚤 ${team.name}</h1>
-      <p class="muted">${[team.homePort, team.country].filter(Boolean).join(', ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+    const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
+    view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
+      <h1>🚤 ${team.name}</h1>
+      <p class="muted">${[spec, team.homePort, team.country].filter(Boolean).join(' · ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
       ${team.isMember ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
@@ -420,6 +474,11 @@ const pagesFor = (view) => ({
       ${team.isCaptain ? raw(html`<h2>Boat details</h2>
       <form class="card pad stack" id="edit">
         <label>Boat name <input name="name" required maxlength="80" value="${team.name}"></label>
+        <div class="row">
+          <label>Length (feet) <input name="lengthFt" type="number" min="10" max="200" step="1" inputmode="numeric" value="${team.lengthFt ?? ''}"></label>
+          <label>Make / model <input name="make" maxlength="60" value="${team.make || ''}" placeholder="e.g. Bertram 42"></label>
+        </div>
+        <label>Boat photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
         <div class="row">
           <label>Home port <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country, 'Choose…'))}</select></label>
@@ -470,7 +529,13 @@ const pagesFor = (view) => ({
     });
     const edit = view.querySelector('#edit');
     if (edit) bindForm(edit, async () => {
-      await api(`/teams/${id}`, { method: 'PATCH', body: formData(edit) });
+      const { photo, ...fields } = formData(edit);
+      await api(`/teams/${id}`, { method: 'PATCH', body: fields });
+      if (photo?.size) {
+        const fd = new FormData();
+        fd.set('photo', photo);
+        await api(`/teams/${id}/photo`, { method: 'POST', form: fd });
+      }
       await refreshMe();
       toast('Boat saved');
       route();
@@ -488,18 +553,18 @@ const pagesFor = (view) => ({
         </li>`)) : raw('<li class="muted">No clubs yet — register yours below.</li>')}
       </ul></div>
       <h2>Register a club</h2>
-      <form class="card pad stack" id="f">
+      ${state.me ? raw(html`<form class="card pad stack" id="f">
         <label>Club name <input name="name" required maxlength="100"></label>
         <div class="row">
-          <label>Country <select name="country" required>${raw(options(state.meta.countries, state.me.country, 'Choose…'))}</select></label>
+          <label>Country <select name="country" required>${raw(options(state.meta.countries, state.me?.country, 'Choose…'))}</select></label>
           <label>Town / harbour <input name="city" maxlength="80"></label>
         </div>
         <label>About <textarea name="description" maxlength="1000"></textarea></label>
         <p class="error"></p>
         <div><button type="submit" class="primary">Create club</button></div>
-      </form>`;
+      </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to register a club.</p>')}`;
     const form = view.querySelector('#f');
-    bindForm(form, async () => {
+    if (form) bindForm(form, async () => {
       const { club } = await api('/clubs', { method: 'POST', body: formData(form) });
       state.clubs = null;
       location.hash = `#/club/${club.id}`;
@@ -572,10 +637,10 @@ const pagesFor = (view) => ({
 
   async user(id) {
     const { user, stats } = await api(`/users/${id}`);
-    view.innerHTML = html`<h1>${user.name}</h1>
+    view.innerHTML = html`${user.photoUrl ? raw(html`<img class="avatar" src="${user.photoUrl}" alt="">`) : ''}<h1>${user.name}</h1>
       <p class="muted">${user.teamName ? raw(html`🚤 <a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
-      ${state.me.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
+      ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
       <div class="stats">
         <div class="card stat"><b>${stats.catches}</b><span>catches</span></div>
         <div class="card stat"><b>${stats.released}</b><span>released</span></div>
@@ -586,6 +651,7 @@ const pagesFor = (view) => ({
   },
 
   async profile() {
+    if (!state.me) return needLogin(view, 'see your profile');
     const me = state.me;
     view.innerHTML = html`<h1>Your profile</h1>
       <p>${me.teamId ? raw(html`🚤 Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
@@ -593,13 +659,21 @@ const pagesFor = (view) => ({
         <label>Name <input name="name" required maxlength="80" value="${me.name}"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
         <label>About you <textarea name="bio" maxlength="500">${me.bio || ''}</textarea></label>
+        <label>Your photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>
+      <p><a href="#/clubs">Clubs</a> · <a href="#/participants?tab=boats">All boats</a></p>
       <p><button id="logout">Sign out</button></p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {
-      const { user } = await api('/me', { method: 'PATCH', body: formData(form) });
+      const { photo, ...fields } = formData(form);
+      let { user } = await api('/me', { method: 'PATCH', body: fields });
+      if (photo?.size) {
+        const fd = new FormData();
+        fd.set('photo', photo);
+        ({ user } = await api('/me/photo', { method: 'POST', form: fd }));
+      }
       state.me = user;
       toast('Profile saved');
       location.hash = `#/user/${user.id}`;
@@ -652,24 +726,29 @@ const pagesFor = (view) => ({
 
 // ---- router ---------------------------------------------------------------
 
-const PUBLIC_PAGES = ['welcome', 'login', 'register'];
+// Simple line icons for the tab bar (24px grid, drawn with currentColor).
+const ICONS = {
+  feed: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  leaderboard: '<path d="M8 21V11H4v10zM14 21V5h-4v16zM20 21v-7h-4v7z"/>',
+  participants: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15 14.5c3 0 5.5 2.3 5.5 5.5"/>',
+  clubs: '<path d="M4 21V5l8-2 8 2v16"/><path d="M9 21v-5h6v5"/>',
+  catch: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+};
 
 function renderNav(active) {
-  let links;
-  if (!state.me) {
-    links = [['#/login', 'Sign in', 'login'], ['#/register', 'Join', 'register', 'cta']];
-  } else {
-    links = [
-      ['#/', 'Feed', 'home'],
-      ['#/leaderboard', 'Leaderboard', 'leaderboard'],
-      ['#/boats', 'Boats', 'boats'],
-      ['#/clubs', 'Clubs', 'clubs'],
-      ['#/profile', 'Me', 'profile'],
-    ];
-    if (state.me.teamId) links.push(['#/new', '+ Catch', 'new', 'cta']);
-  }
+  const links = [
+    ['#/', 'Feed', 'home', 'feed'],
+    ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
+  ];
+  if (state.me?.teamId) links.push(['#/new', 'Log catch', 'new', 'catch', 'cta']);
+  links.push(['#/participants', 'Participants', 'participants', 'participants']);
+  if (!state.me?.teamId) links.push(['#/clubs', 'Clubs', 'clubs', 'clubs']);
+  links.push(state.me ? ['#/profile', 'Me', 'profile', 'me'] : ['#/login', 'Sign in', 'login', 'me']);
+  const current = { boat: 'participants', user: 'participants', club: 'clubs', register: 'login' }[active] || active;
   document.getElementById('nav').innerHTML = links
-    .map(([href, label, key, cls]) => `<a href="${href}" class="${[cls, key === active ? 'active' : ''].join(' ')}">${label}</a>`)
+    .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span></a>`)
     .join('');
 }
 
@@ -679,12 +758,7 @@ async function route() {
   const view = document.createElement('div');
   const pages = pagesFor(view);
   let page = Object.hasOwn(pages, name) ? name : 'home';
-  if (!state.me && !PUBLIC_PAGES.includes(page)) {
-    // Remember where a shared link was pointing so we can go there after sign-in.
-    if (location.hash && location.hash !== '#/') state.afterLogin = location.hash;
-    page = 'welcome';
-  }
-  if (state.me && PUBLIC_PAGES.includes(page)) page = 'home';
+  if (state.me && (page === 'login' || page === 'register')) page = 'home';
   renderNav(page);
   main.replaceChildren(view);
   window.scrollTo(0, 0);
@@ -694,6 +768,11 @@ async function route() {
     view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;
   }
 }
+
+// "Sign in" links inside a page come back to that page afterwards.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('a[data-return]')) state.afterLogin = location.hash;
+});
 
 (async function init() {
   [state.meta] = await Promise.all([api('/meta'), refreshMe()]);

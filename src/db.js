@@ -35,7 +35,7 @@ const SPECIES = [
   ['Other', null, 'Other'],
 ];
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS users (
   country TEXT,
   team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
   bio TEXT,
+  photo TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -68,6 +69,9 @@ CREATE TABLE IF NOT EXISTS teams (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   home_port TEXT,
   country TEXT,
+  length_ft REAL,
+  make TEXT,
+  photo TEXT,
   club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
   captain_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   join_code TEXT NOT NULL UNIQUE,
@@ -131,8 +135,17 @@ function openDb(file) {
   const db = new DatabaseSync(file);
   const { user_version: version } = db.prepare('PRAGMA user_version').get();
   const hasTables = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'users'").get();
-  if (hasTables && version < SCHEMA_VERSION) {
+  if (hasTables && version < 2) {
     throw new Error(`${file} was created by an older version of the app. Move it aside and restart to create a fresh database.`);
+  }
+  // Upgrades that keep existing data, keyed by the version they upgrade from.
+  if (hasTables && version < 3) {
+    db.exec(`
+      ALTER TABLE users ADD COLUMN photo TEXT;
+      ALTER TABLE teams ADD COLUMN length_ft REAL;
+      ALTER TABLE teams ADD COLUMN make TEXT;
+      ALTER TABLE teams ADD COLUMN photo TEXT;
+    `);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

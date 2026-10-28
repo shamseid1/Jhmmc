@@ -108,7 +108,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.deepEqual((await ibra('POST', `/catches/${c.id}/like`)).body, { liked: true, likes: 1 });
   assert.equal((await ibra('POST', `/catches/${c.id}/comments`, { body: 'Bravo!' })).status, 201);
   assert.equal((await ibra('DELETE', `/catches/${c.id}`)).status, 403);
-  assert.equal((await fetch(base + c.photoUrl)).status, 401, 'photos need a sign-in');
+  assert.equal((await fetch(base + c.photoUrl)).status, 200, 'photos are public');
 
   // Logging for someone outside the boat is refused.
   const other = new FormData();
@@ -135,12 +135,73 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal((await kofi('DELETE', `/catches/${c.id}`)).status, 200, 'captain can delete crew catches');
 });
 
-test('sign-in is required to see anything', async () => {
+test('participants: boats and anglers with photos and tallies', async () => {
+  const cap = client();
+  await cap('POST', '/auth/register', { name: 'Musa Kamara', email: 'musa@example.com', password: 'password1' });
+  let r = await cap('POST', '/teams', { name: 'Freetown Flyer', lengthFt: '9', make: 'Bertram' });
+  assert.equal(r.status, 400, 'length is checked');
+  r = await cap('POST', '/teams', { name: 'Freetown Flyer', lengthFt: '42', make: 'Bertram', country: 'Sierra Leone' });
+  const team = r.body.team;
+  assert.equal(team.lengthFt, 42);
+  assert.equal(team.make, 'Bertram');
+
+  const boatPic = new FormData();
+  boatPic.set('photo', new Blob([PNG], { type: 'image/png' }), 'boat.png');
+  r = await cap('POST', `/teams/${team.id}/photo`, boatPic);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.team.photoUrl, /^\/uploads\//);
+
+  const meta = (await cap('GET', '/meta')).body;
+  const tarpon = meta.species.find((s) => s.name === 'Atlantic tarpon');
+  for (const [w, rel] of [['40', ''], ['', 'on']]) {
+    const fd = new FormData();
+    fd.set('speciesId', tarpon.id);
+    fd.set('caughtOn', '2026-03-01');
+    if (w) fd.set('weightKg', w);
+    if (rel) fd.set('released', rel);
+    assert.equal((await cap('POST', '/catches', fd)).status, 201);
+  }
+
   const anon = client();
-  assert.equal((await anon('GET', '/catches')).status, 401);
-  assert.equal((await anon('GET', '/teams')).status, 401);
-  assert.equal((await anon('GET', '/leaderboard')).status, 401);
-  assert.equal((await anon('GET', '/meta')).status, 200);
+  const boat = (await anon('GET', '/teams')).body.teams.find((t) => t.id === team.id);
+  assert.deepEqual([boat.catches, boat.released, boat.weighed, boat.members], [2, 1, 1, 1]);
+  let musa = (await anon('GET', '/anglers')).body.anglers.find((a) => a.name === 'Musa Kamara');
+  assert.equal(musa.teamName, 'Freetown Flyer');
+  assert.equal(musa.photoUrl, r.body?.team?.photoUrl ?? boat.photoUrl, 'falls back to the boat photo');
+  assert.deepEqual([musa.released, musa.weighed], [1, 1]);
+
+  const me = new FormData();
+  me.set('photo', new Blob([PNG], { type: 'image/png' }), 'me.png');
+  r = await cap('POST', '/me/photo', me);
+  assert.equal(r.status, 200);
+  musa = (await anon('GET', '/anglers')).body.anglers.find((a) => a.name === 'Musa Kamara');
+  assert.equal(musa.photoUrl, r.body.user.photoUrl);
+  assert.notEqual(musa.photoUrl, boat.photoUrl);
+
+  const crew = client();
+  await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' });
+  await crew('POST', '/teams/join', { code: team.joinCode });
+  const pic = new FormData();
+  pic.set('photo', new Blob([PNG], { type: 'image/png' }), 'boat.png');
+  assert.equal((await crew('POST', `/teams/${team.id}/photo`, pic)).status, 403, 'captain only');
+});
+
+test('visitors without an account can look but not act', async () => {
+  const anon = client();
+  const r = await anon('GET', '/catches');
+  assert.equal(r.status, 200);
+  assert.ok(r.body.catches.length > 0);
+  assert.equal(r.body.catches[0].canDelete, false);
+  assert.equal(r.body.catches[0].liked, false);
+  assert.equal((await anon('GET', `/catches/${r.body.catches[0].id}`)).status, 200);
+  assert.equal((await anon('GET', '/leaderboard')).status, 200);
+  assert.equal((await anon('GET', '/anglers')).status, 200);
+  const teams = (await anon('GET', '/teams')).body.teams;
+  const t = (await anon('GET', `/teams/${teams[0].id}`)).body.team;
+  assert.equal(t.joinCode, undefined, 'invite code stays with the crew');
+  assert.equal((await anon('POST', `/catches/${r.body.catches[0].id}/like`)).status, 401);
+  assert.equal((await anon('POST', `/catches/${r.body.catches[0].id}/comments`, { body: 'hi' })).status, 401);
+  assert.equal((await anon('POST', '/teams/join', { code: 'ABCDEF' })).status, 401);
   assert.equal((await anon('GET', '/me')).body.user, null);
 });
 

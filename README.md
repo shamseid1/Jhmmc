@@ -4,15 +4,17 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 
 ## Features
 
-- **Personal accounts**: every angler signs in with their own email and password. Signing in is required to see anything.
+- **Open to look at**: anyone with the link can browse the feed, leaderboards, boats, anglers, clubs and catches without an account.
+- **Personal accounts**: every angler signs in with their own email and password to like, comment, join a boat or log catches.
 - **Boats are teams**: a captain registers the boat (name, home port, country, club) and gets a 6-character crew invite code to share, for example on WhatsApp. Crew join with the code, and a boat can have any number of crew.
 - **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew.
-- **Individual anglers** without a boat can follow the feed and leaderboards, like and comment, but cannot log catches.
+- **Individual anglers** without a boat can like and comment, but cannot log catches.
+- **Participants tab**: every angler and every boat as a photo card with a search box, showing the boat (or boat length and make) and released/weighed counts. Captains add the boat's photo, length and make; anglers can add their own photo.
 - **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat. Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class, released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Boat, club and angler pages** with crew, stats and recent catches.
-- Mobile-first layout with dark mode.
+- Mobile-first layout with a bottom tab bar on phones, and dark mode.
 
 ## Running it
 
@@ -34,7 +36,7 @@ Environment variables:
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
 
-Upgrading from the first version: the database layout changed when boats were added. Move the old `data/fishing.db` aside and restart; the app refuses to start on an old database rather than lose data.
+Upgrading: newer versions upgrade the database automatically on start. The only exception is a database from the very first version (before boats), which the app refuses to open rather than lose data; move it aside and restart.
 
 ## Putting it online (Render)
 
@@ -60,7 +62,7 @@ test/             API tests (node:test)
 
 ## API overview
 
-Everything except `/api/meta`, `/api/me` and `/api/auth/*` needs a signed-in angler.
+Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 
 | Method | Path                          | Notes                                  |
 |--------|-------------------------------|----------------------------------------|
@@ -72,6 +74,9 @@ Everything except `/api/meta`, `/api/me` and `/api/auth/*` needs a signed-in ang
 | POST   | `/api/teams/join`             | `{code}` joins a boat's crew           |
 | POST   | `/api/teams/leave`            | Captains hand over first if they have crew |
 | POST   | `/api/teams/:id/code`         | Captain: new invite code               |
+| POST   | `/api/teams/:id/photo`        | Captain: boat photo (`multipart/form-data`) |
+| GET    | `/api/anglers`                | All anglers with boat, photo and released/weighed counts |
+| POST   | `/api/me/photo`               | Your own photo (`multipart/form-data`) |
 | POST   | `/api/teams/:id/captain`      | Captain: `{userId}` hands over         |
 | DELETE | `/api/teams/:id/members/:userId` | Captain: remove crew                |
 | GET/POST | `/api/clubs`                | List or register clubs                 |
