@@ -111,6 +111,9 @@ function createApp({
   // West Africa feed, leaderboards and records; JHMMC's own figures come only
   // from captains' registrations the secretary approved.
   const clubBook = (clubId) => (clubId === homeClubId() ? 'approved' : 'unofficial');
+  // Only fish caught on a tournament day score JHMMC points (catches aliased k).
+  const ON_TOURNAMENT = "EXISTS (SELECT 1 FROM events e WHERE e.kind = 'tournament' AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))";
+  const tournamentOn = (day) => !!db.prepare(`SELECT 1 FROM events WHERE kind = 'tournament' AND ? BETWEEN date AND COALESCE(end_date, date)`).get(day);
 
   // Club officials: the admin (ADMIN_EMAIL) and secretaries, who approve
   // points. Captains of JHMMC boats register their own boat's fish at the
@@ -846,6 +849,10 @@ function createApp({
     if (official && !canReview(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
       return { error: "Registrations are for today's fish only." };
     }
+    // Only tournament fish score, so registrations are for tournament days.
+    if (official && !tournamentOn(caughtOn)) {
+      return { error: `${caughtOn === new Date().toISOString().slice(0, 10) ? "Today isn't" : "That day isn't"} a tournament day: only tournament fish are registered for points.` };
+    }
     const lineClass = str(b.lineClass, 20);
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
     // JHMMC weights come only from the registration at the weigh station.
@@ -967,14 +974,14 @@ function createApp({
   function suggestPoints(catchId) {
     const row = db.prepare(`
       SELECT s.name AS species, s.points_per_kg AS pointsPerKg, k.weight_kg AS weightKg, k.released,
-        k.caught_on AS caughtOn, COALESCE(t.division, 'ocean') AS division
+        k.caught_on AS caughtOn, COALESCE(t.division, 'ocean') AS division, ${ON_TOURNAMENT} AS tournamentDay
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id WHERE k.id = ?
     `).get(catchId);
-    return scoring.scoreCatch({ ...row, released: !!row.released });
+    return scoring.scoreCatch({ ...row, released: !!row.released, tournamentDay: !!row.tournamentDay });
   }
 
   // Fish registered while only Sundays and holidays scored were saved with
-  // 0 points; every day scores now, so give them their points.
+  // 0 points; their points are worked out again under today's rules.
   for (const { id } of db.prepare("SELECT id FROM catches WHERE points_note LIKE 'Not a scoring day%' AND status IN ('pending_review', 'approved')").all()) {
     const { points, note } = suggestPoints(id);
     db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(points, note, id);
@@ -1197,8 +1204,10 @@ function createApp({
     const division = req.query.division === 'river' ? 'river' : 'ocean';
     const start = setting('season_start');
     const end = setting('season_end');
+    // Only tournament fish score: the season table adds up the tournaments.
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end`;
+      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end
+        AND ${ON_TOURNAMENT}`;
     const params = { division, start, end, home: homeClubId() };
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points

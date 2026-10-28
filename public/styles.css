@@ -487,3 +487,6 @@ button.link[hidden] { display: none; }
 .check.declare input { margin-top: 3px; flex: none; }
 .rulebook .app-rules { margin-top: 24px; padding-top: 12px; border-top: 2px solid var(--line); }
 .log-filter { display: block; margin-bottom: 12px; }
+.tournament-now { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--sun) 18%, var(--surface)); }
+.tournament-now .icon { color: #b26b00; }
+form[hidden] { display: none; }

@@ -1,4 +1,5 @@
 // JHMMC points for one catch, following the club rules for the season:
+// - only fish caught on a tournament day score;
 // - kept fish score their weight in kg times the species' points per kg;
 // - a released marlin scores 500; a marlin under 100 kg that is kept scores minus 500, whatever it weighs;
 // - a released sailfish scores as a 25 kg sailfish;
@@ -17,7 +18,8 @@
   const isSailfish = (species) => /sailfish/i.test(species);
   const round = (n) => Math.round(n * 10) / 10;
 
-  function scoreCatch({ species, pointsPerKg, weightKg, released, division = 'ocean' }) {
+  function scoreCatch({ species, pointsPerKg, weightKg, released, division = 'ocean', tournamentDay = true }) {
+    if (!tournamentDay) return { points: 0, note: 'Not a tournament day: only tournament fish score.' };
     if (isMarlin(species) && released) {
       return { points: RELEASED_MARLIN_POINTS, note: `Released marlin: ${RELEASED_MARLIN_POINTS} points.` };
     }

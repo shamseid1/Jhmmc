@@ -96,7 +96,7 @@ window.RULES = {
 <h3>Registering fish in the app</h3>
 <p class="notice">Added by the club for registrations made in this app. It is not part of the signed rules above.</p>
 <ol type="a">
-  <li>The captain registers the boat's fish on the day, at the boat's weigh station, with a photo of each fish hanging on the scale taken there and then.</li>
+  <li>Points come only from fish caught on tournament days on the club's calendar. The captain registers the boat's fish on the day, at the boat's weigh station, with a photo of each fish hanging on the scale taken there and then.</li>
   <li>By submitting, the captain declares that every fish was caught that day by the angler named, under these rules, and weighed on that station's scale.</li>
   <li>Registrations can't be changed. A captain may withdraw one until the secretary decides; the app keeps a record of every registration, withdrawal, dispute and decision.</li>
   <li>Every JHMMC captain can see the registrations waiting for approval. For 24 hours after a fish is registered, any other captain may dispute it, giving a reason. The secretary considers every dispute before approving.</li>
