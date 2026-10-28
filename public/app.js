@@ -2,7 +2,7 @@
 
 // ---- helpers --------------------------------------------------------------
 
-const state = { me: null, meta: null, clubs: null, afterLogin: null };
+const state = { me: null, meta: null, clubs: null, afterLogin: null, pending: 0, navActive: null };
 const main = document.getElementById('view');
 
 const esc = (v) =>
@@ -1190,6 +1190,7 @@ const pagesFor = (view) => ({
     }
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
+      <div class="card pad notify" id="notify"></div>
       <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
       ${groups.size ? [...groups.values()].map((g) => raw(html`<section class="sheet">
         <h2>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h2>
@@ -1223,6 +1224,7 @@ const pagesFor = (view) => ({
         err.textContent = ex.message;
       }
     });
+    renderNotify(view.querySelector('#notify'));
   },
 
   // Secretary: season dates and tournaments.
@@ -1327,9 +1329,11 @@ const pagesFor = (view) => ({
   // The menu behind the last tab: your dashboard, rules, clubs, account.
   async more() {
     const me = state.me;
-    const item = (href, iconName, label, sub = '') => `<a class="menu-item" href="${href}">
+    if (me?.canReview) await refreshPending();
+    const item = (href, iconName, label, sub = '', count = 0) => `<a class="menu-item" href="${href}">
       <span class="mi-icon">${icon(iconName)}</span>
       <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
+      ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
       <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<h1 class="center">More</h1>
       ${me ? raw(html`<div class="card pad me-card">
@@ -1345,7 +1349,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.weighStation ? `At ${me.weighStation}` : 'JHMMC registration at the dock')}
-        ${me.canReview ? item('#/review', 'review', 'Review catches', 'Check and approve points') : ''}
+        ${me.canReview ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -1716,6 +1720,7 @@ const ICONS = {
   review: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
@@ -1757,7 +1762,84 @@ function pointsBars(boats) {
   }).join('');
 }
 
-function renderNav(active) {
+// ---- review badge & phone notifications ----------------------------------
+
+// How many registrations wait for the secretary: shown on the More tab, the
+// Review catches menu item and the browser tab's title.
+async function refreshPending() {
+  const before = state.pending;
+  try {
+    state.pending = state.me?.canReview ? (await api('/officials/pending')).count : 0;
+  } catch {
+    return;
+  }
+  document.title = `${state.pending ? `(${state.pending}) ` : ''}West Africa Big Game`;
+  if (state.pending !== before) renderNav();
+}
+setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshPending(); });
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function pushKey(base64) {
+  const raw = atob((base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+async function pushSubscription() {
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  return { reg, sub: await reg.pushManager.getSubscription() };
+}
+
+// The "notifications on this phone" switch on the Review page.
+async function renderNotify(el) {
+  const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (!pushSupported()) {
+    el.innerHTML = iphone && !installed
+      ? `<p><b>Get a notification when fish are registered.</b></p><p class="small muted">On iPhone, first add this app to your Home Screen: tap the Share button, then <b>Add to Home Screen</b>. Open the app from the Home Screen and come back to this page.</p>`
+      : '<p class="small muted">This browser can\'t show notifications. Chrome on Android, or the app added to an iPhone Home Screen, can.</p>';
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    el.innerHTML = '<p class="small muted">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>';
+    return;
+  }
+  const { reg, sub } = await pushSubscription();
+  // Re-send a live subscription, in case the server forgot it.
+  if (sub) api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
+  el.innerHTML = sub
+    ? `<div class="notify-row"><span>${icon('check')} <b>Notifications are on</b> for this phone.</span><button data-act="push-off">Turn off</button></div>`
+    : `<div class="notify-row"><span><b>Get a notification</b> on this phone when a weighmaster registers fish.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
+  el.onclick = async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      if (btn.dataset.act === 'push-on') {
+        if ((await Notification.requestPermission()) !== 'granted') {
+          toast('Notifications were not allowed.');
+        } else {
+          const { publicKey } = await api('/push/key');
+          const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKey(publicKey) });
+          await api('/push/subscribe', { method: 'POST', body: fresh.toJSON() });
+          toast('Notifications are on');
+        }
+      } else {
+        await api('/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } });
+        await sub.unsubscribe();
+        toast('Notifications are off');
+      }
+    } catch (ex) {
+      toast(ex.message || 'Could not change notifications.');
+    }
+    renderNotify(el);
+  };
+}
+
+function renderNav(active = state.navActive) {
+  state.navActive = active;
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
@@ -1771,7 +1853,8 @@ function renderNav(active) {
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span></a>`)
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>${key === 'more' && state.pending
+        ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
 }
 
@@ -1783,6 +1866,7 @@ async function route() {
   let page = Object.hasOwn(pages, name) ? name : 'home';
   if (state.me && (page === 'login' || page === 'register')) page = 'home';
   renderNav(page);
+  refreshPending();
   main.replaceChildren(view);
   window.scrollTo(0, 0);
   try {

@@ -423,3 +423,18 @@ button.link[hidden] { display: none; }
 .scale-button .icon { width: 18px; height: 18px; vertical-align: 0; }
 .scale-button:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .scale-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+/* ---- review badge & notifications ---- */
+.nav-icon { position: relative; display: inline-flex; }
+.count-badge {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 10px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.nav-icon .count-badge { position: absolute; top: -7px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; box-shadow: 0 0 0 2px var(--brand); }
+.menu-item .count-badge { margin-left: auto; }
+.notify { margin-bottom: 16px; }
+.notify p { margin: 0 0 6px; }
+.notify p:last-child { margin-bottom: 0; }
+.notify-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.notify-row .icon { width: 18px; height: 18px; color: var(--good); }

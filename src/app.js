@@ -8,6 +8,7 @@ const scoring = require('./scoring');
 const auth = require('./auth');
 const igfa = require('./igfa-records');
 const { createMailer } = require('./mail');
+const { createPusher } = require('./push');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 // No 0/O or 1/I so codes survive being read out over the radio or WhatsApp.
@@ -52,9 +53,12 @@ function createApp({
   appUrl = process.env.APP_URL,
   // The person members contact for help; their account is the app's admin.
   adminEmail = process.env.ADMIN_EMAIL,
+  // Sends phone notifications; made from the database's keys unless given (tests).
+  pusher,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
+  pusher ??= createPusher(db, { contact: adminEmail });
   fs.mkdirSync(uploadDir, { recursive: true });
 
   const MAX_FISH_PER_SHEET = 30;
@@ -266,6 +270,48 @@ function createApp({
 
   // Anyone can look around; doing anything (posting, liking, joining) needs an account.
   api.use((req, res, next) => (req.method === 'GET' ? next() : auth.requireUser(req, res, next)));
+
+  // ---- notifications ------------------------------------------------------
+
+  api.get('/push/key', (_req, res) => res.json({ publicKey: pusher.publicKey }));
+
+  // A phone or browser that agreed to notifications; one person may have several.
+  api.post('/push/subscribe', (req, res) => {
+    const { endpoint, keys } = req.body ?? {};
+    if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint) || endpoint.length > 1000
+      || typeof keys?.p256dh !== 'string' || typeof keys?.auth !== 'string') {
+      return res.status(400).json({ error: 'That notification subscription could not be read.' });
+    }
+    db.prepare(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`)
+      .run(req.user.id, endpoint, keys.p256dh, keys.auth);
+    res.status(201).json({ ok: true });
+  });
+
+  api.delete('/push/subscribe', (req, res) => {
+    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(String(req.body?.endpoint ?? ''), req.user.id);
+    res.json({ ok: true });
+  });
+
+  // Tells the secretary (and the admin) that new registrations are waiting.
+  // Sent in the background: a slow push service never holds up the weighmaster.
+  function notifyReviewers(teamId, count, by) {
+    const reviewers = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscriptions s JOIN users u ON u.id = s.user_id
+      WHERE (u.role = 'secretary' OR lower(u.email) = ?) AND u.id != ?`).all(adminEmail ?? '', by.id);
+    if (!reviewers.length) return;
+    const boat = db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId)?.name ?? 'A boat';
+    const waiting = db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status = 'pending_review'").get().n;
+    const payload = {
+      title: 'Fish to review',
+      body: `${boat}: ${count === 1 ? '1 fish' : `${count} fish`} registered by ${by.name}. ${waiting} waiting in total.`,
+      url: '/#/review',
+    };
+    for (const r of reviewers) {
+      pusher.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload)
+        .then((alive) => { if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(r.endpoint); })
+        .catch((err) => console.warn(`Notification failed: ${err.message}`));
+    }
+  }
 
   api.patch('/me', (req, res) => {
     const u = req.user;
@@ -835,7 +881,10 @@ function createApp({
       return res.status(400).json({ error: checked.error });
     }
     const id = insertCatchRow(checked.values);
-    if (opts.official) scoreRegistration(id);
+    if (opts.official) {
+      scoreRegistration(id);
+      notifyReviewers(opts.teamId, 1, req.user);
+    }
     res.status(201).json({ catch: getCatch(id, req.user) });
   }
 
@@ -918,6 +967,7 @@ function createApp({
       const ids = rows.map(insertCatchRow);
       ids.forEach(scoreRegistration);
       db.exec('COMMIT');
+      notifyReviewers(teamId, ids.length, req.user);
       res.status(201).json({ catches: ids.map((id) => getCatch(id, req.user)) });
     } catch (err) {
       db.exec('ROLLBACK');
@@ -932,6 +982,11 @@ function createApp({
       .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn) }));
     // Weighmasters see what they registered that the secretary hasn't decided yet.
     res.json({ toReview: canReview(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
+  });
+
+  // How many registrations wait for the secretary: the badge in the menu.
+  api.get('/officials/pending', requireReview, (_req, res) => {
+    res.json({ count: db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status = 'pending_review'").get().n });
   });
 
   // Secretary: approve (with the rules' points or a corrected figure) or reject.

@@ -46,6 +46,7 @@ Environment variables:
 | `ADMIN_EMAIL` | `shamseid4@gmail.com` | Club admin's email. Members who forget their password are told to write to it, and the account with this email gets the admin Members page |
 | `APP_URL`     | the request's address | Public address used in emailed links, e.g. `https://west-africa-big-game.onrender.com` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | — | Email server for password resets. Without `SMTP_HOST`, emails are printed to the server log |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | made on first start | Keys for phone notifications (Web Push). Without them the app makes a pair and keeps it in the database |
 | `MAIL_FROM`   | `SMTP_USER`        | Sender shown on emails, e.g. `JHMMC <noreply@jhmmc.com>` |
 
 Upgrading: newer versions upgrade the database automatically on start. The only exception is a database from the very first version (before boats), which the app refuses to open rather than lose data; move it aside and restart.
@@ -124,6 +125,9 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | PATCH  | `/api/settings/season`        | Secretary: `{start, end}` season dates |
 | PATCH  | `/api/species/:id`            | Secretary: `{pointsPerKg}` |
 | GET    | `/api/officials/queue`        | Registrations waiting for the secretary, with the rules' suggested points (weighmasters see their own) |
+| GET    | `/api/officials/pending`      | Secretary: how many registrations are waiting (the menu badge) |
+| GET    | `/api/push/key`               | Public key for subscribing to phone notifications |
+| POST/DELETE | `/api/push/subscribe`    | Turn phone notifications on or off for this browser (`PushSubscription` JSON / `{endpoint}`) |
 | POST   | `/api/weigh`                  | Weighmaster: register a fish for a JHMMC boat (weight, station, line, scale photo) |
 | POST   | `/api/weigh/sheet`            | Weighmaster: a boat's fish in one go: `teamId`, `caughtOn`, `fish` (JSON list), scale photos as `scale_<n>`; all or nothing |
 | POST   | `/api/catches/:id/review`     | Secretary: `{decision: approve|reject, points?, note?}` |
