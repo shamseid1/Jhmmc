@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 17;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -175,9 +175,6 @@ CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
   date TEXT NOT NULL,
   end_date TEXT,
-  -- Tournaments: 'ocean' or 'river' when only for those boats; NULL for both,
-  -- each with its own results.
-  division TEXT CHECK (division IN ('ocean', 'river')),
   kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament')),
   name TEXT NOT NULL
 );
@@ -353,11 +350,6 @@ function openDb(file) {
   if (hasTables && version < 15) {
     // Captains now register their own boat's fish; there are no weighmasters.
     db.exec("UPDATE users SET role = NULL, weigh_station = NULL WHERE role = 'weighmaster'");
-  }
-  if (hasTables && version < 18) {
-    if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'division')) {
-      db.exec("ALTER TABLE events ADD COLUMN division TEXT CHECK (division IN ('ocean', 'river'))");
-    }
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
