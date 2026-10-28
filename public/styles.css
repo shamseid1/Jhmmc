@@ -366,3 +366,4 @@ button.liked .icon { fill: currentColor; }
 .spot-map iframe { width: 100%; height: 220px; border: 1px solid var(--line); border-radius: var(--radius); display: block; }
 .spot-map p { margin: 6px 0 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .spot-map .icon { width: 16px; height: 16px; vertical-align: -3px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

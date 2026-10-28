@@ -185,6 +185,57 @@ function syncDivision(form) {
 const fmtCoords = (lat, lng) =>
   `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
 
+// Reads a position typed from a GPS or chartplotter: decimal degrees
+// ("6.3105, -10.8074", "6.3105N 10.8074W"), degrees and minutes
+// ("6°18.63'N 10°48.44'W") or degrees, minutes and seconds. Returns
+// { lat, lng } or null if it can't make sense of it.
+function parseCoords(text) {
+  const clean = String(text).toUpperCase().replace(/[°º'′’"″”]/g, ' ').replace(/(\d),(\d)/g, '$1.$2');
+  const toDegrees = (nums, hemi) => {
+    if (!nums.length || nums.length > 3) return null;
+    const [d, m = 0, s = 0] = nums.map(Number);
+    if (m < 0 || m >= 60 || s < 0 || s >= 60) return null;
+    const value = Math.abs(d) + m / 60 + s / 3600;
+    return d < 0 || hemi === 'S' || hemi === 'W' ? -value : value;
+  };
+  // Split into two groups of numbers, each with an optional N/S/E/W before or after.
+  const groups = [];
+  let cur = { nums: [], hemi: null };
+  const close = () => {
+    if (cur.nums.length) groups.push(cur);
+    cur = { nums: [], hemi: null };
+  };
+  for (const tok of clean.match(/-?\d+(?:\.\d+)?|[NSEW]|,|;/g) ?? []) {
+    if (tok === ',' || tok === ';') close();
+    else if (/[NSEW]/.test(tok)) {
+      // A letter after numbers ends their group, unless the group already
+      // had its letter in front ("N 6.31 W 10.81"): then it starts the next one.
+      if (cur.nums.length && !cur.hemi) {
+        cur.hemi = tok;
+        close();
+      } else {
+        close();
+        cur.hemi = tok;
+      }
+    } else cur.nums.push(tok);
+  }
+  close();
+  // Without separators or letters, split the numbers evenly: "6 18.63 10 48.44".
+  // With a degree sign, "6°18.6" is a half-typed latitude, not two positions.
+  const evenSplits = /[°º]/.test(text) ? [4, 6] : [2, 4, 6];
+  if (groups.length === 1 && evenSplits.includes(groups[0].nums.length) && !groups[0].hemi) {
+    const n = groups[0].nums;
+    groups.splice(0, 1, { nums: n.slice(0, n.length / 2), hemi: null }, { nums: n.slice(n.length / 2), hemi: null });
+  }
+  if (groups.length !== 2) return null;
+  let [a, b] = groups;
+  if (a.hemi === 'E' || a.hemi === 'W' || b.hemi === 'N' || b.hemi === 'S') [a, b] = [b, a];
+  const lat = toDegrees(a.nums, a.hemi);
+  const lng = toDegrees(b.nums, b.hemi);
+  if (lat === null || lng === null || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 };
+}
+
 function spotMap(c) {
   if (c.lat == null) return '';
   const d = 0.08;
@@ -439,8 +490,11 @@ const pagesFor = (view) => ({
           <label>Where <input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
           <div class="spot-row">
             <button type="button" id="locate">${raw(icon('locate'))} Use my location</button>
-            <span class="small muted" id="spot-status"></span>
+            <span class="small muted">or type the coordinates</span>
           </div>
+          <label class="sr-only" for="coords">Coordinates</label>
+          <input id="coords" name="coords" autocomplete="off" inputmode="text" placeholder="e.g. 6°18.63'N 10°48.44'W or 6.3105, -10.8074">
+          <span class="small muted" id="spot-status"></span>
           <input type="hidden" name="lat"><input type="hidden" name="lng">
           <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
         </div>
@@ -485,6 +539,7 @@ const pagesFor = (view) => ({
       navigator.geolocation.getCurrentPosition((pos) => {
         form.lat.value = pos.coords.latitude.toFixed(5);
         form.lng.value = pos.coords.longitude.toFixed(5);
+        form.coords.value = `${form.lat.value}, ${form.lng.value}`;
         status.textContent = `${fmtCoords(pos.coords.latitude, pos.coords.longitude)} (±${Math.round(pos.coords.accuracy)} m)`;
         view.querySelector('#spot-share').hidden = false;
       }, (err) => {
@@ -492,6 +547,16 @@ const pagesFor = (view) => ({
           ? 'Location is blocked. Allow it for this site in your phone settings, or type the place instead.'
           : 'Couldn\'t get a GPS fix. Try again in the open, or type the place instead.';
       }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+    });
+    // Typed coordinates: read them as you type and say what was understood.
+    form.coords.addEventListener('input', () => {
+      const status = view.querySelector('#spot-status');
+      const text = form.coords.value.trim();
+      const spot = text ? parseCoords(text) : null;
+      form.lat.value = spot ? spot.lat : '';
+      form.lng.value = spot ? spot.lng : '';
+      view.querySelector('#spot-share').hidden = !spot;
+      status.textContent = !text ? '' : spot ? `Reads as ${fmtCoords(spot.lat, spot.lng)}` : "Can't read those coordinates yet. Use N/S and E/W, or a comma between the two.";
     });
     // Show the chosen photo so it's clear it's attached.
     form.photo.addEventListener('change', () => {
