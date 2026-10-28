@@ -325,6 +325,17 @@ function createApp({
     res.json({ ok: true, role, weighStation: station });
   });
 
+  // The admin puts each JHMMC boat under the weigh station it brings its fish to.
+  api.patch('/admin/teams/:id', requireAdmin, (req, res) => {
+    const team = db.prepare('SELECT id, club_id AS clubId FROM teams WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!team) return res.status(404).json({ error: 'Boat not found.' });
+    if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station.' });
+    const station = req.body.weighStation || null;
+    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
+    db.prepare('UPDATE teams SET weigh_station = ? WHERE id = ?').run(station, team.id);
+    res.json({ ok: true, weighStation: station });
+  });
+
   // A one-time link the admin passes on (e.g. by WhatsApp) to a member who forgot their password.
   api.post('/admin/users/:id/reset-link', requireAdmin, (req, res) => {
     const id = intId(req.params.id);
@@ -395,7 +406,7 @@ function createApp({
   api.get('/teams', (_req, res) => {
     const teams = db.prepare(`
       SELECT t.id, t.name, t.home_port AS homePort, t.country, t.length_ft AS lengthFt, t.make, t.photo, t.division,
-        c.id AS clubId, c.name AS clubName,
+        t.weigh_station AS weighStation, c.id AS clubId, c.name AS clubName,
         (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members, ${TALLY}
       FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status = 'unofficial'
       GROUP BY t.id ORDER BY t.name COLLATE NOCASE
@@ -452,7 +463,8 @@ function createApp({
   function getTeam(id, viewerId) {
     const team = db.prepare(`
       SELECT t.id, t.name, t.home_port AS homePort, t.country, t.captain_id AS captainId, t.join_code AS joinCode,
-        t.length_ft AS lengthFt, t.make, t.photo, t.division, t.created_at AS createdAt, c.id AS clubId, c.name AS clubName
+        t.length_ft AS lengthFt, t.make, t.photo, t.division, t.weigh_station AS weighStation, t.created_at AS createdAt,
+        c.id AS clubId, c.name AS clubName
       FROM teams t LEFT JOIN clubs c ON c.id = t.club_id WHERE t.id = ?
     `).get(id);
     if (!team) return null;
@@ -541,8 +553,10 @@ function createApp({
     if (db.prepare('SELECT 1 FROM teams WHERE name = ? AND id != ?').get(name, team.id)) {
       return res.status(409).json({ error: 'Another boat already has that name.' });
     }
-    db.prepare('UPDATE teams SET name = ?, home_port = ?, country = ?, club_id = ?, length_ft = ?, make = ?, division = ? WHERE id = ?')
-      .run(name, homePort, country, clubId, length, make, division, team.id);
+    // Only JHMMC boats have a weigh station; leaving the club clears it.
+    db.prepare(`UPDATE teams SET name = ?, home_port = ?, country = ?, club_id = ?, length_ft = ?, make = ?, division = ?,
+      weigh_station = CASE WHEN ? = ? THEN weigh_station END WHERE id = ?`)
+      .run(name, homePort, country, clubId, length, make, division, clubId, homeClubId(), team.id);
     res.json({ team: getTeam(team.id, req.user.id) });
   });
 

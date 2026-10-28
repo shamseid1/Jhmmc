@@ -512,6 +512,13 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { weighStation: 'Extreme' });
     await sec('PATCH', '/settings/season', { start: day(-180), end: day(180) });
     assert.equal((await wm('GET', '/me')).body.user.weighStation, 'Extreme');
+    // The admin puts each JHMMC boat under a weigh station.
+    assert.equal((await sec('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 403, 'admin only');
+    assert.equal((await boss('PATCH', `/admin/teams/${visitor.id}`, { weighStation: 'Extreme' })).status, 400, 'JHMMC boats only');
+    assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Nowhere' })).status, 400);
+    assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 200);
+    assert.equal((await as()('GET', `/teams/${ocean.id}`)).body.team.weighStation, 'Extreme');
+    assert.equal((await as()('GET', '/teams')).body.teams.find((t) => t.id === ocean.id).weighStation, 'Extreme');
     assert.equal((await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
     r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Beerville', lineClass: '50 lb' }));
     const wahoo = r.body.catch;

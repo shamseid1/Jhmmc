@@ -61,6 +61,18 @@ function options(items, selected, placeholder) {
   })}`;
 }
 
+// JHMMC boats for the weigh sheet, grouped by the weigh station the admin put
+// them under; the weighmaster's own station comes first.
+function boatOptions(boats, mine) {
+  const label = (t) => `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`;
+  const order = [...new Set([mine, ...state.meta.weighStations].filter(Boolean)), null];
+  const groups = order.map((w) => [w, boats.filter((t) => (t.weighStation || null) === w)]).filter(([, list]) => list.length);
+  const opts = (list) => list.map((t) => `<option value="${esc(t.id)}">${esc(label(t))}</option>`).join('');
+  if (groups.length < 2) return `<option value="">Choose…</option>${opts(boats)}`;
+  return `<option value="">Choose…</option>${groups.map(([w, list]) =>
+    `<optgroup label="${esc(w ? (w === mine ? `${w} (your station)` : w) : 'No station set')}">${opts(list)}</optgroup>`).join('')}`;
+}
+
 function speciesOptions(selected, placeholder) {
   const groups = {};
   for (const s of state.meta.species) (groups[s.category] ||= []).push(s);
@@ -688,7 +700,8 @@ const pagesFor = (view) => ({
     const inviteMsg = `Join our boat ${team.name} on West Africa Big Game: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
-    const facts = [division, spec, team.homePort, team.country].filter(Boolean).join(' · ');
+    const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
+    const facts = [division, station, spec, team.homePort, team.country].filter(Boolean).join(' · ');
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
       <h1>${team.name}</h1>
       <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
@@ -978,7 +991,7 @@ const pagesFor = (view) => ({
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
       <form class="card pad stack" id="sheet">
         <div class="row">
-          <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
+          <label>Boat <select name="teamId" required>${raw(boatOptions(teams.filter((t) => isJhmmc(t.clubId)), station))}</select></label>
           ${state.me.canReview
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
@@ -1278,6 +1291,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Find a member, make a password reset link')}
+        ${item('#/stations', 'boat', 'Boat weigh stations', 'Which station each JHMMC boat weighs at')}
       </div>`) : ''}
       <h2>Rules</h2>
       <div class="card menu">
@@ -1303,6 +1317,33 @@ const pagesFor = (view) => ({
   },
 
   // Admin only: every account, with a one-time password reset link to pass on.
+  // Admin: which weigh station each JHMMC boat brings its fish to.
+  async stations() {
+    if (!state.me?.isAdmin) {
+      view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
+      return;
+    }
+    const { teams } = await api('/teams');
+    const boats = teams.filter((t) => isJhmmc(t.clubId));
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Boat weigh stations</h1>
+      <p class="small muted">Put each JHMMC boat under the weigh station it brings its fish to. On the registration sheet, each weighmaster sees their station's boats first; they can still register any boat.</p>
+      <div class="card"><ul class="list">${boats.length ? boats.map((t) => raw(html`<li class="member" data-id="${t.id}">
+        <span><a href="#/boat/${t.id}"><b>${t.name}</b></a><div class="muted small">${t.division === 'river' ? 'River' : 'Ocean'}</div></span>
+        <select data-act="station" aria-label="Weigh station for ${t.name}">${raw(options(state.meta.weighStations, t.weighStation, 'No station'))}</select>
+      </li>`)) : raw('<li class="muted">No JHMMC boats yet.</li>')}</ul></div>`;
+    view.addEventListener('change', async (e) => {
+      const sel = e.target.closest('select[data-act=station]');
+      if (!sel) return;
+      try {
+        await api(`/admin/teams/${sel.closest('[data-id]').dataset.id}`, { method: 'PATCH', body: { weighStation: sel.value } });
+        toast(sel.value ? `Weighs at ${sel.value}` : 'No weigh station');
+      } catch (ex) {
+        toast(ex.message);
+      }
+    });
+  },
+
   async members() {
     if (!state.me?.isAdmin) {
       view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
@@ -1653,7 +1694,7 @@ function renderNav(active) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', stations: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
