@@ -1,13 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { scoreCatch, isSunday } = require('../src/scoring');
+const { scoreCatch } = require('../src/scoring');
 
-const day = { scoringDay: true };
+const day = {};
 
 test('JHMMC points per catch', () => {
-  assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, weightKg: 20, ...day }).points, 100);
+  assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, weightKg: 20, ...day }).points, 100, 'any day scores');
   assert.equal(scoreCatch({ species: 'Barracuda', pointsPerKg: 3, weightKg: 7.5, ...day }).points, 22.5);
-  assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, weightKg: 20, scoringDay: false }).points, 0, 'not a scoring day');
   assert.equal(scoreCatch({ species: 'Atlantic blue marlin', pointsPerKg: 5, released: true, ...day }).points, 500);
   assert.equal(scoreCatch({ species: 'Atlantic blue marlin', pointsPerKg: 5, weightKg: 80, ...day }).points, -400, 'small marlin kept');
   assert.equal(scoreCatch({ species: 'Atlantic blue marlin', pointsPerKg: 5, weightKg: 180, ...day }).points, 900);
@@ -16,9 +15,4 @@ test('JHMMC points per catch', () => {
   assert.equal(scoreCatch({ species: 'Snapper', pointsPerKg: 5, weightKg: 1.5, division: 'ocean', ...day }).points, 0, 'under 2 kg ocean');
   assert.equal(scoreCatch({ species: 'Snapper', pointsPerKg: 5, weightKg: 1.5, division: 'river', ...day }).points, 7.5, 'river minimum is 1 kg');
   assert.equal(scoreCatch({ species: 'Wahoo', pointsPerKg: 5, released: true, ...day }).points, 0, 'released, not weighed');
-});
-
-test('Sundays', () => {
-  assert.equal(isSunday('2026-11-01'), true);
-  assert.equal(isSunday('2026-10-31'), false);
 });

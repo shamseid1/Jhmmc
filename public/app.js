@@ -881,7 +881,7 @@ const pagesFor = (view) => ({
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by weighmasters and approved by the secretary, on Sundays, holidays and tournaments.
+      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by weighmasters on the day and approved by the secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       <h2>Boats</h2>
       <div class="card table-wrap"><table>
@@ -926,7 +926,7 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li>Only <b>Sundays, public holidays and tournament days</b> score. The secretary keeps the calendar.</li>
+          <li>Every fishing day scores. A weighmaster can only register fish <b>on the day they are brought in</b>.</li>
           <li>Only fish <b>registered by a JHMMC weighmaster</b> at the dock count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept has its points <b>deducted</b>.</li>
@@ -959,7 +959,7 @@ const pagesFor = (view) => ({
   // as many fish as it brought in, submitted together.
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (JHMMC weighmasters only)');
-    const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
+    const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
     const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const station = state.me.weighStation;
     if (!station && !state.me.canReview) {
@@ -975,7 +975,7 @@ const pagesFor = (view) => ({
       <form class="card pad stack" id="sheet">
         <div class="row">
           <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
-          <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
+          <p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>
         </div>
         ${station ? raw(html`<p class="station-fixed">Weigh station: <b>${station}</b></p>`)
           : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
@@ -1016,8 +1016,6 @@ const pagesFor = (view) => ({
     // Points for each fish, worked out with the club's rules as the weight is typed.
     const updatePoints = () => {
       const team = teams.find((t) => String(t.id) === sheet.teamId.value);
-      const date = sheet.caughtOn.value;
-      const scoringDay = !!date && (scoring.isSunday(date) || events.some((e) => e.date === date));
       let total = 0;
       let totalKg = 0;
       for (const row of list.querySelectorAll('.fish')) {
@@ -1033,7 +1031,7 @@ const pagesFor = (view) => ({
         }
         const r = scoring.scoreCatch({
           species: sp.name, pointsPerKg: sp.pointsPerKg, weightKg: weight === '' ? null : Number(weight),
-          released, division: team?.division || 'ocean', scoringDay,
+          released, division: team?.division || 'ocean',
         });
         out.innerHTML = html`<b>${fmtPoints(r.points)}</b> · ${r.note}`;
         out.className = `points-preview ${r.points > 0 ? 'good' : r.points < 0 ? 'bad' : 'muted'}`;
@@ -1148,13 +1146,13 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Secretary: season dates, public holidays and tournaments.
+  // Secretary: season dates and tournaments.
   async calendar() {
     const { season, events } = await api('/events');
     const editable = !!state.me?.canReview;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
-      <p class="small muted">Every Sunday scores automatically. Public holidays and tournament days listed here score too.</p>
+      <p class="small muted">Every fishing day scores. Tournaments listed here get their own results page and winner.</p>
       ${editable ? raw(html`<form class="card pad stack" id="season">
         <div class="row">
           <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
@@ -1162,18 +1160,16 @@ const pagesFor = (view) => ({
         </div>
         <p class="error"></p><div><button type="submit">Save season dates</button></div>
       </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
-      <h2>Holidays and tournaments</h2>
+      <h2>Tournaments</h2>
       <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
         <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDay(ev.date)}</div></span>
         ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
       </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
-      ${editable ? raw(html`<h2>Add a day</h2>
+      ${editable ? raw(html`<h2>Add a tournament</h2>
       <form class="card pad stack" id="event">
-        <div class="row">
-          <label>Date <input name="date" type="date" required></label>
-          <label>Type <select name="kind">${raw(options([['tournament', 'Tournament'], ['holiday', 'Public holiday']], 'tournament'))}</select></label>
-        </div>
-        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup, Independence Day"></label>
+        <input type="hidden" name="kind" value="tournament">
+        <label>Date <input name="date" type="date" required></label>
+        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup"></label>
         <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
       </form>`) : ''}`;
     if (!editable) return;
@@ -1191,7 +1187,7 @@ const pagesFor = (view) => ({
     });
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act=delete-event]');
-      if (!btn || !confirm('Remove this day from the calendar? Catches on it stop scoring unless it is a Sunday.')) return;
+      if (!btn || !confirm('Remove this tournament from the calendar? Its fish still count in the season.')) return;
       await api(`/events/${btn.closest('[data-id]').dataset.id}`, { method: 'DELETE' });
       route();
     });
@@ -1266,7 +1262,7 @@ const pagesFor = (view) => ({
       ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.weighStation ? `At ${me.weighStation}` : 'JHMMC registration at the dock')}
         ${me.canReview ? item('#/review', 'review', 'Review catches', 'Check and approve points') : ''}
-        ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Holidays and tournaments') : ''}
+        ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
@@ -1277,7 +1273,7 @@ const pagesFor = (view) => ({
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
         ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg and scoring days'))}
-        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments and holidays'))}
+        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
       </div>
       <h2>Records &amp; clubs</h2>
       <div class="card menu">

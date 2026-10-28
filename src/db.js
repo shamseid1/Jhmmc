@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS species (
   points_per_kg REAL NOT NULL DEFAULT 3
 );
 
--- Scoring days besides Sundays: public holidays and tournaments.
+-- Calendar days: tournaments (and holidays from earlier versions, no longer used for scoring).
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
   date TEXT NOT NULL,

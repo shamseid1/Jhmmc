@@ -1,5 +1,4 @@
 // JHMMC points for one catch, following the club rules for the season:
-// - only Sundays, public holidays and tournament days score;
 // - kept fish score their weight in kg times the species' points per kg;
 // - a released marlin scores 500; a marlin under 100 kg that is kept loses its points;
 // - a released sailfish scores as a 25 kg sailfish;
@@ -17,12 +16,7 @@
   const isSailfish = (species) => /sailfish/i.test(species);
   const round = (n) => Math.round(n * 10) / 10;
 
-  function isSunday(date) {
-    return new Date(`${date}T12:00:00Z`).getUTCDay() === 0;
-  }
-
-  function scoreCatch({ species, pointsPerKg, weightKg, released, division = 'ocean', scoringDay }) {
-    if (!scoringDay) return { points: 0, note: 'Not a scoring day: only Sundays, holidays and tournaments count.' };
+  function scoreCatch({ species, pointsPerKg, weightKg, released, division = 'ocean' }) {
     if (isMarlin(species) && released) {
       return { points: RELEASED_MARLIN_POINTS, note: `Released marlin: ${RELEASED_MARLIN_POINTS} points.` };
     }
@@ -42,7 +36,7 @@
 
   // The same rules run on the server and, for the live points on the
   // registration sheet, in the browser (served as /scoring.js).
-  const api = { scoreCatch, isSunday, MIN_KG };
+  const api = { scoreCatch, MIN_KG };
   if (typeof module !== 'undefined') module.exports = api;
   else root.scoring = api;
 })(typeof window !== 'undefined' ? window : globalThis);

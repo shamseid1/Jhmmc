@@ -412,6 +412,9 @@ test('without email: members contact the admin, who makes reset links', async ()
 });
 
 test('JHMMC points: weigh-in, secretary approval, calendar and standings', async () => {
+  // Registrations are for today only, so this test works with today's date.
+  const day = (offset = 0) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
+  const TODAY = day();
   const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads3'), mailer, adminEmail: 'boss@example.com' });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
@@ -495,12 +498,15 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     // Sunday 25 Oct 2026: the weighmaster registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;
-    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: '2026-10-25' };
+    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY };
+    r = await wm('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
+    assert.match(r.body.error ?? '', /today/, 'only today can be registered');
     assert.equal((await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
     r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
     assert.match(r.body.error, /no weigh station/, 'weighmasters need an assigned station');
     // The admin assigns the weighmaster to Extreme; what they send for a station is ignored.
     await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { weighStation: 'Extreme' });
+    await sec('PATCH', '/settings/season', { start: day(-180), end: day(180) });
     assert.equal((await wm('GET', '/me')).body.user.weighStation, 'Extreme');
     assert.equal((await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
     r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Beerville', lineClass: '50 lb' }));
@@ -536,23 +542,23 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     // The secretary, who has no station, registers a river fish at Lofa River for a guest.
     r = await sec('POST', '/weigh', weighed({ teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
-      caughtOn: '2026-10-25', weightKg: '1.5', weighStation: 'Lofa River' }));
+      caughtOn: TODAY, weightKg: '1.5', weighStation: 'Lofa River' }));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const snapper = r.body.catch;
-    // Saturday catch: logged but not a scoring day.
+    // Every day scores now: a barracuda the secretary will reject.
     r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
-      caughtOn: '2026-10-24', weightKg: '8', weighStation: 'Beerville' }));
-    const saturday = r.body.catch;
+      caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville' }));
+    const extra = r.body.catch;
 
     const queue = (await sec('GET', '/officials/queue')).body;
     const sug = (id) => queue.toReview.find((c) => c.id === id).suggested.points;
     assert.equal(sug(wahoo.id), 105);
     assert.equal(sug(marlin.id), 500);
     assert.equal(sug(snapper.id), 7.5, 'river minimum is 1 kg');
-    assert.equal(sug(saturday.id), 0, 'Saturday is not a scoring day');
+    assert.equal(sug(extra.id), 24, 'every day scores');
     // A whole boat's sheet in one go: all or nothing.
     const sheet = (fish, photos) => {
-      const fd = form({ teamId: ocean.id, caughtOn: '2026-10-25', fish: JSON.stringify(fish) });
+      const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish) });
       for (const i of photos) fd.set(`scale_${i}`, new Blob([PNG], { type: 'image/png' }), `s${i}.png`);
       return fd;
     };
@@ -581,25 +587,25 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual([r.body.catch.status, r.body.catch.points], ['approved', 105]);
     await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' });
     await sec('POST', `/catches/${snapper.id}/review`, { decision: 'approve' });
-    assert.equal((await sec('POST', `/catches/${saturday.id}/review`, { decision: 'reject' })).status, 400, 'rejections need a reason');
-    await sec('POST', `/catches/${saturday.id}/review`, { decision: 'reject', note: 'Not a scoring day' });
+    assert.equal((await sec('POST', `/catches/${extra.id}/review`, { decision: 'reject' })).status, 400, 'rejections need a reason');
+    await sec('POST', `/catches/${extra.id}/review`, { decision: 'reject', note: 'Wrong species' });
     assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'approved catches are locked for crews');
 
-    // Tournament on Saturday 17 Oct: secretary adds it, then a catch that day scores.
-    assert.equal((await cap('POST', '/events', { date: '2026-10-17', kind: 'tournament', name: 'October Cup' })).status, 403);
-    const cup = (await sec('POST', '/events', { date: '2026-10-17', kind: 'tournament', name: 'October Cup' })).body.event;
+    // Today is a tournament: the secretary adds it to the calendar.
+    assert.equal((await cap('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).status, 403);
+    const cup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).body.event;
     r = await wm('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
-      caughtOn: '2026-10-17', weightKg: '40', weighStation: 'Barracuda Club' }));
+      caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
 
     const oceanTable = (await as()('GET', '/points?division=ocean')).body;
     assert.deepEqual(oceanTable.boats.map((b) => [b.teamName, b.points]), [['Sea Hunter', 725]]);
     assert.equal(oceanTable.tournaments[0].name, 'October Cup');
-    assert.deepEqual([oceanTable.tournaments[0].winner.teamName, oceanTable.tournaments[0].winner.points], ['Sea Hunter', 120]);
+    assert.deepEqual([oceanTable.tournaments[0].winner.teamName, oceanTable.tournaments[0].winner.points], ['Sea Hunter', 725]);
     const riverTable = (await as()('GET', '/points?division=river')).body;
     assert.deepEqual(riverTable.boats.map((b) => [b.teamName, b.points]), [['Lofa Runner', 7.5]]);
     const results = (await as()('GET', `/tournaments/${cup.id}`)).body.results;
-    assert.deepEqual(results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 120, 1]]);
+    assert.deepEqual(results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 725, 3]]);
 
     // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.
     const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
@@ -611,8 +617,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('PATCH', `/species/${sp('Atlantic sailfish').id}`, { pointsPerKg: 4 })).status, 200);
     assert.equal((await as()('GET', '/meta')).body.species.find((x) => x.name === 'Atlantic sailfish').pointsPerKg, 4);
     assert.equal((await sec('PATCH', '/settings/season', { start: '2027-01-01', end: '2026-01-01' })).status, 400);
-    r = await sec('PATCH', '/settings/season', { start: '2026-12-01', end: '2027-11-30' });
-    assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'October is outside the new season');
+    r = await sec('PATCH', '/settings/season', { start: day(30), end: day(300) });
+    assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'today is outside the new season');
   } finally {
     srv.close();
   }

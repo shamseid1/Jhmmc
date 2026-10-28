@@ -734,6 +734,10 @@ function createApp({
       return { error: 'Enter the date of the catch.' };
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
+    // Registrations are made at the dock on the day: today only (Monrovia time is UTC).
+    if (official && caughtOn !== new Date().toISOString().slice(0, 10)) {
+      return { error: "Registrations are for today's fish only." };
+    }
     const lineClass = str(b.lineClass, 20);
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
     // JHMMC crews' weights come only from the weighmaster's registration.
@@ -807,7 +811,6 @@ function createApp({
   // ---- official scoring: weigh-in, approval, calendar, standings ---------
 
   const eventsOn = (date) => db.prepare('SELECT id, kind, name FROM events WHERE date = ?').all(date);
-  const isScoringDay = (date) => scoring.isSunday(date) || eventsOn(date).length > 0;
 
   // The points the rules give a catch, as a suggestion for the secretary.
   function suggestPoints(catchId) {
@@ -816,7 +819,7 @@ function createApp({
         k.caught_on AS caughtOn, COALESCE(t.division, 'ocean') AS division
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id WHERE k.id = ?
     `).get(catchId);
-    return scoring.scoreCatch({ ...row, released: !!row.released, scoringDay: isScoringDay(row.caughtOn) });
+    return scoring.scoreCatch({ ...row, released: !!row.released });
   }
 
   // Weighmaster: register a fish at the dock for a JHMMC boat (the digital Fish Registration Form).
@@ -900,7 +903,8 @@ function createApp({
     res.json({ catch: getCatch(id, req.user) });
   });
 
-  // Season calendar: holidays and tournaments (Sundays are automatic).
+  // Season calendar: tournaments, each with its own results. (Holidays from
+  // earlier versions are kept but no longer affect scoring.)
   api.get('/events', (_req, res) => {
     const start = setting('season_start');
     const end = setting('season_end');
