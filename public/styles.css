@@ -214,7 +214,7 @@ button.more[hidden] { display: none; }
 /* ---- navigation: top bar on wide screens, tab bar at the bottom on phones ---- */
 :root { --green: #2fbf71; --blue: #4aa3ff; }
 #nav a { display: inline-flex; align-items: center; gap: 6px; }
-#nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #nav a[aria-current="page"] { background: rgba(255, 255, 255, .14); color: #fff; }
 
 @media (max-width: 640px) {
@@ -227,7 +227,7 @@ button.more[hidden] { display: none; }
     background: var(--brand); border-top: 1px solid rgba(255, 255, 255, .1);
   }
   #nav a { flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 11px; text-align: center; border-radius: 10px; }
-  #nav svg { width: 24px; height: 24px; }
+  #nav svg { width: 22px; height: 22px; }
   #nav a.cta { background: var(--sun); color: #2b1a00; }
   main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   #toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
@@ -308,13 +308,13 @@ label[hidden] { display: none; }
 .member.guest select { width: auto; padding: 4px 8px; font-size: 14px; }
 
 /* ---- icons (replace emoji) ---- */
-.icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+.icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
-.brand .mark { width: 34px; height: 17px; fill: currentColor; flex: none; }
-.catch-photo.placeholder .marlin { width: 55%; max-width: 260px; fill: rgba(255, 255, 255, .85); }
-.pcard .ph .icon { width: 56px; height: 56px; color: rgba(255, 255, 255, .85); stroke-width: 1.4; }
+.brand .mark { width: 30px; height: 30px; fill: currentColor; flex: none; }
+.catch-photo.placeholder .marlin { width: 48%; max-width: 240px; height: auto; fill: rgba(255, 255, 255, .85); }
+.pcard .ph .icon { width: 56px; height: 56px; color: rgba(255, 255, 255, .8); stroke-width: 1.5; }
 .me-ph .icon { width: 30px; height: 30px; color: var(--muted); }
 .mi-icon { display: grid; place-items: center; color: var(--accent); }
-.mi-icon .icon { width: 24px; height: 24px; }
+.mi-icon .icon { width: 22px; height: 22px; }
 .search .icon { color: var(--muted); }

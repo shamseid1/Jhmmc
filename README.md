@@ -103,3 +103,8 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 - Photo resizing, and cloud storage (S3 or similar) once it's hosted.
 - GPS/map of catch spots, tide and moon data, tag-and-release reporting to research programmes.
 - Package as an installable PWA or wrap it for the app stores.
+
+## Credits
+
+- Icons: [Lucide](https://lucide.dev) (ISC licence), copied into `public/app.js`.
+- Marlin logo: traced from artwork supplied by the club (`public/marlin.svg`, `public/logo.svg`).
