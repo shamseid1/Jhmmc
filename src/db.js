@@ -38,6 +38,9 @@ const SPECIES = [
 // IGFA line classes, in pounds, plus 100 lb, which local tournaments use.
 const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb', '30 lb', '50 lb', '80 lb', '100 lb', '130 lb', 'Unlimited'];
 
+// The founding club: always present, and listed first after IGFA on the Records page.
+const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
+
 const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
@@ -162,7 +165,8 @@ function openDb(file) {
     'INSERT OR IGNORE INTO species (name, scientific_name, category) VALUES (?, ?, ?)'
   );
   for (const s of SPECIES) insert.run(...s);
+  db.prepare('INSERT OR IGNORE INTO clubs (name, country) VALUES (?, ?)').run(HOME_CLUB.name, HOME_CLUB.country);
   return db;
 }
 
-module.exports = { openDb, COUNTRIES, LINE_CLASSES };
+module.exports = { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB };

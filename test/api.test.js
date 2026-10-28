@@ -229,6 +229,9 @@ test('visitors without an account can look but not act', async () => {
   assert.equal((await anon('POST', `/catches/${r.body.catches[0].id}/comments`, { body: 'hi' })).status, 401);
   assert.equal((await anon('POST', '/teams/join', { code: 'ABCDEF' })).status, 401);
   assert.equal((await anon('GET', '/me')).body.user, null);
+  const clubs = (await anon('GET', '/clubs')).body.clubs;
+  assert.deepEqual(clubs.filter((c) => c.name === 'JHMMC').map((c) => c.country), ['Liberia'], 'home club exists once');
+  assert.equal((await anon('GET', '/meta')).body.homeClub, 'JHMMC');
 });
 
 test('validation and auth errors', async () => {

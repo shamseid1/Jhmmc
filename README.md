@@ -14,7 +14,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Records**: the IGFA all-tackle world record for each species (weight, angler, place, year, African records flagged) beside the heaviest fish logged in the app and how close it came, plus the app's own records by species and IGFA line class. The world records live in `src/igfa-records.js`; check them against https://igfa.org/world-records/ and update that file when a record falls.
-- **Club records**: each club page lists the club's heaviest fish of every species (angler, boat, line class), and the Records page can be switched to any club, opening on the angler's own club.
+- **Club records**: the Records page has a "Records for" picker listing IGFA, then JHMMC, then every other club. A club's book shows its heaviest fish of each species (angler, boat, line class, share of the world record) and its records by line class; it opens on the angler's own club. Each club page also lists its records. JHMMC (Liberia) is created automatically as the founding club (`HOME_CLUB` in `src/db.js`).
 - **Boat, club and angler pages** with crew, stats and recent catches.
 - Mobile-first layout with a bottom tab bar on phones, and dark mode.
 

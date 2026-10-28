@@ -654,48 +654,59 @@ const pagesFor = (view) => ({
     });
   },
 
+  // One page, many record books: IGFA's world records, or any club's own.
   async records() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    // Anglers whose boat is in a club start on their club's records.
-    const clubParam = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : 'all');
-    const [{ species, lineRecords, checked, igfaUrl, club }, clubs] = await Promise.all([
-      api('/records' + (clubParam !== 'all' ? `?club=${encodeURIComponent(clubParam)}` : '')),
-      loadClubs(),
-    ]);
-    const where = club ? club.name : 'here';
+    const clubs = await loadClubs();
+    // The home club comes first after IGFA, then the rest by name.
+    const home = state.meta.homeClub.toLowerCase();
+    const books = [...clubs].sort((a, b) => (b.name.toLowerCase() === home) - (a.name.toLowerCase() === home) || a.name.localeCompare(b.name));
+    // Anglers whose boat is in a club open on their club's book; others on IGFA.
+    const book = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : 'igfa');
+    const isIgfa = book === 'igfa';
+    const { species, lineRecords, checked, igfaUrl, club } = await api('/records' + (isIgfa ? '' : `?club=${encodeURIComponent(book)}`));
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
     const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
-    const month = new Date(checked + '-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    view.innerHTML = html`${raw(boardTabs('records'))}
-      <label class="club-pick">Records for
-        <select id="club-pick">${raw(options([['all', 'All clubs'], ...clubs.map((c) => [c.id, c.name])], club ? club.id : 'all'))}</select>
-      </label>
-      <h2>IGFA all-tackle world records</h2>
-      <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association, next to the biggest one logged ${club ? `in ${club.name}` : 'here'}. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
-      <div class="records">
-        ${species.map((s) => raw(html`<article class="card pad record">
+    const pct = (s) => Math.round((s.best.weightKg / s.igfa.kg) * 100);
+    const picker = html`<label class="club-pick">Records for
+      <select id="club-pick">${raw(options([['igfa', 'IGFA world records'], ...books.map((c) => [c.id, c.name])], isIgfa ? 'igfa' : club.id))}</select>
+    </label>`;
+
+    let body;
+    if (isIgfa) {
+      const month = new Date(checked + '-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      body = html`<h2>IGFA all-tackle world records</h2>
+        <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
+        <div class="records">${species.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.igfa?.african ? raw('<span class="badge release">Caught in Africa</span>') : ''}</div>
-          ${s.igfa ? raw(html`<div class="wr"><span class="wr-lb">${s.igfa.display}</span> <span class="muted">${kg(s.igfa.kg)}</span></div>
+          ${s.igfa ? raw(html`<div><span class="wr-lb">${s.igfa.display}</span> <span class="muted">${kg(s.igfa.kg)}</span></div>
             <div class="small muted">${s.igfa.angler} · ${s.igfa.place} · ${s.igfa.date.slice(0, 4)}${s.igfa.note ? ` · ${s.igfa.note}` : ''}</div>`)
             : raw(html`<div class="small muted">No confirmed all-tackle record here. <a href="${igfaUrl}" target="_blank" rel="noopener">Look it up on IGFA</a></div>`)}
-          <div class="ours">
-            ${s.best ? raw(html`<span>Best ${club ? 'in club' : 'here'}: <a href="#/catch/${s.best.catchId}">${kg(s.best.weightKg)} · ${lb(s.best.weightKg)}</a> by <a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` (${s.best.teamName})` : ''}</span>
-              ${s.igfa ? raw(html`<div class="bar blue" title="Share of the world record"><i style="width:${Math.min(100, Math.max(2, (s.best.weightKg / s.igfa.kg) * 100))}%"></i></div>
-              <span class="small muted">${Math.round((s.best.weightKg / s.igfa.kg) * 100)}% of the world record</span>`) : ''}`)
-              : raw(html`<span class="small muted">None weighed ${club ? 'in this club' : 'here'} yet.</span>`)}
-          </div>
-        </article>`))}
-      </div>
-      <h2>${club ? `${club.name} records` : 'Our records'} by line class</h2>
-      <p class="small muted">The heaviest weighed fish logged ${where === 'here' ? 'here' : `by ${where} boats`} for each species and line class.</p>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>Species</th><th>Line</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
-        <tbody>${lineRecords.length ? lineRecords.map((r) => raw(html`<tr>
-          <td>${r.species}</td><td>${r.lineClass}</td>
-          <td class="num"><a href="#/catch/${r.catchId}">${kg(r.weightKg)}</a><div class="muted small">${lb(r.weightKg)}</div></td>
-          <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
-        </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
-      </table></div>`;
+        </article>`))}</div>`;
+    } else {
+      const held = species.filter((s) => s.best);
+      const open = species.filter((s) => !s.best);
+      body = html`<h2>${club.name} club records</h2>
+        <p class="small muted">The heaviest weighed fish of each species logged by ${club.name} boats.</p>
+        ${held.length ? raw(html`<div class="records">${held.map((s) => raw(html`<article class="card pad record">
+          <div class="record-head"><b>${s.name}</b>${s.best.lineClass ? raw(html`<span class="badge">${s.best.lineClass} line</span>`) : ''}</div>
+          <div><a class="wr-lb" href="#/catch/${s.best.catchId}">${lb(s.best.weightKg)}</a> <span class="muted">${kg(s.best.weightKg)}</span></div>
+          <div class="small muted"><a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` · ${s.best.teamName}` : ''} · ${fmtDate(s.best.caughtOn)}</div>
+          ${s.igfa ? raw(html`<div class="ours"><div class="bar blue" title="Share of the IGFA world record"><i style="width:${Math.min(100, Math.max(2, pct(s)))}%"></i></div>
+            <span class="small muted">${pct(s)}% of the IGFA world record (${s.igfa.display})</span></div>`) : ''}
+        </article>`))}</div>`) : raw(html`<div class="card pad empty">No weighed catches from ${club.name} boats yet. The first one logged sets the club record.</div>`)}
+        ${held.length && open.length ? raw(html`<p class="small muted">Still open: ${open.map((s) => s.name).join(', ')}.</p>`) : ''}
+        <h2>${club.name} records by line class</h2>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Species</th><th>Line</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
+          <tbody>${lineRecords.length ? lineRecords.map((r) => raw(html`<tr>
+            <td>${r.species}</td><td class="nw">${r.lineClass}</td>
+            <td class="num"><a href="#/catch/${r.catchId}">${lb(r.weightKg)}</a><div class="muted small">${kg(r.weightKg)}</div></td>
+            <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
+          </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
+        </table></div>`;
+    }
+    view.innerHTML = html`${raw(boardTabs('records'))}${raw(picker)}${raw(body)}`;
     view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });

@@ -3,7 +3,7 @@ const multer = require('multer');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { openDb, COUNTRIES, LINE_CLASSES } = require('./db');
+const { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB } = require('./db');
 const auth = require('./auth');
 const igfa = require('./igfa-records');
 
@@ -92,7 +92,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   api.get('/meta', (_req, res) => {
     const species = db.prepare('SELECT id, name, scientific_name AS scientificName, category FROM species ORDER BY category, name').all();
-    res.json({ countries: COUNTRIES, species, lineClasses: LINE_CLASSES });
+    res.json({ countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name });
   });
 
   // ---- auth --------------------------------------------------------------
