@@ -1,0 +1,621 @@
+<title>West Africa Big Game</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: a dockside weigh board. Sticky navy masthead, one centred column of
+   catch "weigh slips" whose weight block reads like the scale ticket. */
+:root {
+  --bg: #eef2f4;
+  --surface: #ffffff;
+  --sunk: #e3e9ed;
+  --ink: #0f1d26;
+  --muted: #536571;
+  --line: #d3dde3;
+  --deep: #0a2a3d;          /* Atlantic navy, the masthead */
+  --deep-ink: #e7f0f5;
+  --tide: #0b7c99;          /* links and primary actions */
+  --tide-ink: #ffffff;
+  --buoy: #e5622b;          /* marker-buoy orange, used once: log a catch */
+  --buoy-ink: #ffffff;
+  --release: #17805a;
+  --release-bg: #dcefe6;
+  --danger: #b4372f;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #08141b; --surface: #0f2029; --sunk: #142a35; --ink: #e2ecf1; --muted: #8fa6b3;
+    --line: #1f3846; --deep: #061a26; --deep-ink: #e2ecf1; --tide: #4cc0dc; --tide-ink: #04161e;
+    --buoy: #f07a45; --buoy-ink: #1b0a02; --release: #5ccf9c; --release-bg: #11362a; --danger: #ef7b72;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #08141b; --surface: #0f2029; --sunk: #142a35; --ink: #e2ecf1; --muted: #8fa6b3;
+  --line: #1f3846; --deep: #061a26; --deep-ink: #e2ecf1; --tide: #4cc0dc; --tide-ink: #04161e;
+  --buoy: #f07a45; --buoy-ink: #1b0a02; --release: #5ccf9c; --release-bg: #11362a; --danger: #ef7b72;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--deep); }
+a { color: var(--tide); }
+:focus-visible { outline: 2px solid var(--tide); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; line-height: 1.1; }
+h1 { font-size: 2rem; margin: 0; }
+h2 { font-size: 1.35rem; margin: 0; text-transform: uppercase; letter-spacing: .04em; }
+.muted { color: var(--muted); }
+.small { font-size: .875rem; }
+
+.mast {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--deep); color: var(--deep-ink);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.mast-in { max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding-block: 10px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; text-transform: uppercase; letter-spacing: .05em; margin-right: auto; color: var(--deep-ink); text-decoration: none; }
+.brand small { display: block; font-size: .7rem; letter-spacing: .14em; opacity: .7; font-weight: 600; }
+nav { display: flex; gap: 2px; flex-wrap: wrap; }
+nav a { color: var(--deep-ink); text-decoration: none; padding: 6px 10px; border-radius: 6px; font-weight: 600; font-size: .95rem; opacity: .82; }
+nav a[aria-current="page"] { background: rgba(255,255,255,.12); opacity: 1; }
+nav a.log { background: var(--buoy); color: var(--buoy-ink); opacity: 1; }
+
+main {
+  max-width: 760px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px;
+}
+.stack { display: grid; gap: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; }
+.notice { background: var(--sunk); border-radius: var(--r); padding: 14px 16px; }
+
+button, .btn {
+  font: 600 .95rem var(--font-body); padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none; min-height: 40px;
+}
+button.primary, .btn.primary { background: var(--tide); border-color: var(--tide); color: var(--tide-ink); }
+button.buoy { background: var(--buoy); border-color: var(--buoy); color: var(--buoy-ink); }
+button.ghost { background: transparent; }
+button.danger { color: var(--danger); }
+button.on { border-color: var(--buoy); color: var(--buoy); }
+button:disabled { opacity: .55; cursor: default; }
+
+label { display: grid; gap: 4px; font-weight: 600; font-size: .9rem; min-width: 0; }
+label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 1rem; }
+input, select, textarea {
+  font: 1rem var(--font-body); width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 0;
+}
+input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--release); }
+textarea { min-height: 84px; resize: vertical; }
+.err { color: var(--danger); font-weight: 600; margin: 0; }
+.err:empty { display: none; }
+
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; background: var(--sunk); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: .9rem; }
+.chip button { min-height: 28px; padding: 2px 8px; border: 0; background: transparent; }
+
+/* weigh slip */
+.slip { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.slip-photo { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--sunk); }
+.slip-nophoto { aspect-ratio: 5 / 1; display: grid; place-items: center; background: var(--deep); color: var(--deep-ink); font-family: var(--font-display); letter-spacing: .3em; text-transform: uppercase; font-size: .85rem; opacity: .9; }
+.slip-body { padding: 14px 16px 16px; display: grid; gap: 10px; }
+.slip-top { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
+.slip-top > div { min-width: 0; }
+.species { font-family: var(--font-display); font-weight: 700; font-size: 1.45rem; line-height: 1.1; color: var(--ink); text-decoration: none; }
+.byline { color: var(--muted); font-size: .92rem; margin-top: 2px; overflow-wrap: anywhere; }
+.byline button.link { all: unset; color: var(--tide); cursor: pointer; text-decoration: underline; }
+.scale { text-align: right; font-family: var(--font-display); font-variant-numeric: tabular-nums; border-left: 2px solid var(--line); padding-left: 12px; }
+.scale b { display: block; font-size: 1.9rem; line-height: 1; }
+.scale span { color: var(--muted); font-size: .95rem; font-weight: 600; }
+.scale.none b { font-size: 1rem; color: var(--muted); }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; background: var(--sunk); color: var(--muted); }
+.tag.rel { background: var(--release-bg); color: var(--release); }
+.notes { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--sunk); padding: 10px; border-radius: 8px; }
+
+.comment { padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.comment:first-child { border-top: 0; }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+td.n, th.n { text-align: right; white-space: nowrap; }
+td.rank { font-family: var(--font-display); font-weight: 700; color: var(--muted); width: 2.5em; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; text-align: center; }
+.stat b { display: block; font-family: var(--font-display); font-size: 1.7rem; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.list li { padding: 12px 16px; border-top: 1px solid var(--line); }
+.list li:first-child { border-top: 0; }
+.empty { text-align: center; padding: 28px 16px; color: var(--muted); }
+
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; max-width: calc(100% - 32px); z-index: 20; }
+@media (prefers-reduced-motion: no-preference) { .slip { animation: rise .25s ease-out both; } @keyframes rise { from { transform: translateY(4px); } to { transform: none; } } }
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <a class="brand" href="#feed">West Africa Big Game<small>Club catch log</small></a>
+    <nav id="nav"></nav>
+  </div>
+</header>
+<main id="view"><div class="empty">Loading the catch log…</div></main>
+<div id="toast" role="status" hidden></div>
+
+<script>
+'use strict';
+// Set after the first publish so "Copy link" can point at the shared page.
+const PAGE_URL = 'https://claude.ai/artifact/Qi7i1QkEYbPFWhMzuekT8V';
+
+const COUNTRIES = ['Benin', 'Burkina Faso', 'Cabo Verde', "Côte d'Ivoire", 'The Gambia', 'Ghana', 'Guinea',
+  'Guinea-Bissau', 'Liberia', 'Mali', 'Mauritania', 'Niger', 'Nigeria', 'Senegal', 'Sierra Leone', 'Togo'];
+const SPECIES = [
+  ['blue-marlin', 'Atlantic blue marlin', 'Billfish'], ['sailfish', 'Atlantic sailfish', 'Billfish'],
+  ['white-marlin', 'White marlin', 'Billfish'], ['swordfish', 'Swordfish', 'Billfish'],
+  ['yellowfin', 'Yellowfin tuna', 'Tuna'], ['bigeye', 'Bigeye tuna', 'Tuna'], ['skipjack', 'Skipjack tuna', 'Tuna'],
+  ['little-tunny', 'Little tunny', 'Tuna'], ['wahoo', 'Wahoo', 'Pelagic'], ['dorado', 'Dorado (mahi-mahi)', 'Pelagic'],
+  ['spanish-mackerel', 'West African Spanish mackerel', 'Pelagic'], ['barracuda', 'Guinean barracuda', 'Pelagic'],
+  ['amberjack', 'Greater amberjack', 'Reef & jacks'], ['crevalle', 'Crevalle jack', 'Reef & jacks'],
+  ['pompano', 'African pompano', 'Reef & jacks'], ['cubera', 'Cubera snapper', 'Reef & jacks'],
+  ['threadfin', 'Giant African threadfin', 'Inshore'], ['tarpon', 'Atlantic tarpon', 'Inshore'],
+  ['leerfish', 'Leerfish (garrick)', 'Inshore'], ['grouper', 'Dusky grouper', 'Bottom'],
+  ['mako', 'Shortfin mako shark', 'Shark'], ['hammerhead', 'Hammerhead shark', 'Shark'], ['other', 'Other', 'Other'],
+];
+const SPECIES_BY_ID = Object.fromEntries(SPECIES.map(([id, name, cat]) => [id, { id, name, cat }]));
+const LINE_CLASSES = ['6 kg', '8 kg', '10 kg', '15 kg', '24 kg', '37 kg', '60 kg', 'Unlimited'];
+
+const S = {
+  db: null, user: null, assets: null, uid: null, isAdmin: false, canWrite: false, ready: false,
+  catches: [], clubs: [], comments: [], anglers: {},
+  filter: {}, board: { year: '', country: '' }, confirming: null,
+};
+const view = document.getElementById('view');
+
+// ---- helpers ---------------------------------------------------------------
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lb = (kg) => Math.round(kg * 2.20462);
+const kgFmt = (kg) => (Math.round(kg * 10) / 10).toLocaleString();
+const today = () => new Date().toISOString().slice(0, 10);
+const dateFmt = (d) => new Date(d.length === 10 ? d + 'T12:00:00' : d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const anglerName = (uid) => S.anglers[uid]?.name || 'Angler';
+const clubName = (id) => S.clubs.find((c) => c.id === id)?.name || '';
+const likeCount = (c) => Object.values(c.likes || {}).filter(Boolean).length;
+const commentsFor = (id) => S.comments.filter((m) => m.catchId === id);
+const opts = (items, sel, ph) => (ph != null ? `<option value="">${esc(ph)}</option>` : '') +
+  items.map((it) => { const [v, l] = Array.isArray(it) ? it : [it, it]; return `<option value="${esc(v)}"${String(v) === String(sel ?? '') ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
+function speciesOpts(sel, ph) {
+  const groups = {};
+  for (const [id, name, cat] of SPECIES) (groups[cat] ||= []).push([id, name]);
+  return (ph != null ? `<option value="">${esc(ph)}</option>` : '') + Object.entries(groups)
+    .map(([cat, list]) => `<optgroup label="${esc(cat)}">${opts(list, sel)}</optgroup>`).join('');
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 2600);
+}
+function writeError(e) {
+  if (e?.code === 'invalid_argument') { S.canWrite = false; return 'Your access to this page is read-only. Ask the organiser to invite you as an Editor.'; }
+  if (e?.code === 'quota_exceeded') return 'The catch log is full. Ask the organiser to clear out old entries.';
+  return e?.message || 'That did not save. Check your connection and try again.';
+}
+function route() {
+  const h = location.hash.slice(1);
+  const m = h.match(/^(catch|club)-([A-Za-z0-9_-]+)$/);
+  if (m) return { page: m[1], id: m[2] };
+  return { page: ['feed', 'board', 'clubs', 'log', 'me'].includes(h) ? h : 'feed' };
+}
+function go(hash) { if (location.hash === '#' + hash) render(); else location.hash = hash; }
+
+// ---- catch slip --------------------------------------------------------------
+function slip(c, full) {
+  const sp = SPECIES_BY_ID[c.species] || SPECIES_BY_ID.other;
+  const where = [c.location, c.country].filter(Boolean).join(', ');
+  const club = clubName(c.clubId);
+  const liked = !!c.likes?.[S.uid];
+  const mine = c.uid === S.uid;
+  const photo = c.photo
+    ? `<img class="slip-photo" src="/_blob/${esc(c.photo)}" alt="${esc(sp.name)} caught by ${esc(anglerName(c.uid))}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'slip-nophoto',textContent:'Photo unavailable'}))">`
+    : `<div class="slip-nophoto">${esc(sp.cat)}</div>`;
+  return `<article class="slip" data-id="${esc(c.id)}">
+    ${full ? photo : `<a href="#catch-${esc(c.id)}">${photo}</a>`}
+    <div class="slip-body">
+      <div class="slip-top">
+        <div>
+          <a class="species" href="#catch-${esc(c.id)}">${esc(sp.name === 'Other' && c.otherSpecies ? c.otherSpecies : sp.name)}</a>
+          <div class="byline"><button class="link" data-act="angler" data-uid="${esc(c.uid)}">${esc(anglerName(c.uid))}</button>${club ? ` · <a href="#club-${esc(c.clubId)}">${esc(club)}</a>` : ''}<br>${esc(dateFmt(c.caughtOn))}${where ? ' · ' + esc(where) : ''}</div>
+        </div>
+        ${c.weightKg != null ? `<div class="scale"><b>${kgFmt(c.weightKg)} kg</b><span>${lb(c.weightKg)} lb</span></div>` : `<div class="scale none"><b>Not weighed</b></div>`}
+      </div>
+      <div class="tags">
+        ${c.released ? '<span class="tag rel">Released</span>' : ''}${c.tagged ? '<span class="tag rel">Tagged</span>' : ''}
+        ${c.lengthCm ? `<span class="tag">${esc(c.lengthCm)} cm</span>` : ''}${c.lineClass ? `<span class="tag">${esc(c.lineClass)} line</span>` : ''}
+        ${c.boat ? `<span class="tag">Boat: ${esc(c.boat)}</span>` : ''}
+      </div>
+      ${full && c.notes ? `<p class="notes">${esc(c.notes)}</p>` : ''}
+      <div class="acts">
+        <button data-act="like" class="${liked ? 'on' : ''}" aria-pressed="${liked}" ${S.canWrite && S.uid ? '' : 'disabled'}>♥ ${likeCount(c)}</button>
+        ${full ? '' : `<a class="btn" href="#catch-${esc(c.id)}">Comments ${commentsFor(c.id).length}</a>`}
+        <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText(c))}">WhatsApp</a>
+        ${PAGE_URL ? '<button data-act="copy">Copy link</button>' : ''}
+        ${full && (mine || S.isAdmin) && S.canWrite ? '<button data-act="delete" class="danger ghost">Delete</button>' : ''}
+      </div>
+      ${S.confirming === c.id ? `<div class="confirm"><span>Delete this catch and its comments for everyone?</span><button class="danger" data-act="really-delete">Delete</button><button data-act="cancel">Keep it</button></div>` : ''}
+    </div>
+  </article>`;
+}
+function shareText(c) {
+  const sp = SPECIES_BY_ID[c.species]?.name || 'fish';
+  const w = c.weightKg != null ? `${kgFmt(c.weightKg)} kg ` : '';
+  const link = PAGE_URL ? ` ${PAGE_URL}#catch-${c.id}` : '';
+  return `${anglerName(c.uid)} landed a ${w}${sp}${c.released ? ' (released)' : ''}${c.location ? ' at ' + c.location : ''}! 🎣${link}`;
+}
+
+// ---- pages -------------------------------------------------------------------
+function filtered() {
+  const f = S.filter;
+  return S.catches.filter((c) => (!f.species || c.species === f.species) && (!f.country || c.country === f.country) &&
+    (!f.club || c.clubId === f.club) && (!f.released || c.released) && (!f.uid || c.uid === f.uid));
+}
+
+const pages = {
+  feed() {
+    const f = S.filter;
+    const list = filtered();
+    return `
+      ${joinPrompt()}
+      <div class="filters" id="filters">
+        <select id="f-species" data-f="species" aria-label="Species">${speciesOpts(f.species, 'All species')}</select>
+        <select id="f-country" data-f="country" aria-label="Country">${opts(COUNTRIES, f.country, 'All countries')}</select>
+        <select id="f-club" data-f="club" aria-label="Club">${opts(S.clubs.map((c) => [c.id, c.name]), f.club, 'All clubs')}</select>
+        <select id="f-released" data-f="released" aria-label="Kept or released">${opts([['1', 'Released only']], f.released, 'Kept & released')}</select>
+      </div>
+      ${f.uid ? `<div><span class="chip">Catches by ${esc(anglerName(f.uid))}<button data-act="clear-angler" aria-label="Show everyone">✕</button></span></div>` : ''}
+      ${list.length ? list.map((c) => slip(c)).join('') : `<div class="panel empty">${S.catches.length ? 'No catches match these filters.' : 'No catches on the board yet. The first fish logged here starts the season.'}${S.canWrite && !S.catches.length ? '<p><button class="buoy" data-go="log">Log the first catch</button></p>' : ''}</div>`}`;
+  },
+
+  catch(id) {
+    const c = S.catches.find((x) => x.id === id);
+    if (!c) return `<div class="panel empty">This catch is no longer on the board. <a href="#feed">Back to the feed</a></div>`;
+    const cs = commentsFor(id);
+    return `${slip(c, true)}
+      <section class="panel stack">
+        <h2>Comments</h2>
+        <div>${cs.length ? cs.map((m) => `<div class="comment"><b>${esc(anglerName(m.uid))}</b> <span class="muted small">${esc(dateFmt(m.createdAt))}</span><div>${esc(m.body)}</div></div>`).join('') : '<p class="muted" style="margin:0">No comments yet.</p>'}</div>
+        ${S.canWrite && S.anglers[S.uid] ? `<form id="comment-form" class="stack">
+          <textarea id="comment-body" name="body" maxlength="1000" required placeholder="Congratulate the angler, ask about the lure…"></textarea>
+          <p class="err"></p><div><button class="primary" type="submit">Post comment</button></div></form>`
+          : S.canWrite ? '<p class="muted" style="margin:0"><a href="#me">Set up your angler profile</a> to comment.</p>' : ''}
+      </section>`;
+  },
+
+  log() {
+    if (!S.canWrite) return readOnlyNote();
+    if (!S.anglers[S.uid]) return profileForm(true);
+    const me = S.anglers[S.uid];
+    return `<h1>Log a catch</h1>
+      <form id="catch-form" class="panel stack">
+        <label>Species<select id="c-species" name="species" required>${speciesOpts('', 'Choose species…')}</select></label>
+        <label id="other-wrap" hidden>Which species?<input id="c-other" name="otherSpecies" maxlength="60"></label>
+        <div class="grid2">
+          <label>Weight (kg)<input id="c-weight" name="weightKg" type="number" min="0" max="1500" step="0.1" inputmode="decimal" placeholder="Leave empty if released unweighed"></label>
+          <label>Length (cm)<input id="c-length" name="lengthCm" type="number" min="0" max="600" step="1" inputmode="numeric" placeholder="Optional"></label>
+        </div>
+        <div class="grid2">
+          <label>Date<input id="c-date" name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
+          <label>Country<select id="c-country" name="country">${opts(COUNTRIES, me.country, 'Choose…')}</select></label>
+        </div>
+        <div class="grid2">
+          <label>Spot<input id="c-location" name="location" maxlength="120" placeholder="e.g. Bijagós, Banana Islands"></label>
+          <label>Boat<input id="c-boat" name="boat" maxlength="80" placeholder="Optional"></label>
+        </div>
+        <label>Line class<select id="c-line" name="lineClass">${opts(LINE_CLASSES, '', 'Not recorded')}</select></label>
+        <div class="row"><label class="check"><input id="c-released" type="checkbox" name="released"> Released alive</label>
+          <label class="check"><input id="c-tagged" type="checkbox" name="tagged"> Tagged</label></div>
+        ${S.assets ? '<label>Photo<input id="c-photo" name="photo" type="file" accept="image/*"></label>' : '<p class="muted small" style="margin:0">Photo uploads are open to people invited as Editors.</p>'}
+        <label>The story<textarea id="c-notes" name="notes" maxlength="2000" placeholder="Lure, fight time, crew, conditions…"></textarea></label>
+        <p class="err"></p>
+        <div><button class="buoy" type="submit">Post to the board</button></div>
+      </form>
+      <p class="muted small">Logging for <b>${esc(me.name)}</b>${me.clubId ? ' · ' + esc(clubName(me.clubId)) : ''}. <a href="#me">Change</a></p>`;
+  },
+
+  board() {
+    const { year, country } = S.board;
+    const set = S.catches.filter((c) => (!year || c.caughtOn.startsWith(year)) && (!country || c.country === country));
+    const best = {};
+    for (const c of set) if (c.weightKg != null && (!best[c.species] || c.weightKg > best[c.species].weightKg)) best[c.species] = c;
+    const records = Object.values(best).sort((a, b) => b.weightKg - a.weightKg);
+    const tally = (keyFn) => {
+      const t = {};
+      for (const c of set) {
+        const k = keyFn(c); if (!k) continue;
+        const r = (t[k] ||= { key: k, catches: 0, released: 0, billfish: 0, kg: 0 });
+        r.catches++; r.released += c.released ? 1 : 0; r.kg += c.weightKg || 0;
+        r.billfish += SPECIES_BY_ID[c.species]?.cat === 'Billfish' ? 1 : 0;
+      }
+      return Object.values(t);
+    };
+    const anglers = tally((c) => c.uid).sort((a, b) => b.billfish - a.billfish || b.catches - a.catches).slice(0, 20);
+    const clubs = tally((c) => c.clubId).sort((a, b) => b.catches - a.catches).slice(0, 20);
+    const y = new Date().getFullYear();
+    return `<h1>Leaderboard</h1>
+      <div class="filters">
+        <select id="b-year" data-b="year" aria-label="Season">${opts([y, y - 1, y - 2, y - 3].map(String), year, 'All seasons')}</select>
+        <select id="b-country" data-b="country" aria-label="Country">${opts(COUNTRIES, country, 'All countries')}</select>
+      </div>
+      <h2>Heaviest by species</h2>
+      <div class="tablewrap"><table><thead><tr><th>Species</th><th class="n">Weight</th><th>Angler</th><th>Club</th></tr></thead><tbody>
+      ${records.length ? records.map((c) => `<tr><td><a href="#catch-${esc(c.id)}">${esc(SPECIES_BY_ID[c.species]?.name)}</a></td><td class="n">${kgFmt(c.weightKg)} kg<div class="muted small">${lb(c.weightKg)} lb</div></td><td>${esc(anglerName(c.uid))}</td><td>${esc(clubName(c.clubId)) || '—'}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">No weighed catches yet.</td></tr>'}</tbody></table></div>
+      <h2>Top anglers</h2>
+      <div class="tablewrap"><table><thead><tr><th>#</th><th>Angler</th><th class="n">Billfish</th><th class="n">Catches</th><th class="n">Released</th></tr></thead><tbody>
+      ${anglers.length ? anglers.map((a, i) => `<tr><td class="rank">${i + 1}</td><td>${esc(anglerName(a.key))}<div class="muted small">${esc(clubName(S.anglers[a.key]?.clubId))}</div></td><td class="n">${a.billfish}</td><td class="n">${a.catches}</td><td class="n">${a.released}</td></tr>`).join('')
+        : '<tr><td colspan="5" class="muted">Nothing logged yet.</td></tr>'}</tbody></table></div>
+      <h2>Top clubs</h2>
+      <div class="tablewrap"><table><thead><tr><th>#</th><th>Club</th><th class="n">Catches</th><th class="n">Released</th><th class="n">Total kg</th></tr></thead><tbody>
+      ${clubs.length ? clubs.map((c, i) => `<tr><td class="rank">${i + 1}</td><td><a href="#club-${esc(c.key)}">${esc(clubName(c.key))}</a></td><td class="n">${c.catches}</td><td class="n">${c.released}</td><td class="n">${kgFmt(c.kg)}</td></tr>`).join('')
+        : '<tr><td colspan="5" class="muted">No club catches yet.</td></tr>'}</tbody></table></div>`;
+  },
+
+  clubs() {
+    const count = (id) => S.catches.filter((c) => c.clubId === id).length;
+    const members = (id) => Object.values(S.anglers).filter((a) => a.clubId === id).length;
+    return `<h1>Clubs</h1>
+      ${S.clubs.length ? `<ul class="list">${S.clubs.map((c) => `<li><a href="#club-${esc(c.id)}"><b>${esc(c.name)}</b></a><div class="muted small">${esc([c.city, c.country].filter(Boolean).join(', '))} · ${members(c.id)} members · ${count(c.id)} catches</div></li>`).join('')}</ul>`
+        : '<div class="panel empty">No clubs registered yet. Add yours below so members can log catches under it.</div>'}
+      ${S.canWrite ? `<h2>Register a club</h2>
+      <form id="club-form" class="panel stack">
+        <label>Club name<input id="k-name" name="name" required maxlength="100" placeholder="e.g. Club de Pêche Sportive"></label>
+        <div class="grid2"><label>Country<select id="k-country" name="country" required>${opts(COUNTRIES, S.anglers[S.uid]?.country, 'Choose…')}</select></label>
+          <label>Town or harbour<input id="k-city" name="city" maxlength="80"></label></div>
+        <label>About the club<textarea id="k-about" name="description" maxlength="1000"></textarea></label>
+        <p class="err"></p><div><button class="primary" type="submit">Register club</button></div>
+      </form>` : ''}`;
+  },
+
+  club(id) {
+    const c = S.clubs.find((x) => x.id === id);
+    if (!c) return `<div class="panel empty">Club not found. <a href="#clubs">All clubs</a></div>`;
+    const list = S.catches.filter((k) => k.clubId === id);
+    const heaviest = Math.max(0, ...list.map((k) => k.weightKg || 0));
+    const mem = Object.entries(S.anglers).filter(([, a]) => a.clubId === id);
+    const isMine = S.anglers[S.uid]?.clubId === id;
+    return `<div class="stack" style="gap:6px"><h1>${esc(c.name)}</h1><div class="muted">${esc([c.city, c.country].filter(Boolean).join(', '))}</div>
+      ${c.description ? `<p class="notes">${esc(c.description)}</p>` : ''}</div>
+      ${isMine ? '<div><span class="tag rel">Your club</span></div>' : S.canWrite && S.anglers[S.uid] ? '<div><button class="primary" data-act="join" data-club="' + esc(id) + '">Make this my club</button></div>' : ''}
+      <div class="stats"><div class="stat"><b>${list.length}</b><span>Catches</span></div><div class="stat"><b>${list.filter((k) => k.released).length}</b><span>Released</span></div><div class="stat"><b>${heaviest ? kgFmt(heaviest) : '—'}</b><span>Heaviest kg</span></div></div>
+      <h2>Members</h2>
+      ${mem.length ? `<ul class="list">${mem.map(([uid, a]) => `<li><button class="ghost" style="all:unset;cursor:pointer;color:var(--tide);text-decoration:underline" data-act="angler" data-uid="${esc(uid)}">${esc(a.name)}</button> <span class="muted small">· ${S.catches.filter((k) => k.uid === uid).length} catches</span></li>`).join('')}</ul>` : '<div class="panel empty">No members yet.</div>'}
+      <h2>Club catches</h2>
+      ${list.length ? list.map((k) => slip(k)).join('') : '<div class="panel empty">No catches logged for this club yet.</div>'}`;
+  },
+
+  me() {
+    if (!S.canWrite) return readOnlyNote();
+    return profileForm(!S.anglers[S.uid]);
+  },
+};
+
+function joinPrompt() {
+  if (!S.canWrite || S.anglers[S.uid]) return '';
+  return `<div class="notice row"><span style="flex:1 1 220px">Set up your angler profile to log catches, like and comment.</span><button class="primary" data-go="me">Set up profile</button></div>`;
+}
+function readOnlyNote() {
+  return `<div class="notice">You can browse the board, but your access to this page is view-only. Ask the person who shared it to invite you as an <b>Editor</b>, then reopen the link.</div>`;
+}
+function profileForm(first) {
+  const a = S.anglers[S.uid] || { name: S.myName || '', country: '', clubId: '' };
+  return `<h1>${first ? 'Join the board' : 'Your angler profile'}</h1>
+    <form id="profile-form" class="panel stack">
+      <label>Name on the board<input id="p-name" name="name" required maxlength="60" value="${esc(a.name)}" placeholder="e.g. Capt. Ousmane Sarr"></label>
+      <div class="grid2">
+        <label>Country<select id="p-country" name="country">${opts(COUNTRIES, a.country, 'Choose…')}</select></label>
+        <label>Club<select id="p-club" name="clubId">${opts(S.clubs.map((c) => [c.id, c.name]), a.clubId, 'No club yet')}</select></label>
+      </div>
+      <p class="muted small" style="margin:0">Club not listed? <a href="#clubs">Register it first</a>.</p>
+      <p class="err"></p>
+      <div><button class="primary" type="submit">${first ? 'Save and continue' : 'Save profile'}</button></div>
+    </form>`;
+}
+
+// ---- render ------------------------------------------------------------------
+function renderNav(page) {
+  const links = [['feed', 'Feed'], ['board', 'Leaderboard'], ['clubs', 'Clubs']];
+  if (S.canWrite) links.push(['me', 'Profile'], ['log', '+ Log catch']);
+  document.getElementById('nav').innerHTML = links.map(([h, l]) =>
+    `<a href="#${h}"${h === page || (page === 'club' && h === 'clubs') ? ' aria-current="page"' : ''}${h === 'log' ? ' class="log"' : ''}>${l}</a>`).join('');
+}
+function render(fromData) {
+  if (!S.ready) return;
+  const r = route();
+  // Live updates must not wipe a form someone is filling in.
+  if (fromData && S.dirty) return;
+  S.dirty = false;
+  renderNav(r.page);
+  view.innerHTML = pages[r.page](r.id);
+}
+
+// ---- events ------------------------------------------------------------------
+view.addEventListener('input', (e) => { if (e.target.closest('form')) S.dirty = true; });
+view.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.closest('form')) S.dirty = true;
+  if (t.dataset.f) { S.filter[t.dataset.f] = t.value; render(); }
+  if (t.dataset.b) { S.board[t.dataset.b] = t.value; render(); }
+  if (t.id === 'c-species') view.querySelector('#other-wrap').hidden = t.value !== 'other';
+});
+
+view.addEventListener('click', async (e) => {
+  const goBtn = e.target.closest('[data-go]');
+  if (goBtn) return go(goBtn.dataset.go);
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const id = b.closest('[data-id]')?.dataset.id;
+  const c = S.catches.find((x) => x.id === id);
+  const act = b.dataset.act;
+  if (act === 'angler') { S.filter = { uid: b.dataset.uid }; return go('feed'); }
+  if (act === 'clear-angler') { delete S.filter.uid; return render(); }
+  if (act === 'copy') {
+    const text = `${PAGE_URL}#catch-${id}`;
+    try { await navigator.clipboard.writeText(text); toast('Link copied'); } catch { toast(text); }
+    return;
+  }
+  if (act === 'delete') { S.confirming = id; return render(); }
+  if (act === 'cancel') { S.confirming = null; return render(); }
+  if (act === 'really-delete' && c) {
+    b.disabled = true;
+    try {
+      for (const m of commentsFor(id)) await S.db.doc('comments/' + m.id).delete();
+      await S.db.doc('catches/' + id).delete();
+      if (c.photo && S.assets) S.assets.delete(c.photo).catch(() => {});
+      S.confirming = null; toast('Catch deleted'); go('feed');
+    } catch (ex) { toast(writeError(ex)); b.disabled = false; }
+    return;
+  }
+  if (act === 'like' && c && S.uid) {
+    b.disabled = true;
+    try { await S.db.doc('catches/' + id).update({ likes: { [S.uid]: !c.likes?.[S.uid] } }); }
+    catch (ex) { toast(writeError(ex)); }
+    b.disabled = false;
+    return;
+  }
+  if (act === 'join') {
+    try { await S.db.doc('anglers/' + S.uid).update({ clubId: b.dataset.club }); toast('Club updated'); }
+    catch (ex) { toast(writeError(ex)); }
+  }
+});
+
+async function resizePhoto(file) {
+  // Phone photos are often 5+ MB; shrink to save data on slow connections.
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.82));
+    if (blob) return blob;
+  } catch { /* fall back to the original file */ }
+  return file;
+}
+
+view.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const btn = form.querySelector('button[type=submit]');
+  const err = form.querySelector('.err');
+  const fd = new FormData(form);
+  const val = (k) => String(fd.get(k) ?? '').trim();
+  err.textContent = '';
+  btn.disabled = true;
+  S.dirty = true;
+  try {
+    if (form.id === 'profile-form') {
+      if (!val('name')) throw new Error('Enter the name to show on the board.');
+      const body = { name: val('name').slice(0, 60), country: val('country'), clubId: val('clubId'), updatedAt: new Date().toISOString() };
+      await S.db.doc('anglers/' + S.uid).set(body);
+      toast('Profile saved');
+      go(S.catches.some((c) => c.uid === S.uid) ? 'feed' : 'log');
+    }
+    if (form.id === 'club-form') {
+      const name = val('name');
+      if (!name || !val('country')) throw new Error('Give the club a name and a country.');
+      if (S.clubs.some((c) => c.name.toLowerCase() === name.toLowerCase())) throw new Error('A club with that name is already registered.');
+      const ref = await S.db.collection('clubs').add({ name: name.slice(0, 100), country: val('country'), city: val('city').slice(0, 80), description: val('description').slice(0, 1000), createdBy: S.uid, createdAt: new Date().toISOString() });
+      if (S.anglers[S.uid] && !S.anglers[S.uid].clubId) await S.db.doc('anglers/' + S.uid).update({ clubId: ref.id });
+      form.reset();
+      toast('Club registered');
+      go('club-' + ref.id);
+    }
+    if (form.id === 'catch-form') {
+      if (!val('species')) throw new Error('Choose a species.');
+      const w = val('weightKg') === '' ? null : Number(val('weightKg'));
+      const l = val('lengthCm') === '' ? null : Number(val('lengthCm'));
+      if ((w !== null && !(w >= 0 && w <= 1500)) || (l !== null && !(l >= 0 && l <= 600))) throw new Error('Check the weight (kilograms) and length (centimetres).');
+      if (!val('caughtOn') || val('caughtOn') > today()) throw new Error('Enter the date of the catch; it cannot be in the future.');
+      let photo = null;
+      const file = fd.get('photo');
+      if (file && file.size && S.assets) {
+        btn.textContent = 'Uploading photo…';
+        try { photo = (await S.assets.upload(await resizePhoto(file))).id; }
+        catch (ex) { throw new Error(ex.code === 'too_large' ? 'That photo is too big. Try a smaller one.' : ex.code === 'unsupported_type' ? 'Use a JPEG, PNG or WebP photo.' : 'The photo did not upload. Try again, or post without it.'); }
+      }
+      btn.textContent = 'Posting…';
+      const me = S.anglers[S.uid];
+      const ref = await S.db.collection('catches').add({
+        uid: S.uid, clubId: me.clubId || '', species: val('species'), otherSpecies: val('otherSpecies').slice(0, 60),
+        weightKg: w, lengthCm: l, caughtOn: val('caughtOn'), country: val('country'), location: val('location').slice(0, 120),
+        boat: val('boat').slice(0, 80), lineClass: val('lineClass'), released: fd.has('released'), tagged: fd.has('tagged'),
+        notes: val('notes').slice(0, 2000), photo, likes: {}, createdAt: new Date().toISOString(),
+      });
+      toast('Posted. Tight lines!');
+      go('catch-' + ref.id);
+    }
+    if (form.id === 'comment-form') {
+      const body = val('body');
+      if (!body) throw new Error('Write a comment first.');
+      const catchId = route().id;
+      await S.db.collection('comments').add({ catchId, uid: S.uid, body: body.slice(0, 1000), createdAt: new Date().toISOString() });
+      form.reset();
+      S.dirty = false;
+      render();
+    }
+  } catch (ex) {
+    S.dirty = true;
+    err.textContent = ex.code ? writeError(ex) : ex.message;
+  } finally {
+    btn.disabled = false;
+    if (form.id === 'catch-form') btn.textContent = 'Post to the board';
+  }
+});
+
+window.addEventListener('hashchange', () => { S.confirming = null; render(); window.scrollTo(0, 0); });
+
+// ---- boot --------------------------------------------------------------------
+(async function boot() {
+  const [db, user, assets] = await Promise.all([claude.use('db'), claude.use('user'), claude.use('assets')]);
+  if (!db) {
+    view.innerHTML = '<div class="notice">Sign in to Claude to see the club catch log. If you are signed in and still see this, ask the person who shared the link to check your access.</div>';
+    renderNav('feed');
+    return;
+  }
+  S.db = db; S.user = user; S.assets = assets;
+  if (user) {
+    const me = await user.me();
+    S.uid = me.id; S.myName = me.name; S.isAdmin = me.canEdit;
+    const can = await user.can('data.write');
+    S.canWrite = !!S.uid && can !== false;
+  }
+  const sub = (q, key, map) => q.onSnapshot((snap) => {
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    S[key] = map ? map(rows) : rows;
+    render(true);
+  }, () => {});
+  sub(db.collection('catches').orderBy('createdAt', 'desc').limit(1000), 'catches');
+  sub(db.collection('clubs').orderBy('name').limit(500), 'clubs');
+  sub(db.collection('comments').orderBy('createdAt').limit(1000), 'comments');
+  sub(db.collection('anglers').limit(1000), 'anglers', (rows) => Object.fromEntries(rows.map((r) => [r.id, r])));
+  S.ready = true;
+  render();
+})();
+</script>
