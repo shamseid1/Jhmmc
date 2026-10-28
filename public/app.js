@@ -61,6 +61,9 @@ function options(items, selected, placeholder) {
   })}`;
 }
 
+// How recent a scale photo must be: taken at the dock, not from the past.
+const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
+
 // JHMMC boats for the weigh sheet, grouped by the weigh station the admin put
 // them under; the weighmaster's own station comes first.
 function boatOptions(boats, mine) {
@@ -508,11 +511,14 @@ const pagesFor = (view) => ({
         ${jhmmc ? 'A photo and the species are enough. JHMMC weights come only from the weighmaster at the dock, so posts from JHMMC boats have no weight.'
           : 'A photo and the species are enough; add the weight and details if you want.'}</p>
       <form class="card pad stack" id="f">
-        <label class="photo-pick">
+        <div class="photo-pick">
           <span class="photo-preview" hidden><img alt=""></span>
-          <span class="photo-cta">${raw(icon('camera'))} Add a photo</span>
-          <input name="photo" type="file" accept="image/*">
-        </label>
+          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Add a photo</span></button>
+          <div class="photo-menu" hidden>
+            <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
+            <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
+          </div>
+        </div>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
         <div class="stack spot">
@@ -587,19 +593,36 @@ const pagesFor = (view) => ({
       view.querySelector('#spot-share').hidden = !spot;
       status.textContent = !text ? '' : spot ? `Reads as ${fmtCoords(spot.lat, spot.lng)}` : "Can't read those coordinates yet. Use N/S and E/W, or a comma between the two.";
     });
-    // Show the chosen photo so it's clear it's attached.
-    form.photo.addEventListener('change', () => {
-      const file = form.photo.files[0];
+    // A photo taken there and then or picked from the phone's photos (Chrome
+    // on newer Android phones shows no camera unless asked, hence two choices).
+    let photo = null;
+    const cta = view.querySelector('[data-act=photo-menu]');
+    const menu = view.querySelector('.photo-menu');
+    cta.addEventListener('click', () => {
+      menu.hidden = !menu.hidden;
+      cta.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+    menu.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      photo = file;
+      // Show the chosen photo so it's clear it's attached.
       const preview = view.querySelector('.photo-preview');
-      preview.hidden = !file;
-      view.querySelector('.photo-cta').lastChild.textContent = file ? ' Change photo' : ' Add a photo';
-      if (file) preview.querySelector('img').src = URL.createObjectURL(file);
+      URL.revokeObjectURL(preview.querySelector('img').src);
+      preview.querySelector('img').src = URL.createObjectURL(file);
+      preview.hidden = false;
+      cta.querySelector('span').textContent = 'Change photo';
+      menu.hidden = true;
+      cta.setAttribute('aria-expanded', 'false');
     });
     bindForm(form, async () => {
       const btn = form.querySelector('button[type=submit]');
       btn.textContent = 'Posting…';
       try {
-        const fd = await preparePhoto(new FormData(form), 'photo');
+        const data = new FormData(form);
+        if (photo) data.set('photo', photo);
+        const fd = await preparePhoto(data, 'photo');
         const { catch: c } = await api('/catches', { method: 'POST', form: fd });
         toast('Posted. Tight lines!');
         location.hash = `#/catch/${c.id}`;
@@ -1044,11 +1067,7 @@ const pagesFor = (view) => ({
       <div class="scale-pick">
         <span class="scale-label">Photo on the scale</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
-        <button type="button" class="scale-button" data-act="scale-menu" aria-expanded="false">${raw(icon('camera'))} <span>Add photo</span></button>
-        <div class="scale-menu" hidden>
-          <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-scale></label>
-          <label class="btn">From photos<input type="file" accept="image/*" data-scale></label>
-        </div>
+        <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
       </div>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
@@ -1100,22 +1119,16 @@ const pagesFor = (view) => ({
       list.lastElementChild.querySelector('[name=speciesId]').focus();
     });
     list.addEventListener('click', (e) => {
-      const menuBtn = e.target.closest('[data-act=scale-menu]');
-      if (menuBtn) {
-        const menu = menuBtn.nextElementSibling;
-        menu.hidden = !menu.hidden;
-        menuBtn.setAttribute('aria-expanded', String(!menu.hidden));
-        return;
-      }
       if (e.target.closest('[data-act=remove-fish]')) {
         e.target.closest('.fish').remove();
         renumber();
         updatePoints();
       }
     });
-    // The scale photo: taken with the camera there and then, or picked from
-    // the phone's photos. (Chrome on newer Android phones shows no camera
-    // unless asked for it, hence the two choices.)
+    // The scale photo is taken with the camera there and then, never picked
+    // from old photos. Browsers that ignore the camera request (computers,
+    // some phones) open a file picker, so photos older than a few minutes are
+    // refused too.
     const scalePhotos = new WeakMap();
     list.addEventListener('change', (e) => {
       if (e.target.matches('[data-scale]')) {
@@ -1123,14 +1136,16 @@ const pagesFor = (view) => ({
         const file = e.target.files[0];
         e.target.value = '';
         if (!file) return;
+        if (Date.now() - file.lastModified > SCALE_PHOTO_MAX_AGE) {
+          toast('Take the photo now, with the fish on the scale. Older photos can\'t be used.');
+          return;
+        }
         scalePhotos.set(row, file);
         const img = row.querySelector('.scale-preview');
         URL.revokeObjectURL(img.src);
         img.src = URL.createObjectURL(file);
         img.hidden = false;
-        row.querySelector('.scale-button span').textContent = 'Change photo';
-        row.querySelector('.scale-menu').hidden = true;
-        row.querySelector('.scale-button').setAttribute('aria-expanded', 'false');
+        row.querySelector('.scale-button span').textContent = 'Retake photo';
         return;
       }
       if (e.target.name === 'anglerId') e.target.closest('.fish').querySelector('.guest-name').hidden = e.target.value !== 'other';
