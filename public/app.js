@@ -516,6 +516,9 @@ const pagesFor = (view) => ({
     toggle.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
       toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      // Opened from the floating button further down the feed: bring the panel into view.
+      const top = panel.getBoundingClientRect().top;
+      if (!panel.hidden && top < 120) window.scrollTo({ top: window.scrollY + top - 140, behavior: 'smooth' });
     });
     panel.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -2108,6 +2111,27 @@ async function route() {
 document.addEventListener('click', (e) => {
   if (e.target.closest('a[data-return]')) state.afterLogin = location.hash;
 });
+
+// On phones the logo (and the feed's Filter button) slide away while
+// scrolling down and come back as soon as you scroll up a little.
+(function revealOnScrollUp() {
+  let last = window.scrollY;
+  let ticking = false;
+  const update = () => {
+    const y = window.scrollY;
+    const root = document.documentElement;
+    root.classList.toggle('scrolled', y > 8);
+    if (y < 80 || y < last - 6) root.classList.remove('chrome-away');
+    else if (y > last + 6) root.classList.add('chrome-away');
+    if (Math.abs(y - last) > 6 || y < 80) last = y;
+    ticking = false;
+  };
+  window.addEventListener('scroll', () => {
+    if (!ticking) requestAnimationFrame(update);
+    ticking = true;
+  }, { passive: true });
+  window.addEventListener('hashchange', () => document.documentElement.classList.remove('chrome-away'));
+})();
 
 (async function init() {
   [state.meta] = await Promise.all([api('/meta'), refreshMe()]);

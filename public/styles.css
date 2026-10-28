@@ -224,9 +224,21 @@ button.more[hidden] { display: none; }
 #nav a[aria-current="page"] { background: var(--surface-2); color: var(--accent); }
 
 @media (max-width: 640px) {
-  /* No top bar on phones (the menu is at the bottom): just the logo, which scrolls away. */
-  .topbar { position: static; justify-content: center; margin: 0; padding: 14px 0 0; background: none; border: 0; box-shadow: none; }
+  /* No top bar on phones (the menu is at the bottom): just the logo. It slides
+     away while scrolling down and floats back in when scrolling up. Moved with
+     "top", not a transform, which would trap the fixed tab bar inside it. */
+  .topbar {
+    position: sticky; top: 8px; z-index: 15; justify-content: center; margin: 0; padding: 6px 0 0;
+    background: none; border: 0; box-shadow: none; transition: top .25s ease;
+  }
   .brand .logo { height: 44px; margin: 0; }
+  .scrolled .brand { padding: 4px 14px; border-radius: 999px; background: #0f1727; border: 1px solid #3a5378; box-shadow: var(--shadow); }
+  .chrome-away .topbar { top: -90px; }
+  /* The feed's Filter button follows the logo. */
+  .filter-bar { position: sticky; top: 74px; z-index: 14; transition: top .25s ease; }
+  .chrome-away .filter-bar { top: -80px; }
+  .filter-bar .filter-toggle, .filter-bar .chip { box-shadow: var(--shadow); }
+  .scrolled .filter-bar .filter-toggle:not(.on), .scrolled .filter-bar .chip { background: #0f1727; border-color: #3a5378; color: var(--text); }
   /* The tab bar floats above the page, clear of the screen edges. */
   #nav {
     position: fixed; z-index: 20; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
