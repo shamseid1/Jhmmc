@@ -35,6 +35,19 @@ const SPECIES = [
   ['Dusky grouper', 'Epinephelus marginatus', 'Bottom', 5],
   ['Shortfin mako shark', 'Isurus oxyrinchus', 'Shark', 5],
   ['Hammerhead shark', 'Sphyrna spp.', 'Shark', 5],
+  // Species in the JHMMC record book (as at May 2026) the list didn't have.
+  ['Striped marlin', 'Kajikia audax', 'Billfish', 3],
+  ['Atlantic bonito', 'Sarda sarda', 'Tuna', 3],
+  ['Cobia', 'Rachycentron canadum', 'Pelagic', 3],
+  ['Rainbow runner', 'Elagatis bipinnulata', 'Pelagic', 3],
+  ['Bigeye trevally', 'Caranx sexfasciatus', 'Reef & jacks', 3],
+  ['Almaco jack', 'Seriola rivoliana', 'Reef & jacks', 3],
+  ['Tripletail', 'Lobotes surinamensis', 'Inshore', 3],
+  ['Yellow tail', null, 'Inshore', 3],
+  ['Grunter', null, 'Inshore', 3],
+  ['Spotted grunter', null, 'Inshore', 3],
+  ['Tiger fish', null, 'River', 3],
+  ['Stingray', null, 'Ray', 3],
   ['Other', null, 'Other', 3],
 ];
 

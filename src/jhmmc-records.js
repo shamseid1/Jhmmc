@@ -4,8 +4,8 @@
 // are ISO where the book gives a full date; `year` where it gives only a
 // year; neither where it gives none. Two dates printed as spreadsheet numbers
 // (43201, 45000) are 11 Apr 2018 and 15 Mar 2023.
-// `species` names the app species a group matches, so approved registrations
-// can join the list; null where the app has no such species.
+// `species` names the app species each group matches, so approved
+// registrations join its list.
 
 const AS_AT = '2026-05-03';
 const PDF = '/records/JHMMC-records-2026-05-03.pdf';
@@ -51,7 +51,7 @@ const BOOK = [
     ['Liberian Girl', 'Rayan Eid', '80 lb', 111.3, '2022-12-25'],
     ['Lucky Manana', 'Robert M. Khoueiry', '80 lb', 110.4, '2016-03-13'],
   ]],
-  ['Bonito', null, [
+  ['Bonito', 'Atlantic bonito', [
     ['Reel Magic', 'Nader Ayoub', '50 lb', 7.8, '2015-11-08'],
     ['Bait Master', 'Jack Asmar', '50 lb', 6.6, '2014-11-23'],
     ['Aquaholic', 'Elie Daher', '50 lb', 6.0, '2011-12-20'],
@@ -88,12 +88,12 @@ const BOOK = [
     ['Lucky Manana', 'Raimon Pros', '80 lb', 52.5, '2006-05-21'],
     ['Sea Star', 'Guido Bucher', '80 lb', 23.8, '2010-12-05'],
   ]],
-  ['Striped Marlin', null, [
+  ['Striped Marlin', 'Striped marlin', [
     ['Aquaholic', 'Elie Daher', '80 lb', 45.0, '2011-11-06'],
     ['Knot e Bouy', 'Edwin Michael', '30 lb', 41.5, ''],
     ['Yellow Fin', 'Matthias Boeffgen', '50 lb', 39.5, '2006-11-19'],
   ]],
-  ['Cobia', null, [
+  ['Cobia', 'Cobia', [
     ['Wahoo', 'Silvio Cantieni', '12 lb', 11.0, ''],
     ['Sea Pro', 'Fadi Eid', '50 lb', 7.4, '2013-03-01'],
     ['Shams', 'Rachad Eid', '50 lb', 5.2, '2011-01-22'],
@@ -103,16 +103,16 @@ const BOOK = [
     ['Dont Play with Me', 'Farouk Eid', '30 lb', 24.0, ''],
     ['Stratos', 'Rasmi Eid', '30 lb', 8.8, '2014-01-25'],
   ]],
-  ['Bigeye Trevally', null, [
+  ['Bigeye Trevally', 'Bigeye trevally', [
     ['Shams', 'Ayman Al-Ashkar', '50 lb', 1.2, '2011-12-11'],
     ['Sea Star', 'Robert Khoueiry', '80 lb', 1.2, '2011-10-16'],
   ]],
-  ['Rainbow Runner', null, [
+  ['Rainbow Runner', 'Rainbow runner', [
     ['Bottom Line', 'Robert Baines', '50 lb', 5.5, '2016-11-13'],
     ['Reel Magic', 'Mario Ali', '50 lb', 1.6, '2012-05-12'],
     ['Bottom Line', 'Robert Baines', '50 lb', 1.5, '2016-11-13'],
   ]],
-  ['Almaco Jack', null, [
+  ['Almaco Jack', 'Almaco jack', [
     ['Reel Magic', 'Fadi Eid', '50 lb', 1.6, '2012-05-12'],
     ['Bait Master', 'Jack Asmar', '50 lb', 1.5, '2014-11-30'],
     ['Reel Magic', 'Roy Elia', '50 lb', 1.4, '2012-05-12'],
@@ -123,7 +123,7 @@ const BOOK = [
     ['Tuna King', 'Elie Daher', '50 lb', 1.2, '2012-10-28'],
     ['Lucky Manana', 'Jan Suck', '50 lb', 1.2, '2015-11-15'],
   ]],
-  ['Tripletail', null, [
+  ['Tripletail', 'Tripletail', [
     ['Tuna King', 'Elie Daher', '50 lb', 1.6, '2012-10-21'],
     ['Aquaholic', 'Elie Daher', '50 lb', 0.8, '2012-05-06'],
     ['Aquaholic', 'Elie Daher', '50 lb', 0.5, '2019-11-10'],
@@ -140,11 +140,11 @@ const BOOK = [
     ['Romeo', 'Jack Haikal', '30 lb', 7.2, '2026-02-08'],
     ['Wave Runner', 'Dominic Asmar', '30 lb', 3.7, '2023-12-17'],
   ]],
-  ['Yellow Tail', null, [['Shams', 'Rachad Eid', '50 lb', 0.6, '2011-01-22']]],
-  ['Grunter', null, [['Scandica', 'Agnetta Nilsson', '50 lb', 0.6, '2012-02-12']]],
-  ['Spotted Grunter', null, [['Scandica', 'Agnetta Nilsson', '30 lb', 0.8, '2012-12-30']]],
-  ['Tiger Fish', null, [['Scandica', 'Agnetta Nilsson', '50 lb', 2.0, '2012-04-14']]],
-  ['Sting Ray', null, [['Wave Runner', 'Dominic Asmar', '30 lb', 2.1, '2019-12-01']]],
+  ['Yellow Tail', 'Yellow tail', [['Shams', 'Rachad Eid', '50 lb', 0.6, '2011-01-22']]],
+  ['Grunter', 'Grunter', [['Scandica', 'Agnetta Nilsson', '50 lb', 0.6, '2012-02-12']]],
+  ['Spotted Grunter', 'Spotted grunter', [['Scandica', 'Agnetta Nilsson', '30 lb', 0.8, '2012-12-30']]],
+  ['Tiger Fish', 'Tiger fish', [['Scandica', 'Agnetta Nilsson', '50 lb', 2.0, '2012-04-14']]],
+  ['Sting Ray', 'Stingray', [['Wave Runner', 'Dominic Asmar', '30 lb', 2.1, '2019-12-01']]],
   ['Amberjack', 'Greater amberjack', [['Challenger', 'Jan Suck', '30 lb', 22.8, '2025-11-09']]],
 ];
 

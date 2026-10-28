@@ -690,6 +690,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(jhBook.lineRecords.find((r) => r.group === 'Wahoo' && r.lineClass === '50 lb').angler, 'Jean Chahine',
       "the book's 28.9 kg still holds the 50 lb wahoo record over the app's 21 kg");
     assert.equal((await as()('GET', '/records')).body.book, null, 'only JHMMC has the book');
+    assert.ok(jhBook.groups.every((g) => species.some((x) => x.name === g.species)), 'every record-book species can be registered');
     const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
     assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'from the registration');
     const lb = (await as()('GET', '/leaderboard')).body;
