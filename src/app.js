@@ -253,15 +253,15 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     `).all();
     // Anglers without an account, known only by the name typed on their catches.
     const guests = db.prepare(`
-      SELECT NULL AS id, MAX(k.angler_name) AS name, MAX(t.id) AS teamId, MAX(t.name) AS teamName,
-        MAX(t.photo) AS teamPhoto, ${TALLY}
+      SELECT NULL AS id, k.angler_name AS name, t.id AS teamId, t.name AS teamName,
+        t.photo AS teamPhoto, MIN(k.id) AS first, ${TALLY}
       FROM catches k LEFT JOIN teams t ON t.id = k.team_id
       WHERE k.user_id IS NULL GROUP BY lower(k.angler_name)
     `).all();
     // An angler without their own photo is shown with their boat's.
     res.json({
       anglers: [...anglers, ...guests]
-        .map(({ photo, teamPhoto, ...a }) => ({ ...a, hasAccount: a.id !== null, photoUrl: photoUrl(photo || teamPhoto) }))
+        .map(({ photo, teamPhoto, first, ...a }) => ({ ...a, hasAccount: a.id !== null, photoUrl: photoUrl(photo || teamPhoto) }))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
     });
   });
@@ -671,12 +671,12 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     `).all(params);
 
     const anglers = db.prepare(`
-      SELECT u.id AS userId, COALESCE(u.name, MAX(k.angler_name)) AS angler, t.name AS teamName, ${tally}
+      SELECT u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first, ${tally}
       FROM catches k LEFT JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
       LEFT JOIN teams t ON t.id = COALESCE(u.team_id, k.team_id)
       WHERE ${filter}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY billfish DESC, catches DESC LIMIT 20
-    `).all(params);
+    `).all(params).map(({ first, ...a }) => a);
 
     const clubs = db.prepare(`
       SELECT c.id AS clubId, c.name AS clubName, c.country, ${tally}

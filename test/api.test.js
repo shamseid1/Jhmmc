@@ -244,6 +244,7 @@ test('anglers without an account: catches logged under a typed name', async () =
   assert.equal(lb.records.find((x) => x.species === 'Wahoo').angler, 'Guest Varney');
   const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
   assert.equal(rec.best.angler, 'Guest Varney');
+  assert.equal(guest[0].name, 'Guest Varney', 'shown as first typed');
 });
 
 test('visitors without an account can look but not act', async () => {
