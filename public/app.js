@@ -332,7 +332,7 @@ const pagesFor = (view) => ({
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
         </div>
         <label>Location / spot <input name="location" maxlength="120" placeholder="e.g. Bijagós, Banana Islands"></label>
-        <label>Line class <select name="lineClass">${raw(options(['6 kg', '8 kg', '10 kg', '15 kg', '24 kg', '37 kg', '60 kg', 'Unlimited'], null, 'Not recorded'))}</select></label>
+        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
         <div class="row">
           <label class="check"><input type="checkbox" name="released"> Released alive</label>
           <label class="check"><input type="checkbox" name="tagged"> Tagged</label>

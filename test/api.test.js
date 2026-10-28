@@ -84,6 +84,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   fd.set('weightKg', '212.5');
   fd.set('caughtOn', '2026-06-14');
   fd.set('released', 'on');
+  fd.set('lineClass', '80 lb');
   fd.set('photo', new Blob([PNG], { type: 'image/png' }), 'fish.png');
   r = await kofi('POST', '/catches', fd);
   assert.equal(r.status, 201, JSON.stringify(r.body));
@@ -93,6 +94,12 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal(c.clubId, clubId, 'club comes from the boat');
   assert.equal(c.country, 'Senegal', 'country defaults to the boat');
   assert.equal(c.canDelete, true, 'logger can delete');
+  assert.equal(c.lineClass, '80 lb');
+  const kgLine = new FormData();
+  kgLine.set('speciesId', marlin.id);
+  kgLine.set('caughtOn', '2026-06-14');
+  kgLine.set('lineClass', '37 kg');
+  assert.equal((await kofi('POST', '/catches', kgLine)).status, 400, 'only listed pound classes');
 
   // Individual angler: can browse, like and comment but not log.
   await ibra('POST', '/auth/register', { name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });

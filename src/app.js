@@ -3,7 +3,7 @@ const multer = require('multer');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { openDb, COUNTRIES } = require('./db');
+const { openDb, COUNTRIES, LINE_CLASSES } = require('./db');
 const auth = require('./auth');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -91,7 +91,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   api.get('/meta', (_req, res) => {
     const species = db.prepare('SELECT id, name, scientific_name AS scientificName, category FROM species ORDER BY category, name').all();
-    res.json({ countries: COUNTRIES, species });
+    res.json({ countries: COUNTRIES, species, lineClasses: LINE_CLASSES });
   });
 
   // ---- auth --------------------------------------------------------------
@@ -503,6 +503,8 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       return fail('Enter the date of the catch.');
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return fail('Catch date cannot be in the future.');
+    const lineClass = str(b.lineClass, 20);
+    if (lineClass && !LINE_CLASSES.includes(lineClass)) return fail('Choose a line class from the list.');
     const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(req.user.teamId);
     const country = str(b.country, 60) || team.country || req.user.country;
     if (country && !COUNTRIES.includes(country)) return fail('Unknown country.');
@@ -513,7 +515,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       anglerId, req.user.id, req.user.teamId, team.club_id, speciesId, weightKg, lengthCm, bool(b.released),
-      bool(b.tagged), caughtOn, country, str(b.location, 120), str(b.lineClass, 20), str(b.notes, 2000),
+      bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
       req.file?.filename ?? null
     );
     res.status(201).json({ catch: getCatch(Number(lastInsertRowid), req.user) });

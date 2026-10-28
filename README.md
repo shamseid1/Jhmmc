@@ -10,7 +10,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew.
 - **Individual anglers** without a boat can like and comment, but cannot log catches.
 - **Participants tab**: every angler and every boat as a photo card with a search box, showing the boat (or boat length and make) and released/weighed counts. Captains add the boat's photo, length and make; anglers can add their own photo.
-- **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat. Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class, released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
+- **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat. Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class in pounds (2 to 130 lb, or unlimited), released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Boat, club and angler pages** with crew, stats and recent catches.

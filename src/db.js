@@ -35,7 +35,10 @@ const SPECIES = [
   ['Other', null, 'Other'],
 ];
 
-const SCHEMA_VERSION = 3;
+// IGFA line classes, in pounds.
+const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb', '30 lb', '50 lb', '80 lb', '130 lb', 'Unlimited'];
+
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -147,6 +150,12 @@ function openDb(file) {
       ALTER TABLE teams ADD COLUMN photo TEXT;
     `);
   }
+  if (hasTables && version < 4) {
+    // Line classes were recorded in kilograms; IGFA pairs each with a pound class.
+    const kgToLb = { '6 kg': '12 lb', '8 kg': '16 lb', '10 kg': '20 lb', '15 kg': '30 lb', '24 kg': '50 lb', '37 kg': '80 lb', '60 kg': '130 lb' };
+    const update = db.prepare('UPDATE catches SET line_class = ? WHERE line_class = ?');
+    for (const [kg, lb] of Object.entries(kgToLb)) update.run(lb, kg);
+  }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   const insert = db.prepare(
@@ -156,4 +165,4 @@ function openDb(file) {
   return db;
 }
 
-module.exports = { openDb, COUNTRIES };
+module.exports = { openDb, COUNTRIES, LINE_CLASSES };
