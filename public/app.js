@@ -1035,11 +1035,14 @@ const pagesFor = (view) => ({
 
   async tournament(id) {
     const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
-    const [{ tournament, results, entries }, boats] = await Promise.all([
+    const [{ tournament, results, entries: allEntries }, boats] = await Promise.all([
       api(`/tournaments/${id}?division=${division}`),
-      state.me?.canReview ? api('/teams').then(({ teams }) => teams.filter((t) => isJhmmc(t.clubId))) : null,
+      // Each tab enters and lists only its own division's boats.
+      state.me?.canReview ? api('/teams').then(({ teams }) => teams.filter((t) => isJhmmc(t.clubId) && t.division === division)) : null,
     ]);
+    const entries = allEntries.filter((e) => e.division === division);
     const entered = new Set(entries.map((e) => e.teamId));
+    const side = division === 'river' ? 'River' : 'Ocean';
     view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)}</p>
@@ -1049,14 +1052,14 @@ const pagesFor = (view) => ({
         <ul class="list compact">${b.catches.map((c) => raw(html`<li><a href="#/catch/${c.id}">${c.species}</a>
           ${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : c.released ? ' · released' : ''} · ${c.angler}<span class="num-right">${fmtPoints(c.points)}</span></li>`))}</ul>
       </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
-      <h2>Boats entered (${entries.length})</h2>
+      <h2>${side} boats entered (${entries.length})</h2>
       <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
       ${boats ? raw(html`<div class="card"><ul class="list entries">${boats.length ? boats.map((t) => raw(html`<li>
         <label class="check"><input type="checkbox" data-team="${t.id}" ${entered.has(t.id) ? 'checked' : ''}>
-          <span>${t.name} <span class="muted small">· ${t.division === 'river' ? 'River' : 'Ocean'}</span></span></label>
-      </li>`)) : raw('<li class="muted">No JHMMC boats yet.</li>')}</ul></div>`)
-        : raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a>
-          <span class="muted small">· ${e.division === 'river' ? 'River' : 'Ocean'}</span></li>`)) : raw('<li class="muted">No boats entered yet.</li>')}</ul></div>`)}`;
+          <span>${t.name}</span></label>
+      </li>`)) : raw(html`<li class="muted">No JHMMC ${side} boats yet.</li>`)}</ul></div>`)
+        : raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
+          : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}`;
     view.querySelector('.entries')?.addEventListener('change', async (e) => {
       const box = e.target.closest('input[data-team]');
       if (!box) return;
