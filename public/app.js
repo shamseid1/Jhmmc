@@ -963,12 +963,12 @@ const pagesFor = (view) => ({
     const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const station = state.me.weighStation;
     if (!station && !state.me.canReview) {
-      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Register fish</h1>
+      view.innerHTML = html`${state.me.canReview ? raw(BACK_TO_MORE) : ''}<h1>Register fish</h1>
         <div class="card pad empty">You have no weigh station yet. Ask the club admin to assign you one on the Members page.</div>`;
       return;
     }
     let crew = [];
-    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+    view.innerHTML = html`${state.me.canReview ? raw(BACK_TO_MORE) : ''}
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
@@ -1111,7 +1111,7 @@ const pagesFor = (view) => ({
       if (!groups.has(key)) groups.set(key, { date: c.caughtOn, boat: c.teamName, division: c.division, catches: [] });
       groups.get(key).catches.push(c);
     }
-    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+    view.innerHTML = html`
       <h1>Review catches</h1>
       <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
       ${groups.size ? [...groups.values()].map((g) => raw(html`<section class="sheet">
@@ -1609,17 +1609,23 @@ const ICONS = {
   medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
 };
 
+const BACK_TO_MORE = '<p class="back"><a href="#/more">‹ More</a></p>';
+
 function renderNav(active) {
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
   if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  // Officials get their daily job on the bar: the secretary approves, weighmasters register.
+  if (state.me?.canReview) links.push(['#/review', 'Review', 'review', 'review']);
+  else if (state.me?.canWeigh) links.push(['#/weigh', 'Weigh', 'weigh', 'weight']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', calendar: 'more',
+    weigh: state.me?.canReview ? 'more' : 'weigh',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
