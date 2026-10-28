@@ -133,6 +133,9 @@ async function shareCatch(c) {
   copyText(`${text} ${url}`, 'Link copied');
 }
 
+// Members have a profile page; anglers without an account link to their catches.
+const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/?angler=${encodeURIComponent(name)}`);
+
 const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 
 // ---- catch card -----------------------------------------------------------
@@ -150,7 +153,7 @@ function catchCard(c, { full = false } = {}) {
         <span class="weight">${fmtWeight(c.weightKg)}</span>
       </div>
       <p class="meta">
-        <a href="#/user/${c.userId}">${c.angler}</a>
+        <a href="${anglerHref(c.userId, c.angler)}">${c.angler}</a>
         ${c.teamName ? raw(html` · 🚤 <a href="#/boat/${c.teamId}">${c.teamName}</a>`) : ''}
         ${c.clubName ? raw(html` · <a href="#/club/${c.clubId}">${c.clubName}</a>`) : ''}
         · ${fmtDate(c.caughtOn)}${details ? ' · ' + details : ''}
@@ -284,6 +287,7 @@ const pagesFor = (view) => ({
         <select name="country" aria-label="Country">${raw(options(state.meta.countries, filters.country, 'All countries'))}</select>
         <select name="released" aria-label="Released">${raw(options([['true', 'Released only']], filters.released, 'Kept & released'))}</select>
       </div>
+      ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
       <div id="feed"></div>`;
     view.querySelector('.filters').addEventListener('change', (e) => {
       const p = new URLSearchParams(filters);
@@ -327,7 +331,8 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Log a catch</h1>
       <p class="muted">Logging for 🚤 <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}</p>
       <form class="card pad stack" id="f">
-        <label>Angler <select name="anglerId">${raw(options(team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), state.me.id))}</select></label>
+        <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Someone else (type a name)']], state.me.id))}</select></label>
+        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <div class="row">
           <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="e.g. 180"></label>
@@ -349,6 +354,12 @@ const pagesFor = (view) => ({
         <div><button type="submit" class="primary">Post catch</button></div>
       </form>`;
     const form = view.querySelector('#f');
+    const nameBox = view.querySelector('#angler-name');
+    form.anglerId.addEventListener('change', () => {
+      nameBox.hidden = form.anglerId.value !== 'other';
+      form.anglerName.required = !nameBox.hidden;
+      if (!nameBox.hidden) form.anglerName.focus();
+    });
     bindForm(form, async () => {
       const fd = new FormData(form);
       if (!fd.get('photo')?.size) fd.delete('photo');
@@ -414,7 +425,7 @@ const pagesFor = (view) => ({
     const { anglers } = tab === 'anglers' ? await api('/anglers') : { anglers: [] };
     const { teams } = tab === 'boats' ? await api('/teams') : { teams: [] };
     const items = tab === 'anglers'
-      ? anglers.map((a) => ({ href: `#/user/${a.id}`, name: a.name, sub: a.teamName || 'Individual angler', ...a }))
+      ? anglers.map((a) => ({ href: anglerHref(a.id, a.name), name: a.name, sub: a.teamName || 'Individual angler', ...a }))
       : teams.map((t) => ({
         href: `#/boat/${t.id}`, ...t,
         sub: [t.lengthFt ? `${+t.lengthFt}'` : '', t.make].filter(Boolean).join(' ') || t.homePort || '',
@@ -596,7 +607,7 @@ const pagesFor = (view) => ({
         <tbody>${clubRecords.length ? clubRecords.map((s) => raw(html`<tr>
           <td>${s.name}</td>
           <td class="num"><a href="#/catch/${s.best.catchId}">${Math.round(s.best.weightKg * 10) / 10} kg</a><div class="muted small">${Math.round(s.best.weightKg * 2.20462)} lb</div></td>
-          <td><a href="#/user/${s.best.userId}">${s.best.angler}</a><div class="muted small">${fmtDate(s.best.caughtOn)}</div></td>
+          <td><a href="${anglerHref(s.best.userId, s.best.angler)}">${s.best.angler}</a><div class="muted small">${fmtDate(s.best.caughtOn)}</div></td>
           <td>${s.best.teamId ? raw(html`<a href="#/boat/${s.best.teamId}">${s.best.teamName}</a>`) : '—'}</td>
           <td class="nw">${s.best.lineClass || '—'}</td>
         </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches from this club yet.</td></tr>')}</tbody>
@@ -624,7 +635,7 @@ const pagesFor = (view) => ({
         <thead><tr><th>Species</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
         <tbody>${records.length ? records.map((r) => raw(html`<tr>
           <td><a href="#/catch/${r.id}">${r.species}</a></td><td class="num">${Math.round(r.weightKg * 10) / 10} kg</td>
-          <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td></tr>`)) : nothing(4)}</tbody>
+          <td><a href="${anglerHref(r.userId, r.angler)}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td></tr>`)) : nothing(4)}</tbody>
       </table></div>
       <h2>Top boats</h2>
       <div class="card table-wrap"><table>
@@ -637,7 +648,7 @@ const pagesFor = (view) => ({
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Angler</th><th class="num">Billfish</th><th class="num">Catches</th><th class="num">Released</th></tr></thead>
         <tbody>${anglers.length ? anglers.map((a, i) => raw(html`<tr><td>${i + 1}</td>
-          <td><a href="#/user/${a.userId}">${a.angler}</a><div class="muted small">${a.teamName || ''}</div></td>
+          <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName || ''}</div></td>
           <td class="num">${a.billfish}</td><td class="num">${a.catches}</td><td class="num">${a.released}</td></tr>`)) : nothing(5)}</tbody>
       </table></div>
       <h2>Top clubs</h2>
@@ -750,7 +761,7 @@ const pagesFor = (view) => ({
         ${held.length ? raw(html`<div class="records">${held.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.best.lineClass ? raw(html`<span class="badge">${s.best.lineClass} line</span>`) : ''}</div>
           <div><a class="wr-lb" href="#/catch/${s.best.catchId}">${lb(s.best.weightKg)}</a> <span class="muted">${kg(s.best.weightKg)}</span></div>
-          <div class="small muted"><a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` · ${s.best.teamName}` : ''} · ${fmtDate(s.best.caughtOn)}</div>
+          <div class="small muted"><a href="${anglerHref(s.best.userId, s.best.angler)}">${s.best.angler}</a>${s.best.teamName ? ` · ${s.best.teamName}` : ''} · ${fmtDate(s.best.caughtOn)}</div>
           ${s.igfa ? raw(html`<div class="ours"><div class="bar blue" title="Share of the IGFA world record"><i style="width:${Math.min(100, Math.max(2, pct(s)))}%"></i></div>
             <span class="small muted">${pct(s)}% of the IGFA world record (${s.igfa.display})</span></div>`) : ''}
         </article>`))}</div>`) : raw(html`<div class="card pad empty">No weighed catches from ${club.name} boats yet. The first one logged sets the club record.</div>`)}
@@ -761,7 +772,7 @@ const pagesFor = (view) => ({
           <tbody>${lineRecords.length ? lineRecords.map((r) => raw(html`<tr>
             <td>${r.species}</td><td class="nw">${r.lineClass}</td>
             <td class="num"><a href="#/catch/${r.catchId}">${lb(r.weightKg)}</a><div class="muted small">${kg(r.weightKg)}</div></td>
-            <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
+            <td><a href="${anglerHref(r.userId, r.angler)}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }

@@ -251,9 +251,18 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id
       GROUP BY u.id ORDER BY u.name COLLATE NOCASE
     `).all();
+    // Anglers without an account, known only by the name typed on their catches.
+    const guests = db.prepare(`
+      SELECT NULL AS id, MAX(k.angler_name) AS name, MAX(t.id) AS teamId, MAX(t.name) AS teamName,
+        MAX(t.photo) AS teamPhoto, ${TALLY}
+      FROM catches k LEFT JOIN teams t ON t.id = k.team_id
+      WHERE k.user_id IS NULL GROUP BY lower(k.angler_name)
+    `).all();
     // An angler without their own photo is shown with their boat's.
     res.json({
-      anglers: anglers.map(({ photo, teamPhoto, ...a }) => ({ ...a, photoUrl: photoUrl(photo || teamPhoto) })),
+      anglers: [...anglers, ...guests]
+        .map(({ photo, teamPhoto, ...a }) => ({ ...a, hasAccount: a.id !== null, photoUrl: photoUrl(photo || teamPhoto) }))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
     });
   });
 
@@ -423,7 +432,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       k.caught_on AS caughtOn, k.country, k.location, k.line_class AS lineClass,
       k.notes, k.photo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       s.id AS speciesId, s.name AS species, s.category,
-      u.id AS userId, u.name AS angler,
+      u.id AS userId, COALESCE(u.name, k.angler_name) AS angler,
       t.id AS teamId, t.name AS teamName,
       c.id AS clubId, c.name AS clubName,
       (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
@@ -431,7 +440,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       EXISTS (SELECT 1 FROM likes l WHERE l.catch_id = k.id AND l.user_id = :viewer) AS liked
     FROM catches k
     JOIN species s ON s.id = k.species_id
-    JOIN users u ON u.id = k.user_id
+    LEFT JOIN users u ON u.id = k.user_id
     LEFT JOIN teams t ON t.id = k.team_id
     LEFT JOIN clubs c ON c.id = k.club_id
   `;
@@ -464,6 +473,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       species: ['k.species_id = :species', intId],
       user: ['k.user_id = :user', intId],
       country: ['k.country = :country', (v) => str(v, 60)],
+      angler: ['k.user_id IS NULL AND k.angler_name = :angler COLLATE NOCASE', (v) => str(v, 80)],
       before: ['k.id < :before', intId],
     };
     for (const [key, [clause, parse]] of Object.entries(filters)) {
@@ -491,10 +501,13 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return fail('Choose a species.');
     }
-    // Any crew member can log a fish for whoever on the boat caught it.
-    const anglerId = intId(b.anglerId) || req.user.id;
-    if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, req.user.teamId)) {
-      return fail('The angler must be on your boat.');
+    // Any crew member can log a fish for whoever on the boat caught it: a
+    // crew mate, or anyone else by name (guests don't need an account).
+    const anglerName = b.anglerId === 'other' ? str(b.anglerName, 80) : null;
+    if (b.anglerId === 'other' && !anglerName) return fail("Type the angler's name.");
+    const anglerId = anglerName ? null : intId(b.anglerId) || req.user.id;
+    if (anglerId && !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, req.user.teamId)) {
+      return fail('The angler must be on your boat, or choose "Someone else" and type their name.');
     }
     const weightKg = num(b.weightKg);
     const lengthCm = num(b.lengthCm);
@@ -512,11 +525,11 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     if (country && !COUNTRIES.includes(country)) return fail('Unknown country.');
 
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO catches (user_id, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
+      INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
         caught_on, country, location, line_class, notes, photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      anglerId, req.user.id, req.user.teamId, team.club_id, speciesId, weightKg, lengthCm, bool(b.released),
+      anglerId, anglerName, req.user.id, req.user.teamId, team.club_id, speciesId, weightKg, lengthCm, bool(b.released),
       bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
       req.file?.filename ?? null
     );
@@ -589,10 +602,10 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const best = db.prepare(`
       SELECT * FROM (
         SELECT k.species_id AS speciesId, k.line_class AS lineClass, k.id AS catchId, k.weight_kg AS weightKg,
-          k.caught_on AS caughtOn, u.id AS userId, u.name AS angler, t.id AS teamId, t.name AS teamName,
+          k.caught_on AS caughtOn, u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
-        FROM catches k JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
+        FROM catches k LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
         WHERE k.weight_kg IS NOT NULL ${club ? 'AND k.club_id = :club' : ''}
       ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
     `).all(club ? { club: club.id } : {});
@@ -637,9 +650,9 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const records = db.prepare(`
       SELECT * FROM (
         SELECT s.name AS species, s.category, k.id, k.weight_kg AS weightKg, k.caught_on AS caughtOn,
-          u.id AS userId, u.name AS angler, t.id AS teamId, t.name AS teamName,
+          u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS rn
-        FROM catches k JOIN species s ON s.id = k.species_id JOIN users u ON u.id = k.user_id
+        FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
         LEFT JOIN teams t ON t.id = k.team_id
         WHERE ${filter} AND k.weight_kg IS NOT NULL
       ) WHERE rn = 1 ORDER BY weightKg DESC
@@ -658,11 +671,11 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     `).all(params);
 
     const anglers = db.prepare(`
-      SELECT u.id AS userId, u.name AS angler, t.name AS teamName, ${tally}
-      FROM catches k JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
-      LEFT JOIN teams t ON t.id = u.team_id
+      SELECT u.id AS userId, COALESCE(u.name, MAX(k.angler_name)) AS angler, t.name AS teamName, ${tally}
+      FROM catches k LEFT JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
+      LEFT JOIN teams t ON t.id = COALESCE(u.team_id, k.team_id)
       WHERE ${filter}
-      GROUP BY u.id ORDER BY billfish DESC, catches DESC LIMIT 20
+      GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY billfish DESC, catches DESC LIMIT 20
     `).all(params);
 
     const clubs = db.prepare(`

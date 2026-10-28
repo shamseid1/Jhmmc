@@ -212,6 +212,40 @@ test('participants: boats and anglers with photos and tallies', async () => {
   assert.equal((await crew('POST', `/teams/${team.id}/photo`, pic)).status, 403, 'captain only');
 });
 
+test('anglers without an account: catches logged under a typed name', async () => {
+  const cap = client();
+  await cap('POST', '/auth/register', { name: 'Joseph Kollie', email: 'joseph@example.com', password: 'password1' });
+  await cap('POST', '/teams', { name: 'Mesurado Queen', country: 'Liberia' });
+  const meta = (await cap('GET', '/meta')).body;
+  const wahoo = meta.species.find((s) => s.name === 'Wahoo');
+  const log = (fields) => {
+    const fd = new FormData();
+    fd.set('speciesId', wahoo.id);
+    fd.set('caughtOn', '2026-10-20');
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    return cap('POST', '/catches', fd);
+  };
+  assert.equal((await log({ anglerId: 'other', anglerName: '  ' })).status, 400, 'a name is needed');
+  let r = await log({ anglerId: 'other', anglerName: 'Guest Varney', weightKg: '33' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.catch.angler, 'Guest Varney');
+  assert.equal(r.body.catch.userId, null);
+  assert.equal(r.body.catch.canDelete, true, 'whoever logged it can delete it');
+  await log({ anglerId: 'other', anglerName: 'guest varney', released: 'on' });
+
+  const anon = client();
+  const guest = (await anon('GET', '/anglers')).body.anglers.filter((a) => a.name.toLowerCase() === 'guest varney');
+  assert.equal(guest.length, 1, 'one card per name, whatever the capitals');
+  assert.deepEqual([guest[0].hasAccount, guest[0].teamName, guest[0].catches, guest[0].released, guest[0].weighed], [false, 'Mesurado Queen', 2, 1, 1]);
+  r = await anon('GET', '/catches?angler=GUEST%20VARNEY');
+  assert.equal(r.body.catches.length, 2);
+  const lb = (await anon('GET', '/leaderboard')).body;
+  assert.ok(lb.anglers.some((a) => a.angler.toLowerCase() === 'guest varney' && a.catches === 2 && a.userId === null));
+  assert.equal(lb.records.find((x) => x.species === 'Wahoo').angler, 'Guest Varney');
+  const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
+  assert.equal(rec.best.angler, 'Guest Varney');
+});
+
 test('visitors without an account can look but not act', async () => {
   const anon = client();
   const r = await anon('GET', '/catches');

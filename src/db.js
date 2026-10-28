@@ -41,7 +41,31 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
+
+// A catch is credited to a member (user_id) or, for anglers without an
+// account, to a typed name (angler_name). logged_by is whoever entered it.
+const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  angler_name TEXT,
+  logged_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+  club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
+  species_id INTEGER NOT NULL REFERENCES species(id),
+  weight_kg REAL,
+  length_cm REAL,
+  released INTEGER NOT NULL DEFAULT 0,
+  tagged INTEGER NOT NULL DEFAULT 0,
+  caught_on TEXT NOT NULL,
+  country TEXT,
+  location TEXT,
+  line_class TEXT,
+  notes TEXT,
+  photo TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (user_id IS NOT NULL OR angler_name IS NOT NULL)
+);`;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -97,25 +121,7 @@ CREATE TABLE IF NOT EXISTS species (
   category TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS catches (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  logged_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
-  club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
-  species_id INTEGER NOT NULL REFERENCES species(id),
-  weight_kg REAL,
-  length_cm REAL,
-  released INTEGER NOT NULL DEFAULT 0,
-  tagged INTEGER NOT NULL DEFAULT 0,
-  caught_on TEXT NOT NULL,
-  country TEXT,
-  location TEXT,
-  line_class TEXT,
-  notes TEXT,
-  photo TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+${catchesTable('catches')}
 CREATE INDEX IF NOT EXISTS catches_created ON catches(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS catches_species ON catches(species_id, weight_kg DESC);
 CREATE INDEX IF NOT EXISTS catches_club ON catches(club_id);
@@ -158,6 +164,18 @@ function openDb(file) {
     const kgToLb = { '6 kg': '12 lb', '8 kg': '16 lb', '10 kg': '20 lb', '15 kg': '30 lb', '24 kg': '50 lb', '37 kg': '80 lb', '60 kg': '130 lb' };
     const update = db.prepare('UPDATE catches SET line_class = ? WHERE line_class = ?');
     for (const [kg, lb] of Object.entries(kgToLb)) update.run(lb, kg);
+  }
+  if (hasTables && version < 5) {
+    // user_id becomes optional for anglers without an account; SQLite needs a rebuild for that.
+    const cols = 'id, user_id, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged, caught_on, country, location, line_class, notes, photo, created_at';
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`BEGIN;
+      ${catchesTable('catches_v5')}
+      INSERT INTO catches_v5 (${cols}) SELECT ${cols} FROM catches;
+      DROP TABLE catches;
+      ALTER TABLE catches_v5 RENAME TO catches;
+      COMMIT;`);
+    db.exec('PRAGMA foreign_keys = ON');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

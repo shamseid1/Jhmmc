@@ -10,7 +10,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew.
 - **Individual anglers** without a boat can like and comment, but cannot log catches.
 - **Participants tab**: every angler and every boat as a photo card with a search box, showing the boat (or boat length and make) and released/weighed counts. Captains add the boat's photo, length and make; anglers can add their own photo.
-- **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat. Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class in pounds (2 to 130 lb, or unlimited), released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
+- **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat, or for any other angler by typing their name (guests don't need an account; their catches count in the feed, leaderboards, records and Participants). Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class in pounds (2 to 130 lb, or unlimited), released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Records**: the IGFA all-tackle world record for each species (weight, angler, place, year, African records flagged) beside the heaviest fish logged in the app and how close it came, plus the app's own records by species and IGFA line class. The world records live in `src/igfa-records.js`; check them against https://igfa.org/world-records/ and update that file when a record falls.
@@ -85,8 +85,8 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | DELETE | `/api/teams/:id/members/:userId` | Captain: remove crew                |
 | GET/POST | `/api/clubs`                | List or register clubs                 |
 | GET    | `/api/clubs/:id`              | Club, its boats, stats                 |
-| GET    | `/api/catches`                | Feed; filters `species`, `team`, `club`, `country`, `user`, `released=true`, paging with `before` |
-| POST   | `/api/catches`                | Crew only. `multipart/form-data`, optional `anglerId` (crew mate) and `photo` (JPEG/PNG/WebP, max 8 MB) |
+| GET    | `/api/catches`                | Feed; filters `species`, `team`, `club`, `country`, `user`, `angler` (typed name), `released=true`, paging with `before` |
+| POST   | `/api/catches`                | Crew only. `multipart/form-data`, optional `anglerId` (crew mate, or `other` with `anglerName`) and `photo` (JPEG/PNG/WebP, max 8 MB) |
 | GET/DELETE | `/api/catches/:id`        | Details with comments; the angler, whoever logged it, or the captain can delete |
 | POST   | `/api/catches/:id/like`       | Toggle like                            |
 | POST   | `/api/catches/:id/comments`   | Add a comment                          |
