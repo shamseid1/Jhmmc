@@ -86,12 +86,13 @@ function logItems(entries) {
 
 // The anglers on a boat for a tournament: crew to tick, guests by name, and
 // whether each is a JHMMC member (non-members pay a temporary membership).
-function anglerEditor(crew, anglers) {
+function anglerEditor(crew, anglers, official = false) {
   const on = (m) => anglers.find((a) => a.userId === m.id);
   const guests = anglers.filter((a) => !a.userId);
   const guestRow = (g = { name: '', member: false }) => html`<div class="guest-row">
     <input name="guestName" maxlength="80" placeholder="Guest's name" value="${g.name}" aria-label="Guest's name">
-    <label class="check"><input type="checkbox" name="guestMember" ${g.member ? 'checked' : ''}> Member</label>
+    ${official ? raw(html`<label class="check"><input type="checkbox" name="guestMember" ${g.member ? 'checked' : ''}> Member</label>`)
+      : raw(html`<span class="badge ${g.member ? 'new' : 'guest'}">${g.member ? 'Member' : 'Non-member'}</span>`)}
     <button type="button" class="link danger" data-act="drop-guest">Remove</button></div>`;
   return html`<div class="crew-pick">${crew.length ? crew.map((m) => raw(html`<div class="crew-row" data-user="${m.id}">
       <label class="check"><input type="checkbox" name="fishing" ${on(m) ? 'checked' : ''}> ${m.name}</label>
@@ -115,7 +116,7 @@ function readAnglerEditor(form) {
   const crew = [...form.querySelectorAll('.crew-row')].filter((r) => r.querySelector('[name=fishing]').checked)
     .map((r) => ({ userId: Number(r.dataset.user) }));
   const guests = [...form.querySelectorAll('.guests .guest-row')].map((r) => ({
-    name: r.querySelector('[name=guestName]').value.trim(), member: r.querySelector('[name=guestMember]').checked,
+    name: r.querySelector('[name=guestName]').value.trim(), member: !!r.querySelector('[name=guestMember]')?.checked,
   })).filter((g) => g.name);
   return [...crew, ...guests];
 }
@@ -1714,7 +1715,7 @@ const pagesFor = (view) => ({
       <p class="tournament-now">${raw(icon(entered ? 'check' : 'trophy'))} ${entered ? 'Your boat is entered.' : 'Your boat is not entered yet.'}</p>
       ${open ? raw(html`<form class="card pad stack" id="entry">
         <h2>Anglers on ${team.name}</h2>
-        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Crew show whether they've paid this season's JHMMC membership (the secretary keeps that list); for guests, tick Member if they are one. Non-members pay a USD ${fee} temporary membership before the tournament day.</p>
+        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Only people the secretary has marked as paid JHMMC members count as members; everyone else, guests included, pays a USD ${fee} temporary membership before the tournament day.</p>
         ${raw(anglerEditor(crew, anglers))}
         <p class="error"></p>
         <div class="actions"><button type="submit" class="primary">${entered ? 'Save changes' : 'Enter my boat'}</button>
@@ -1775,7 +1776,7 @@ const pagesFor = (view) => ({
           ${a.member ? '' : raw(html`<label class="check paid"><input type="checkbox" data-act="paid" ${a.paid ? 'checked' : ''}> Paid</label>`)}
         </li>`))}</ol>`) : raw('<p class="small muted">No anglers listed yet.</p>')}
         <button type="button" data-act="edit" class="link">Edit anglers</button>
-        <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers))}
+        <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers, true))}
           <p class="error"></p><div class="actions"><button type="submit" class="primary">Save anglers</button></div></form>
       </article>`))}</div>`) : raw('<div class="card pad empty">No boats in yet.</div>')}
       <h2>Not in (${outBoats.length})</h2>

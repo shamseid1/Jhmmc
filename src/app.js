@@ -1379,7 +1379,8 @@ function createApp({
         if (anglers.some((x) => (userId && x.userId === userId) || x.name.toLowerCase() === name.toLowerCase())) {
           return res.status(400).json({ error: `${name} is on the list twice.` });
         }
-        anglers.push({ userId: userId || null, name, member: userId ? isPaidMember(userId) : !!a.member });
+        // Membership is the secretary's to say: crew from the paid list, guests only if the secretary marks them.
+        anglers.push({ userId: userId || null, name, member: userId ? isPaidMember(userId) : official && !!a.member });
       }
     }
     if (!official && !anglers?.length) return res.status(400).json({ error: 'List the anglers fishing on your boat.' });
@@ -1394,7 +1395,9 @@ function createApp({
           VALUES (?, ?, ?, ?, ?, ?, ?)`);
         anglers.forEach((a, i) => {
           const was = before.find((b) => (a.userId && b.userId === a.userId) || b.name.toLowerCase() === a.name.toLowerCase());
-          add.run(event.id, team.id, a.userId, a.name, a.member ? 1 : 0, !a.member && was?.paid ? 1 : 0, i);
+          // A captain's edit keeps a guest the secretary marked as a member.
+          const member = a.member || (!official && !a.userId && !!was?.member);
+          add.run(event.id, team.id, a.userId, a.name, member ? 1 : 0, !member && was?.paid ? 1 : 0, i);
         });
       }
       db.exec('COMMIT');

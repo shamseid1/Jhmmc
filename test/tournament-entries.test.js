@@ -80,10 +80,17 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
     counts = (await sec('GET', '/tournaments')).body.tournaments.find((t) => t.id === memorial.id);
     assert.deepEqual([counts.guests, counts.unpaid], [2, 1]);
     assert.equal((await sec('GET', `/tournaments/${memorial.id}/sheet`)).body.boats[1].anglers.find((a) => a.name === 'Faris').member, true);
+    // A captain can't make a guest a member; the secretary can, and a captain's later edit keeps it.
+    r = await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true, anglers: [...anglers.slice(0, 2), { name: 'Guest Nadine', member: true }, { name: 'Remon', member: true }] });
+    assert.deepEqual(r.body.anglers.slice(2).map((a) => [a.name, a.member]), [['Guest Nadine', false], ['Remon', false]]);
+    r = await sec('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true, anglers: [...anglers.slice(0, 2), { name: 'Guest Nadine' }, { name: 'Remon', member: true }] });
+    assert.equal(r.body.anglers.find((a) => a.name === 'Remon').member, true, 'the secretary marks a guest as a member');
+    r = await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true, anglers });
+    assert.equal(r.body.anglers.find((a) => a.name === 'Remon').member, true, "kept through the captain's edit");
     // The captain edits the list: Nadine stays (still paid), Remon drops out, a member joins.
     r = await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true,
-      anglers: [{ userId: mine.crew[1].id, member: true }, { name: 'Guest Nadine', member: false }, { name: 'Jens', member: true }] });
-    assert.deepEqual(r.body.anglers.map((a) => [a.name, a.paid]), [['Rayan Eid', false], ['Guest Nadine', true], ['Jens', false]]);
+      anglers: [{ userId: mine.crew[1].id }, { name: 'Guest Nadine' }, { name: 'Jens', member: true }] });
+    assert.deepEqual(r.body.anglers.map((a) => [a.name, a.member, a.paid]), [['Rayan Eid', true, false], ['Guest Nadine', false, true], ['Jens', false, false]]);
     // The secretary puts the other boat in (anglers to follow) and takes it out again.
     assert.equal((await sec('PUT', `/tournaments/${memorial.id}/entries/${reel.id}`, { entered: true })).status, 200);
     sheet = (await sec('GET', `/tournaments/${memorial.id}/sheet`)).body;

@@ -126,7 +126,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/tournaments`            | Captains and officials: the season's tournaments with boats, anglers, non-members and unpaid temporary memberships |
 | GET    | `/api/tournaments/:id/my-entry` | A JHMMC captain's entry: their boat, crew and anglers |
 | GET    | `/api/tournaments/:id/sheet`  | Secretary: the registration sheet, every JHMMC boat with its anglers |
-| PUT    | `/api/tournaments/:id/entries/:teamId` | The boat's captain (until the tournament is over) or the secretary: `{entered, anglers: [{userId} or {name, member}]}`; crew are members if paid up this season; only entered boats compete |
+| PUT    | `/api/tournaments/:id/entries/:teamId` | The boat's captain (until the tournament is over) or the secretary: `{entered, anglers: [{userId} or {name}]}`; only the secretary decides who is a member (crew from the paid list; guests only if the secretary marks them, with `member` on their own edits); only entered boats compete |
 | PATCH  | `/api/tournaments/:id/anglers/:anglerId` | Secretary: `{paid, member}` for an angler's temporary membership |
 | GET    | `/api/events`                 | Season dates and tournaments (first and last day) |
 | POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add a tournament (`date`, optional `endDate`, up to 14 days) or remove one |
