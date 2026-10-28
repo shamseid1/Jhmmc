@@ -697,6 +697,16 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await sec('PUT', `/tournaments/${cup.id}/entries/${reel.id}`, { entered: true });
     assert.deepEqual((await as()('GET', `/tournaments/${cup.id}`)).body.results.map((b) => b.teamName), ['Sea Hunter', 'Reel Deal'], 'once entered, it counts');
     await sec('PUT', `/tournaments/${cup.id}/entries/${reel.id}`, { entered: false });
+    // A River-only tournament: Ocean boats can't enter, and it lists only under River.
+    const lofaCup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'Lofa River Cup', division: 'river' })).body.event;
+    assert.equal(lofaCup.division, 'river');
+    assert.match((await sec('PUT', `/tournaments/${lofaCup.id}/entries/${ocean.id}`, { entered: true })).body.error, /River boats only/);
+    assert.equal((await sec('PUT', `/tournaments/${lofaCup.id}/entries/${river.id}`, { entered: true })).status, 200);
+    assert.ok((await as()('GET', '/points?division=river')).body.tournaments.some((t) => t.id === lofaCup.id));
+    assert.ok(!(await as()('GET', '/points?division=ocean')).body.tournaments.some((t) => t.id === lofaCup.id));
+    const lofa = (await as()('GET', `/tournaments/${lofaCup.id}?division=ocean`)).body;
+    assert.equal(lofa.division, 'river', 'a River-only tournament always shows River results');
+    await sec('DELETE', `/events/${lofaCup.id}`);
     assert.deepEqual((await as()('GET', `/tournaments/${cup.id}`)).body.entries.map((e) => e.teamName), ['Sea Hunter']);
 
     // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.

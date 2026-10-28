@@ -121,7 +121,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
 | GET    | `/api/points`                 | `division=ocean|river`, `scope=overall|tournaments`: standings for boats and anglers (every day, or tournament fish only), tournaments with winners |
 | GET    | `/api/tournaments/:id`        | One tournament's results by boat |
-| PUT    | `/api/tournaments/:id/entries/:teamId` | Secretary: `{entered: true|false}` enters a JHMMC boat in a tournament or takes it out; only entered boats compete |
+| PUT    | `/api/tournaments/:id/entries/:teamId` | Secretary: `{entered: true|false}` enters a JHMMC boat in a tournament or takes it out; only entered boats compete, and an Ocean-only or River-only tournament (`division` on `POST /api/events`) takes only those boats |
 | GET    | `/api/events`                 | Season dates and tournaments (first and last day) |
 | POST/DELETE | `/api/events`, `/api/events/:id` | Secretary: add a tournament (`date`, optional `endDate`, up to 14 days) or remove one |
 | PATCH  | `/api/settings/season`        | Secretary: `{start, end}` season dates |

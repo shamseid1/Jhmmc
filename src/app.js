@@ -1146,7 +1146,7 @@ function createApp({
     const end = setting('season_end');
     res.json({
       season: { start, end },
-      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name,
+      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name, division,
           (SELECT json_group_array(team_id) FROM tournament_entries WHERE event_id = events.id) AS entries
         FROM events WHERE COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date`).all(start, end)
         .map((e) => ({ ...e, entries: JSON.parse(e.entries) })),
@@ -1165,9 +1165,11 @@ function createApp({
       return res.status(400).json({ error: `A tournament can last up to ${MAX_EVENT_DAYS} days.` });
     }
     if (!name) return res.status(400).json({ error: kind === 'tournament' ? 'Name the tournament.' : 'Name the holiday.' });
-    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name) VALUES (?, ?, ?, ?)')
-      .run(date, endDate === date ? null : endDate, kind, name);
-    res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name } });
+    // A tournament can be for Ocean boats only, River boats only, or both (separate results).
+    const division = kind === 'tournament' && ['ocean', 'river'].includes(req.body.division) ? req.body.division : null;
+    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name, division) VALUES (?, ?, ?, ?, ?)')
+      .run(date, endDate === date ? null : endDate, kind, name, division);
+    res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name, division } });
   });
 
   api.delete('/events/:id', requireReview, (req, res) => {
@@ -1219,9 +1221,9 @@ function createApp({
       ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
     `).all(params).map(({ first, ...a }) => a);
-    const tournaments = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events
-      WHERE kind = 'tournament' AND COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date DESC`)
-      .all(start, end)
+    const tournaments = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name, division FROM events
+      WHERE kind = 'tournament' AND COALESCE(end_date, date) >= ? AND date <= ? AND (division IS NULL OR division = ?) ORDER BY date DESC`)
+      .all(start, end, division)
       .map((e) => ({
         ...e,
         winner: db.prepare(`
@@ -1238,9 +1240,10 @@ function createApp({
 
   // One tournament's results: boats ranked, with their approved catches.
   api.get('/tournaments/:id', (req, res) => {
-    const event = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));
+    const event = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name, division FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
-    const division = req.query.division === 'river' ? 'river' : 'ocean';
+    // A one-division tournament only has that division's results.
+    const division = event.division || (req.query.division === 'river' ? 'river' : 'ocean');
     // Only boats entered in the tournament compete in it; others fishing that day score for the season only.
     const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on BETWEEN :date AND :endDate AND t.division = :division AND k.status = 'approved'
       AND k.club_id = :home AND k.team_id IN (SELECT team_id FROM tournament_entries WHERE event_id = :event)
@@ -1259,11 +1262,15 @@ function createApp({
 
   // The secretary enters a JHMMC boat in a tournament, or takes it out.
   api.put('/tournaments/:id/entries/:teamId', requireReview, (req, res) => {
-    const event = db.prepare("SELECT id FROM events WHERE id = ? AND kind = 'tournament'").get(intId(req.params.id) ?? 0);
+    const event = db.prepare("SELECT id, division FROM events WHERE id = ? AND kind = 'tournament'").get(intId(req.params.id) ?? 0);
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
-    const team = db.prepare('SELECT id, club_id AS clubId FROM teams WHERE id = ?').get(intId(req.params.teamId) ?? 0);
+    const team = db.prepare('SELECT id, club_id AS clubId, division FROM teams WHERE id = ?').get(intId(req.params.teamId) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
     if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats can enter club tournaments.' });
+    // Ocean boats don't fish River tournaments, and the other way round.
+    if (req.body.entered && event.division && team.division !== event.division) {
+      return res.status(400).json({ error: `This tournament is for ${event.division === 'river' ? 'River' : 'Ocean'} boats only.` });
+    }
     if (req.body.entered) db.prepare('INSERT OR IGNORE INTO tournament_entries (event_id, team_id) VALUES (?, ?)').run(event.id, team.id);
     else db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
     res.json({ ok: true, entered: !!req.body.entered });
