@@ -39,7 +39,7 @@ Environment variables:
 | `DB_FILE`     | `data/fishing.db`  | SQLite database file                      |
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
-| `ADMIN_EMAIL` | —                  | Club admin's email. Members who forget their password are told to write to it, and the account with this email gets the admin Members page |
+| `ADMIN_EMAIL` | `shamseid4@gmail.com` | Club admin's email. Members who forget their password are told to write to it, and the account with this email gets the admin Members page |
 | `APP_URL`     | the request's address | Public address used in emailed links, e.g. `https://west-africa-big-game.onrender.com` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | — | Email server for password resets. Without `SMTP_HOST`, emails are printed to the server log |
 | `MAIL_FROM`   | `SMTP_USER`        | Sender shown on emails, e.g. `JHMMC <noreply@jhmmc.com>` |
