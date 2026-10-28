@@ -879,14 +879,14 @@ const pagesFor = (view) => ({
   // Official JHMMC standings from approved catches.
   async points() {
     const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
-    const { boats, anglers, tournaments, season, pending, race } = await api(`/points?division=${division}`);
+    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
       <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by weighmasters on the day and approved by the secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
-      ${boats.length ? raw(html`<h2>Season race</h2>
-      <section class="card pad race" id="race" aria-label="Running points total through the season for the top ${Math.min(boats.length, 5)} ${division} boats"></section>`) : ''}
+      ${boats.length ? raw(html`<h2>Points by boat</h2>
+      <section class="card pad bars" aria-label="Season points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
       <h2>Boats</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
@@ -905,8 +905,6 @@ const pagesFor = (view) => ({
           <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName}</div></td>
           <td class="num">${a.catches}</td><td class="num">${a.points}</td></tr>`)) : empty(4, 'Nothing yet.')}</tbody>
       </table></div>`;
-    const chart = view.querySelector('#race');
-    if (chart) raceChart(chart, race);
   },
 
   async tournament(id) {
@@ -1620,101 +1618,30 @@ const ICONS = {
   medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
 };
 
-// Season race: each top boat's running points total, one line per boat.
-// Colours follow the boat's place in the standings; the legend, the tooltip
-// and the table below carry the names and numbers.
-function raceChart(el, race) {
-  const DAY = 86400000;
-  const toDay = (d) => Date.parse(d + 'T00:00:00Z');
-  const start = toDay(race.start);
-  const end = Math.max(toDay(race.end), start);
-  const days = Math.round((end - start) / DAY) + 1;
-  const series = race.boats.map((b, i) => {
-    const byDay = new Map(b.days.map((d) => [d.date, d.points]));
-    let total = 0;
-    const totals = Array.from({ length: days }, (_, k) => {
-      total = Math.round((total + (byDay.get(new Date(start + k * DAY).toISOString().slice(0, 10)) ?? 0)) * 10) / 10;
-      return total;
-    });
-    return { ...b, slot: i + 1, totals };
-  });
-  const values = series.flatMap((b) => b.totals);
-  const ticks = niceAxis(Math.min(0, ...values), Math.max(0, ...values));
-  const lo = ticks[0];
-  const hi = ticks[ticks.length - 1];
-  const fmtShort = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
-
-  el.innerHTML = `<p class="small muted">Running points total, top ${series.length} ${series.length === 1 ? 'boat' : 'boats'}</p>
-    <ul class="race-legend">${series.map((b) => html`<li><span class="key s${b.slot}"></span>${b.teamName}</li>`).join('')}</ul>
-    <div class="race-plot"><svg aria-hidden="true"></svg><div class="race-tip" hidden></div></div>`;
-  const plot = el.querySelector('.race-plot');
-  const svg = plot.querySelector('svg');
-  const tip = plot.querySelector('.race-tip');
-
-  function draw() {
-    const W = Math.max(plot.clientWidth, 240);
-    const H = 220;
-    const m = { top: 12, right: 12, bottom: 24, left: 44 };
-    const x = (k) => m.left + (days === 1 ? (W - m.left - m.right) / 2 : (k / (days - 1)) * (W - m.left - m.right));
-    const y = (v) => m.top + ((hi - v) / (hi - lo || 1)) * (H - m.top - m.bottom);
-    const xTicks = [0, Math.round((days - 1) / 2), days - 1].filter((k, i, a) => a.indexOf(k) === i);
-    // Points change on the day a fish is approved, so the lines step.
-    const path = (totals) => totals.map((v, k) => (k ? `H${x(k)}V${y(v)}` : `M${x(0)},${y(v)}`)).join('');
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.setAttribute('width', W);
-    svg.setAttribute('height', H);
-    svg.innerHTML = `
-      ${ticks.map((t) => `<line class="${t === 0 ? 'base' : 'grid'}" x1="${m.left}" x2="${W - m.right}" y1="${y(t)}" y2="${y(t)}"/>
-        <text class="tick" x="${m.left - 6}" y="${y(t)}" dy="0.32em" text-anchor="end">${compact(t)}</text>`).join('')}
-      ${xTicks.map((k, i) => `<text class="tick" x="${x(k)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}">${fmtShort(start + k * DAY)}</text>`).join('')}
-      ${[...series].reverse().map((b) => `<path class="line s${b.slot}" d="${path(b.totals)}"/>
-        <circle class="dot s${b.slot}" r="4" cx="${x(days - 1)}" cy="${y(b.totals[days - 1])}"/>`).join('')}
-      <line class="cross" y1="${m.top}" y2="${H - m.bottom}" visibility="hidden"/>
-      <g class="hover"></g>
-      <rect class="hit" x="${m.left}" y="0" width="${W - m.left - m.right}" height="${H}"/>`;
-    const cross = svg.querySelector('.cross');
-    const hover = svg.querySelector('.hover');
-    const show = (e) => {
-      const box = svg.getBoundingClientRect();
-      const px = ((e.clientX - box.left) / box.width) * W;
-      const k = days === 1 ? 0 : Math.max(0, Math.min(days - 1, Math.round(((px - m.left) / (W - m.left - m.right)) * (days - 1))));
-      cross.setAttribute('x1', x(k));
-      cross.setAttribute('x2', x(k));
-      cross.setAttribute('visibility', 'visible');
-      hover.innerHTML = series.map((b) => `<circle class="dot s${b.slot}" r="4" cx="${x(k)}" cy="${y(b.totals[k])}"/>`).join('');
-      tip.innerHTML = html`<b>${fmtDay(new Date(start + k * DAY).toISOString().slice(0, 10))}</b>` +
-        [...series].sort((a, b) => b.totals[k] - a.totals[k])
-          .map((b) => html`<div><span class="key s${b.slot}"></span>${b.teamName}<span class="num-right">${b.totals[k]}</span></div>`).join('');
-      tip.hidden = false;
-      const left = (x(k) / W) * box.width;
-      tip.style.left = `${Math.min(Math.max(left - tip.offsetWidth / 2, 0), box.width - tip.offsetWidth)}px`;
-    };
-    const hide = () => { cross.setAttribute('visibility', 'hidden'); hover.innerHTML = ''; tip.hidden = true; };
-    const hit = svg.querySelector('.hit');
-    hit.addEventListener('pointermove', show);
-    hit.addEventListener('pointerdown', show);
-    hit.addEventListener('pointerleave', hide);
-  }
-  draw();
-  let width = plot.clientWidth;
-  const resize = () => {
-    if (!el.isConnected) return window.removeEventListener('resize', resize);
-    if (plot.clientWidth !== width) { width = plot.clientWidth; draw(); }
-  };
-  window.addEventListener('resize', resize);
+// Bar graph of season points, one bar per boat. Bars grow from zero, so a
+// boat below zero (a small marlin kept) points left. The value sits at the
+// bar's end; hovering shows the fish count too.
+const TOP_BARS = 10;
+function pointsBars(boats) {
+  const lo = Math.min(0, ...boats.map((b) => b.points));
+  const hi = Math.max(0, ...boats.map((b) => b.points));
+  // Room at either end for the value label.
+  const left = lo < 0 ? 16 : 0;
+  const right = hi > 0 ? 16 : 0;
+  const scale = (v) => left + ((v - lo) / (hi - lo || 1)) * (100 - left - right);
+  const zero = scale(0);
+  return boats.map((b) => {
+    const end = scale(b.points);
+    const neg = b.points < 0;
+    const [from, to] = neg ? [end, zero] : [zero, end];
+    return html`<a class="bar-row" href="#/boat/${b.teamId}" title="${b.teamName}: ${b.points} points from ${plural(b.catches, 'fish')}">
+      <span class="bar-name">${b.teamName}</span>
+      <span class="bar-track" style="--zero:${zero}%">
+        <span class="bar${neg ? ' neg' : ''}" style="left:${from}%;width:${Math.max(to - from, 0.5)}%"></span>
+        <span class="bar-value${neg ? ' neg' : ''}" style="${neg ? `right:${100 - from}%` : `left:${to}%`}">${b.points}</span>
+      </span></a>`;
+  }).join('');
 }
-
-// Axis helper: a rounded range from lo to hi with round ticks, always through 0.
-function niceAxis(lo, hi) {
-  if (lo === hi) hi = lo + 100;
-  const raw = (hi - lo) / 4;
-  const pow = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((f) => f * pow).find((f) => f >= raw);
-  const first = Math.floor(lo / step);
-  const last = Math.ceil(hi / step);
-  return Array.from({ length: last - first + 1 }, (_, i) => Math.round((first + i) * step * 10) / 10);
-}
-const compact = (n) => (Math.abs(n) >= 1000 ? `${Math.round(n / 100) / 10}K` : String(n));
 
 function renderNav(active) {
   const links = [
