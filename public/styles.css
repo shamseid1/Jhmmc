@@ -224,8 +224,9 @@ button.more[hidden] { display: none; }
 #nav a[aria-current="page"] { background: var(--surface-2); color: var(--accent); }
 
 @media (max-width: 640px) {
-  .topbar { justify-content: center; }
-  .brand span { display: inline; }
+  /* No top bar on phones (the menu is at the bottom): just the logo, which scrolls away. */
+  .topbar { position: static; justify-content: center; margin: 0; padding: 14px 0 0; background: none; border: 0; box-shadow: none; }
+  .brand .logo { height: 44px; margin: 0; }
   /* The tab bar floats above the page, clear of the screen edges. */
   #nav {
     position: fixed; z-index: 20; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
