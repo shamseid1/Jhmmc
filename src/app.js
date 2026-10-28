@@ -374,15 +374,18 @@ function createApp({
     res.json({ ok: true, role, weighStation: station });
   });
 
-  // The admin puts each JHMMC boat under the weigh station it brings its fish to.
+  // The admin's Boats page: a JHMMC boat's weigh station (its home port) and Ocean or River.
   api.patch('/admin/teams/:id', requireAdmin, (req, res) => {
-    const team = db.prepare('SELECT id, club_id AS clubId FROM teams WHERE id = ?').get(intId(req.params.id) ?? 0);
+    const team = db.prepare('SELECT id, club_id AS clubId, weigh_station AS station, division FROM teams WHERE id = ?')
+      .get(intId(req.params.id) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
-    if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station.' });
-    const station = req.body.weighStation || null;
+    if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station and division.' });
+    const station = 'weighStation' in req.body ? req.body.weighStation || null : team.station;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
-    db.prepare('UPDATE teams SET weigh_station = ? WHERE id = ?').run(station, team.id);
-    res.json({ ok: true, weighStation: station });
+    const division = 'division' in req.body ? req.body.division : team.division;
+    if (!['ocean', 'river'].includes(division)) return res.status(400).json({ error: 'Choose Ocean or River.' });
+    db.prepare('UPDATE teams SET weigh_station = ?, home_port = ?, division = ? WHERE id = ?').run(station, station, division, team.id);
+    res.json({ ok: true, weighStation: station, division });
   });
 
   // The admin deletes a member's account. Their catches stay, under their
@@ -514,7 +517,12 @@ function createApp({
     const country = str(req.body.country, 60);
     const clubId = intId(req.body.clubId);
     const length = lengthFt(req.body.lengthFt);
-    const division = clubId === homeClubId() && req.body.division === 'river' ? 'river' : 'ocean';
+    const jhmmc = clubId === homeClubId();
+    const division = jhmmc && req.body.division === 'river' ? 'river' : 'ocean';
+    // A JHMMC boat's home port is its weigh station.
+    const station = jhmmc ? req.body.weighStation || null : null;
+    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
+    const homePort = jhmmc ? station : str(req.body.homePort, 80);
     if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
     if (Number.isNaN(length)) return res.status(400).json({ error: 'Boat length should be in feet, between 10 and 200.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
@@ -525,9 +533,9 @@ function createApp({
     let code = newCode();
     while (db.prepare('SELECT 1 FROM teams WHERE join_code = ?').get(code)) code = newCode();
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO teams (name, home_port, country, club_id, captain_id, join_code, length_ft, make, division)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, str(req.body.homePort, 80), country, clubId, req.user.id, code, length, str(req.body.make, 60), division);
+      INSERT INTO teams (name, home_port, country, club_id, captain_id, join_code, length_ft, make, division, weigh_station)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, homePort, country, clubId, req.user.id, code, length, str(req.body.make, 60), division, station);
     const id = Number(lastInsertRowid);
     db.prepare('UPDATE users SET team_id = ? WHERE id = ?').run(id, req.user.id);
     res.status(201).json({ team: getTeam(id, req.user.id), user: getMe(req.user.id) });
@@ -615,13 +623,17 @@ function createApp({
     if (!team) return;
     const cur = db.prepare('SELECT * FROM teams WHERE id = ?').get(team.id);
     const name = 'name' in req.body ? str(req.body.name, 80) : cur.name;
-    const homePort = 'homePort' in req.body ? str(req.body.homePort, 80) : cur.home_port;
     const country = 'country' in req.body ? str(req.body.country, 60) : cur.country;
     const clubId = 'clubId' in req.body ? intId(req.body.clubId) : cur.club_id;
     const length = 'lengthFt' in req.body ? lengthFt(req.body.lengthFt) : cur.length_ft;
     const make = 'make' in req.body ? str(req.body.make, 60) : cur.make;
-    const division = clubId !== homeClubId() ? 'ocean'
+    const jhmmc = clubId === homeClubId();
+    const division = !jhmmc ? 'ocean'
       : 'division' in req.body ? (req.body.division === 'river' ? 'river' : 'ocean') : cur.division;
+    // A JHMMC boat's home port is its weigh station; only JHMMC boats have one.
+    const station = !jhmmc ? null : 'weighStation' in req.body ? req.body.weighStation || null : cur.weigh_station;
+    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
+    const homePort = jhmmc ? station : 'homePort' in req.body ? str(req.body.homePort, 80) : cur.home_port;
     if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
     if (Number.isNaN(length)) return res.status(400).json({ error: 'Boat length should be in feet, between 10 and 200.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
@@ -629,10 +641,9 @@ function createApp({
     if (db.prepare('SELECT 1 FROM teams WHERE name = ? AND id != ?').get(name, team.id)) {
       return res.status(409).json({ error: 'Another boat already has that name.' });
     }
-    // Only JHMMC boats have a weigh station; leaving the club clears it.
     db.prepare(`UPDATE teams SET name = ?, home_port = ?, country = ?, club_id = ?, length_ft = ?, make = ?, division = ?,
-      weigh_station = CASE WHEN ? = ? THEN weigh_station END WHERE id = ?`)
-      .run(name, homePort, country, clubId, length, make, division, clubId, homeClubId(), team.id);
+      weigh_station = ? WHERE id = ?`)
+      .run(name, homePort, country, clubId, length, make, division, station, team.id);
     res.json({ team: getTeam(team.id, req.user.id) });
   });
 

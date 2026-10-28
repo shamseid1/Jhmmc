@@ -458,3 +458,11 @@ button.link[hidden] { display: none; }
 .notify.notify-on button.link { font-size: inherit; }
 .station-tab.none:not([aria-current="page"]) { color: var(--muted); font-weight: 500; }
 .station:not(:has(.review-item)) .station-head { color: var(--muted); font-size: 1rem; }
+
+/* ---- admin boats page ---- */
+.boat-row { display: grid; gap: 10px; }
+.boat-row[hidden] { display: none; }
+.boat-name { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--text); text-decoration: none; }
+.boat-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.boat-fields label { font-size: 14px; }
+@media (max-width: 420px) { .boat-fields { grid-template-columns: 1fr; } }

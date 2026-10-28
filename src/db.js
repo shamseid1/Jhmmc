@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS teams (
   make TEXT,
   photo TEXT,
   division TEXT NOT NULL DEFAULT 'ocean',
-  -- JHMMC boats: the weigh station they bring their fish to, set by the admin.
+  -- JHMMC boats: the weigh station they bring their fish to, which is also
+  -- their home port (home_port is kept the same).
   weigh_station TEXT,
   club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
   captain_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -291,6 +292,13 @@ function openDb(file) {
     if (!db.prepare('PRAGMA table_info(teams)').all().some((c) => c.name === 'weigh_station')) {
       db.exec('ALTER TABLE teams ADD COLUMN weigh_station TEXT');
     }
+  }
+  if (hasTables && version < 14) {
+    // JHMMC boats: the weigh station is their home port.
+    const home = db.prepare('SELECT id FROM clubs WHERE name = ?').get(HOME_CLUB.name)?.id;
+    db.prepare(`UPDATE teams SET weigh_station = (SELECT value FROM json_each(?) WHERE lower(value) = lower(trim(teams.home_port)))
+      WHERE club_id = ? AND weigh_station IS NULL`).run(JSON.stringify(WEIGH_STATIONS), home ?? -1);
+    db.prepare('UPDATE teams SET home_port = weigh_station WHERE club_id = ? AND weigh_station IS NOT NULL').run(home ?? -1);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

@@ -519,6 +519,18 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 200);
     assert.equal((await as()('GET', `/teams/${ocean.id}`)).body.team.weighStation, 'Extreme');
     assert.equal((await as()('GET', '/teams')).body.teams.find((t) => t.id === ocean.id).weighStation, 'Extreme');
+    assert.equal((await as()('GET', `/teams/${ocean.id}`)).body.team.homePort, 'Extreme', "a JHMMC boat's home port is its weigh station");
+    assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { division: 'lake' })).status, 400);
+    assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { division: 'river' })).body.division, 'river', 'the admin sets Ocean or River');
+    await boss('PATCH', `/admin/teams/${ocean.id}`, { division: 'ocean' });
+    // Captains choose the station as their home port; typed home ports are ignored for JHMMC boats.
+    let t = (await cap('PATCH', `/teams/${ocean.id}`, { weighStation: 'Beerville', homePort: 'Monrovia' })).body.team;
+    assert.deepEqual([t.weighStation, t.homePort], ['Beerville', 'Beerville']);
+    assert.equal((await cap('PATCH', `/teams/${ocean.id}`, { weighStation: 'Nowhere' })).status, 400);
+    t = (await cap('PATCH', `/teams/${ocean.id}`, { weighStation: 'Extreme' })).body.team;
+    assert.equal(t.homePort, 'Extreme');
+    t = (await other('GET', `/teams/${visitor.id}`)).body.team;
+    assert.equal(t.weighStation, null, 'other clubs have no weigh station');
     assert.equal((await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
     r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Beerville', lineClass: '50 lb' }));
     const wahoo = r.body.catch;

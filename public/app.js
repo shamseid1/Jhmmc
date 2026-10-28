@@ -190,10 +190,13 @@ const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 const DIVISIONS = [['ocean', 'Ocean'], ['river', 'River']];
 const isJhmmc = (clubId) => clubId != null && String(clubId) === String(state.meta.homeClubId);
 
-// Ocean / River is only asked for JHMMC boats: show it when the club picked is JHMMC.
+// Ocean / River is only asked for JHMMC boats, and their home port is their
+// weigh station: switch the fields when the club picked is (or isn't) JHMMC.
 function syncDivision(form) {
-  const field = form.querySelector('.division-field');
-  if (field) field.hidden = !isJhmmc(form.clubId.value);
+  const jhmmc = isJhmmc(form.clubId.value);
+  for (const f of form.querySelectorAll('.division-field, .station-field')) f.hidden = !jhmmc;
+  const port = form.querySelector('.homeport-field');
+  if (port) port.hidden = jhmmc;
 }
 
 // 6.31°N 10.81°W, the way charts and GPS units show it.
@@ -657,7 +660,8 @@ const pagesFor = (view) => ({
             <label>Make / model <input name="make" maxlength="60" placeholder="e.g. Bertram"></label>
           </div>
           <div class="row">
-            <label>Home port <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
+            <label class="homeport-field">Home port <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
+            <label class="station-field" hidden>Home port (weigh station) <select name="weighStation">${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
             <label>Country <select name="country">${raw(options(state.meta.countries, state.me.country, 'Choose…'))}</select></label>
           </div>
           <div class="row">
@@ -735,7 +739,7 @@ const pagesFor = (view) => ({
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
-    const facts = [division, station, spec, team.homePort, team.country].filter(Boolean).join(' · ');
+    const facts = [division, station, spec, isJhmmc(team.clubId) ? '' : team.homePort, team.country].filter(Boolean).join(' · ');
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
       <h1>${team.name}</h1>
       <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
@@ -776,7 +780,8 @@ const pagesFor = (view) => ({
         </div>
         <label>Boat photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
         <div class="row">
-          <label>Home port <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
+          <label class="homeport-field" ${isJhmmc(team.clubId) ? 'hidden' : ''}>Home port <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
+          <label class="station-field" ${isJhmmc(team.clubId) ? '' : 'hidden'}>Home port (weigh station) <select name="weighStation">${raw(options(state.meta.weighStations, team.weighStation, 'Choose…'))}</select></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country, 'Choose…'))}</select></label>
         </div>
         <div class="row">
@@ -1387,7 +1392,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Find a member, make a password reset link')}
-        ${item('#/stations', 'boat', 'Boat weigh stations', 'Which station each JHMMC boat weighs at')}
+        ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
       <h2>Rules</h2>
       <div class="card menu">
@@ -1413,27 +1418,46 @@ const pagesFor = (view) => ({
   },
 
   // Admin only: every account, with a one-time password reset link to pass on.
-  // Admin: which weigh station each JHMMC boat brings its fish to.
-  async stations() {
+  // Admin: every boat. JHMMC boats get their weigh station (their home port)
+  // and Ocean or River here; the rest of a boat's details are on its page.
+  async 'admin-boats'() {
     if (!state.me?.isAdmin) {
       view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
       return;
     }
     const { teams } = await api('/teams');
-    const boats = teams.filter((t) => isJhmmc(t.clubId));
+    const jhmmc = teams.filter((t) => isJhmmc(t.clubId));
+    const others = teams.filter((t) => !isJhmmc(t.clubId));
+    const find = (t) => `${t.name} ${t.clubName || ''} ${t.weighStation || t.homePort || ''}`.toLowerCase();
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Boat weigh stations</h1>
-      <p class="small muted">Put each JHMMC boat under the weigh station it brings its fish to. On the registration sheet, each weighmaster sees their station's boats first; they can still register any boat.</p>
-      <div class="card"><ul class="list">${boats.length ? boats.map((t) => raw(html`<li class="member" data-id="${t.id}">
-        <span><a href="#/boat/${t.id}"><b>${t.name}</b></a><div class="muted small">${t.division === 'river' ? 'River' : 'Ocean'}</div></span>
-        <select data-act="station" aria-label="Weigh station for ${t.name}">${raw(options(state.meta.weighStations, t.weighStation, 'No station'))}</select>
-      </li>`)) : raw('<li class="muted">No JHMMC boats yet.</li>')}</ul></div>`;
+      <h1>Boats (${teams.length})</h1>
+      <p class="small muted">Set each JHMMC boat's weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away. Tap a boat to change anything else: name, photo, club, captain or crew.</p>
+      <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by boat, club or station" aria-label="Search boats" autocomplete="off"></label>
+      <h2>JHMMC boats (${jhmmc.length})</h2>
+      <div class="card"><ul class="list">${jhmmc.length ? jhmmc.map((t) => raw(html`<li class="boat-row" data-id="${t.id}" data-find="${find(t)}">
+        <a href="#/boat/${t.id}" class="boat-name"><b>${t.name}</b><span class="muted small">${plural(t.members, 'crew member')} ›</span></a>
+        <div class="boat-fields">
+          <label>Home port (weigh station) <select data-field="weighStation">${raw(options(state.meta.weighStations, t.weighStation, 'Not set'))}</select></label>
+          <label>Registered for <select data-field="division">${raw(options(DIVISIONS, t.division))}</select></label>
+        </div>
+      </li>`)) : raw('<li class="muted">No JHMMC boats yet.</li>')}</ul></div>
+      ${others.length ? raw(html`<h2>Other boats (${others.length})</h2>
+      <div class="card"><ul class="list">${others.map((t) => raw(html`<li class="boat-row" data-find="${find(t)}">
+        <a href="#/boat/${t.id}" class="boat-name"><b>${t.name}</b><span class="muted small">${[t.clubName || 'No club', t.homePort].filter(Boolean).join(' · ')} ›</span></a>
+      </li>`))}</ul></div>`) : ''}`;
+    view.querySelector('.search input').addEventListener('input', (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      for (const li of view.querySelectorAll('.boat-row')) li.hidden = !!term && !li.dataset.find.includes(term);
+    });
     view.addEventListener('change', async (e) => {
-      const sel = e.target.closest('select[data-act=station]');
+      const sel = e.target.closest('select[data-field]');
       if (!sel) return;
+      const row = sel.closest('[data-id]');
       try {
-        await api(`/admin/teams/${sel.closest('[data-id]').dataset.id}`, { method: 'PATCH', body: { weighStation: sel.value } });
-        toast(sel.value ? `Weighs at ${sel.value}` : 'No weigh station');
+        await api(`/admin/teams/${row.dataset.id}`, { method: 'PATCH', body: { [sel.dataset.field]: sel.value } });
+        const name = row.querySelector('b').textContent;
+        toast(sel.dataset.field === 'division' ? `${name}: ${sel.value === 'river' ? 'River' : 'Ocean'}`
+          : sel.value ? `${name} weighs at ${sel.value}` : `${name}: no weigh station`);
       } catch (ex) {
         toast(ex.message);
       }
@@ -1885,7 +1909,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', stations: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
