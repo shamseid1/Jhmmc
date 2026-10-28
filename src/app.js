@@ -336,6 +336,30 @@ function createApp({
     res.json({ ok: true, weighStation: station });
   });
 
+  // The admin deletes a member's account. Their catches stay, under their
+  // name like a guest angler's, so standings and records don't change; their
+  // comments and likes go. A boat they captained passes to its longest-serving crew.
+  api.delete('/admin/users/:id', requireAdmin, (req, res) => {
+    const user = db.prepare('SELECT id, name, email, photo FROM users WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!user) return res.status(404).json({ error: 'Member not found.' });
+    if (user.id === req.user.id || isAdminUser(user)) return res.status(400).json({ error: "The admin's own account can't be deleted." });
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE catches SET angler_name = ?, user_id = NULL WHERE user_id = ?').run(user.name, user.id);
+      for (const { id } of db.prepare('SELECT id FROM teams WHERE captain_id = ?').all(user.id)) {
+        const next = db.prepare('SELECT id FROM users WHERE team_id = ? AND id != ? ORDER BY id LIMIT 1').get(id, user.id);
+        db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(next?.id ?? null, id);
+      }
+      db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+      db.exec('COMMIT');
+    } catch (ex) {
+      db.exec('ROLLBACK');
+      throw ex;
+    }
+    removeUpload(user.photo);
+    res.json({ ok: true, name: user.name });
+  });
+
   // A one-time link the admin passes on (e.g. by WhatsApp) to a member who forgot their password.
   api.post('/admin/users/:id/reset-link', requireAdmin, (req, res) => {
     const id = intId(req.params.id);

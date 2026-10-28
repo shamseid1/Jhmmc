@@ -662,6 +662,27 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('PATCH', '/settings/season', { start: '2027-01-01', end: '2026-01-01' })).status, 400);
     r = await sec('PATCH', '/settings/season', { start: day(30), end: day(300) });
     assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'today is outside the new season');
+
+    // The admin deletes an account: the captain's catches stay under their name
+    // and a crew member takes over the boat.
+    const mate = as();
+    await mate('POST', '/auth/register', { name: 'Deck Hand', email: 'dh@example.com', password: 'password1' });
+    await mate('POST', '/teams/join', { code: (await cap('GET', `/teams/${ocean.id}`)).body.team.joinCode });
+    const mateId = (await mate('GET', '/me')).body.user.id;
+    await other('POST', `/catches/${post.id}/comments`, { body: 'Well done' });
+    await cap('POST', `/catches/${post.id}/comments`, { body: 'Thanks' });
+    const people = (await boss('GET', '/admin/users')).body.users;
+    const bossId = people.find((u) => u.email === 'boss@example.com').id;
+    assert.equal((await sec('DELETE', `/admin/users/${capId}`)).status, 403, 'admin only');
+    assert.equal((await boss('DELETE', `/admin/users/${bossId}`)).status, 400, "the admin can't delete themselves");
+    assert.equal((await boss('DELETE', `/admin/users/${capId}`)).status, 200);
+    assert.equal((await cap('GET', '/me')).body.user, null, 'signed out');
+    const kept = (await as()('GET', `/catches/${wahoo.id}`)).body;
+    assert.deepEqual([kept.catch.angler, kept.catch.userId, kept.catch.points], ['Ocean Captain', null, 105], 'registrations keep the name and points');
+    assert.deepEqual((await as()('GET', `/catches/${post.id}`)).body.comments.map((c) => c.body), ['Well done'], 'their comments go');
+    const after = (await as()('GET', `/teams/${ocean.id}`)).body.team;
+    assert.equal(after.captainId, mateId, 'the crew member is captain now');
+    assert.equal((await boss('DELETE', `/admin/users/${capId}`)).status, 404);
   } finally {
     srv.close();
   }

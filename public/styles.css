@@ -350,6 +350,8 @@ button.liked .icon { fill: currentColor; }
 .ppk { width: 90px; text-align: right; padding: 6px 8px; }
 .member-row .role { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .member-row .role select { width: auto; padding: 4px 8px; }
+.member-row .delete-user { grid-column: 1 / -1; text-align: right; }
+.member-row .delete-user button { padding: 0; font-size: 13px; }
 
 /* ---- quick post ---- */
 .photo-pick { display: grid; gap: 8px; cursor: pointer; font-weight: 600; }

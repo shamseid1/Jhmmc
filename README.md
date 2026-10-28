@@ -97,6 +97,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/me/password`            | `{current, password}` changes your password |
 | GET    | `/api/admin/users`            | Admin: every member |
 | POST   | `/api/admin/users/:id/reset-link` | Admin: one-time reset link (24 hours) to pass on |
+| DELETE | `/api/admin/users/:id`        | Admin: delete an account (catches stay under the name; comments and likes go) |
 | GET/POST | `/api/teams`                | List boats, or register one (you become captain) |
 | GET/PATCH | `/api/teams/:id`           | Boat, crew and stats (invite code shown to crew only); captain edits details |
 | POST   | `/api/teams/join`             | `{code}` joins a boat's crew           |

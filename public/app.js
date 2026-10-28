@@ -1373,6 +1373,7 @@ const pagesFor = (view) => ({
           <label class="station" ${u.role === 'weighmaster' ? '' : 'hidden'}>Weigh station <select data-act="station">${raw(options(state.meta.weighStations, u.weighStation, 'Choose…'))}</select></label>
         </div>
         <div class="reset-out" hidden></div>
+        ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
       </li>`))}</ul></div>`;
     view.querySelector('.search input').addEventListener('input', (e) => {
       const term = e.target.value.trim().toLowerCase();
@@ -1400,6 +1401,18 @@ const pagesFor = (view) => ({
       if (!btn) return;
       const row = btn.closest('.member-row');
       if (btn.dataset.act === 'copy-link') return copyText(row.dataset.link, 'Link copied');
+      if (btn.dataset.act === 'delete-user') {
+        const name = row.querySelector('b').textContent;
+        if (!confirm(`Delete ${name}'s account? This can't be undone.\n\nTheir catches stay on the app under their name; their comments and likes are removed.`)) return;
+        try {
+          await api(`/admin/users/${row.dataset.id}`, { method: 'DELETE' });
+          row.remove();
+          toast(`${name}'s account was deleted`);
+        } catch (ex) {
+          toast(ex.message);
+        }
+        return;
+      }
       if (btn.dataset.act !== 'reset-link') return;
       try {
         const { link, hours, name } = await api(`/admin/users/${row.dataset.id}/reset-link`, { method: 'POST' });
