@@ -48,7 +48,7 @@ function destroySession(db, req, res) {
 // Attaches req.user (or null) from the session cookie.
 function sessionMiddleware(db) {
   const lookup = db.prepare(`
-    SELECT u.id, u.name, u.email, u.country, u.club_id AS clubId, u.bio
+    SELECT u.id, u.name, u.email, u.country, u.team_id AS teamId, u.bio
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = ? AND s.expires_at > ?
   `);

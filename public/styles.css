@@ -192,3 +192,21 @@ td.num, th.num { text-align: right; }
   font-size: 15px;
   max-width: calc(100% - 32px);
 }
+
+.btn.ghost-light { background: transparent; border-color: rgba(255, 255, 255, .5); color: #fff; }
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.how h3 { margin: 0 0 4px; font-size: 1rem; }
+.how p { margin: 0; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+.two h2 { margin: 0; }
+.banner { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
+.banner > div { flex: 1 1 240px; }
+.invite { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+.code { font: 700 1.6rem/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .18em; }
+.code-input { text-transform: uppercase; letter-spacing: .15em; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.member { display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.member .actions { margin-top: 0; }
+.member button { padding: 4px 10px; font-size: 14px; }
+.notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+button.more { margin: 16px auto; display: block; }
+button.more[hidden] { display: none; }

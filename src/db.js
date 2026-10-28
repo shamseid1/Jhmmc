@@ -35,6 +35,8 @@ const SPECIES = [
   ['Other', null, 'Other'],
 ];
 
+const SCHEMA_VERSION = 2;
+
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -55,8 +57,20 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   country TEXT,
-  club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
   bio TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- A team is a boat and its crew. The captain manages members and the invite code.
+CREATE TABLE IF NOT EXISTS teams (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  home_port TEXT,
+  country TEXT,
+  club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
+  captain_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  join_code TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -76,6 +90,8 @@ CREATE TABLE IF NOT EXISTS species (
 CREATE TABLE IF NOT EXISTS catches (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  logged_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
   club_id INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
   species_id INTEGER NOT NULL REFERENCES species(id),
   weight_kg REAL,
@@ -85,7 +101,6 @@ CREATE TABLE IF NOT EXISTS catches (
   caught_on TEXT NOT NULL,
   country TEXT,
   location TEXT,
-  boat TEXT,
   line_class TEXT,
   notes TEXT,
   photo TEXT,
@@ -94,6 +109,7 @@ CREATE TABLE IF NOT EXISTS catches (
 CREATE INDEX IF NOT EXISTS catches_created ON catches(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS catches_species ON catches(species_id, weight_kg DESC);
 CREATE INDEX IF NOT EXISTS catches_club ON catches(club_id);
+CREATE INDEX IF NOT EXISTS catches_team ON catches(team_id);
 
 CREATE TABLE IF NOT EXISTS likes (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -113,7 +129,13 @@ CREATE TABLE IF NOT EXISTS comments (
 function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
+  const { user_version: version } = db.prepare('PRAGMA user_version').get();
+  const hasTables = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'users'").get();
+  if (hasTables && version < SCHEMA_VERSION) {
+    throw new Error(`${file} was created by an older version of the app. Move it aside and restart to create a fresh database.`);
+  }
   db.exec(SCHEMA);
+  db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   const insert = db.prepare(
     'INSERT OR IGNORE INTO species (name, scientific_name, category) VALUES (?, ?, ?)'
   );

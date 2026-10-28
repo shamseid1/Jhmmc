@@ -4,13 +4,15 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 
 ## Features
 
-- **Accounts & clubs**: anglers sign up, register their club (country, harbour, description) and join it.
-- **Log a catch**: species (22 West African big game species, grouped as billfish, tuna, pelagics, jacks, inshore, sharks), weight in kg (shown in lb too), length, date, country, spot, boat, IGFA line class, released/tagged flags, a photo and the story behind it.
-- **Shared feed**: everyone's catches in one place, filtered by species, country, club or released-only.
-- **Social**: likes, comments, and sharing through the phone's share sheet, a copied link or WhatsApp.
-- **Leaderboards**: heaviest fish per species, top anglers (billfish count first) and top clubs, by season and country.
-- **Club & angler pages**: members, stats and recent catches.
-- Mobile-first layout with dark mode, so it works on the dock as well as on a laptop.
+- **Personal accounts**: every angler signs in with their own email and password. Signing in is required to see anything.
+- **Boats are teams**: a captain registers the boat (name, home port, country, club) and gets a 6-character crew invite code to share, for example on WhatsApp. Crew join with the code, and a boat can have any number of crew.
+- **Captain controls**: change boat details, make a new invite code (the old one stops working), hand over the captaincy, remove crew.
+- **Individual anglers** without a boat can follow the feed and leaderboards, like and comment, but cannot log catches.
+- **Log a catch** (crew only): any crew member can log a fish for anyone on the same boat. Species (22 West African big game species), weight in kg (shown in lb too), length, date, country, spot, IGFA line class, released/tagged, a photo and the story. The catch is credited to the angler, the boat and the boat's club.
+- **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
+- **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
+- **Boat, club and angler pages** with crew, stats and recent catches.
+- Mobile-first layout with dark mode.
 
 ## Running it
 
@@ -32,6 +34,8 @@ Environment variables:
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
 
+Upgrading from the first version: the database layout changed when boats were added. Move the old `data/fishing.db` aside and restart; the app refuses to start on an old database rather than lose data.
+
 ## Project layout
 
 ```
@@ -45,16 +49,25 @@ test/             API tests (node:test)
 
 ## API overview
 
+Everything except `/api/meta`, `/api/me` and `/api/auth/*` needs a signed-in angler.
+
 | Method | Path                          | Notes                                  |
 |--------|-------------------------------|----------------------------------------|
 | GET    | `/api/meta`                   | Countries and species                  |
 | POST   | `/api/auth/register`, `/login`, `/logout` | JSON body                  |
-| GET/PATCH | `/api/me`                  | Current angler; change club, bio, etc. |
+| GET/PATCH | `/api/me`                  | Current angler, their boat and whether they are captain |
+| GET/POST | `/api/teams`                | List boats, or register one (you become captain) |
+| GET/PATCH | `/api/teams/:id`           | Boat, crew and stats (invite code shown to crew only); captain edits details |
+| POST   | `/api/teams/join`             | `{code}` joins a boat's crew           |
+| POST   | `/api/teams/leave`            | Captains hand over first if they have crew |
+| POST   | `/api/teams/:id/code`         | Captain: new invite code               |
+| POST   | `/api/teams/:id/captain`      | Captain: `{userId}` hands over         |
+| DELETE | `/api/teams/:id/members/:userId` | Captain: remove crew                |
 | GET/POST | `/api/clubs`                | List or register clubs                 |
-| GET    | `/api/clubs/:id`              | Club, members, stats                   |
-| GET    | `/api/catches`                | Feed; filters `species`, `country`, `club`, `user`, `released=true`, paging with `before` |
-| POST   | `/api/catches`                | `multipart/form-data`, optional `photo` (JPEG/PNG/WebP, max 8 MB) |
-| GET/DELETE | `/api/catches/:id`        | Details with comments; owners can delete |
+| GET    | `/api/clubs/:id`              | Club, its boats, stats                 |
+| GET    | `/api/catches`                | Feed; filters `species`, `team`, `club`, `country`, `user`, `released=true`, paging with `before` |
+| POST   | `/api/catches`                | Crew only. `multipart/form-data`, optional `anglerId` (crew mate) and `photo` (JPEG/PNG/WebP, max 8 MB) |
+| GET/DELETE | `/api/catches/:id`        | Details with comments; the angler, whoever logged it, or the captain can delete |
 | POST   | `/api/catches/:id/like`       | Toggle like                            |
 | POST   | `/api/catches/:id/comments`   | Add a comment                          |
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
@@ -63,7 +76,8 @@ test/             API tests (node:test)
 ## Ideas for next steps
 
 - French (and Portuguese) translations for Senegal, Côte d'Ivoire, Guinea-Bissau and Cabo Verde.
-- Club admins who verify catches before they count towards records, and tournament/season scoring.
+- Password reset by email.
+- Captains or club officials who verify catches before they count towards records, and tournament scoring.
 - Photo resizing, and cloud storage (S3 or similar) once it's hosted.
 - GPS/map of catch spots, tide and moon data, tag-and-release reporting to research programmes.
 - Package as an installable PWA or wrap it for the app stores.

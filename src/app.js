@@ -7,6 +7,8 @@ const { openDb, COUNTRIES } = require('./db');
 const auth = require('./auth');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+// No 0/O or 1/I so codes survive being read out over the radio or WhatsApp.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function str(v, max = 200) {
   if (v === undefined || v === null) return null;
@@ -27,6 +29,10 @@ function bool(v) {
 function intId(v) {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function newCode() {
+  return Array.from(crypto.randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
 function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCookies = false } = {}) {
@@ -54,12 +60,20 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     next();
   });
   app.use(auth.sessionMiddleware(db));
-  app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
+  // Catch photos are only for signed-in members, like the rest of the feed.
+  app.use('/uploads', auth.requireUser, express.static(uploadDir, { maxAge: '7d' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   const api = express.Router();
 
-  // ---- reference data ----------------------------------------------------
+  function requireTeam(req, res, next) {
+    if (!req.user.teamId) {
+      return res.status(403).json({ error: 'Join or register a boat to log catches.' });
+    }
+    next();
+  }
+
+  // ---- reference data (public, needed by the sign-up form) ---------------
 
   api.get('/meta', (_req, res) => {
     const species = db.prepare('SELECT id, name, scientific_name AS scientificName, category FROM species ORDER BY category, name').all();
@@ -73,23 +87,19 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const email = str(req.body.email, 120)?.toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const country = str(req.body.country, 60);
-    const clubId = intId(req.body.clubId);
 
     if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Name and a valid email are required.' });
     }
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
-    if (clubId && !db.prepare('SELECT 1 FROM clubs WHERE id = ?').get(clubId)) {
-      return res.status(400).json({ error: 'Unknown club.' });
-    }
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
       return res.status(409).json({ error: 'An account with that email already exists.' });
     }
 
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (name, email, password_hash, country, club_id) VALUES (?, ?, ?, ?, ?)')
-      .run(name, email, auth.hashPassword(password), country, clubId);
+      .prepare('INSERT INTO users (name, email, password_hash, country) VALUES (?, ?, ?, ?)')
+      .run(name, email, auth.hashPassword(password), country);
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
   });
@@ -111,29 +121,29 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
   });
 
   function getMe(id) {
-    return db.prepare(`
-      SELECT u.id, u.name, u.email, u.country, u.bio, u.club_id AS clubId, c.name AS clubName
-      FROM users u LEFT JOIN clubs c ON c.id = u.club_id WHERE u.id = ?
+    const me = db.prepare(`
+      SELECT u.id, u.name, u.email, u.country, u.bio,
+        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
+    return { ...me, isCaptain: !!me.isCaptain };
   }
 
   api.get('/me', (req, res) => {
     res.json({ user: req.user ? getMe(req.user.id) : null });
   });
 
-  api.patch('/me', auth.requireUser, (req, res) => {
+  // Everything below needs a signed-in angler.
+  api.use(auth.requireUser);
+
+  api.patch('/me', (req, res) => {
     const u = req.user;
     const name = 'name' in req.body ? str(req.body.name, 80) : u.name;
     const country = 'country' in req.body ? str(req.body.country, 60) : u.country;
     const bio = 'bio' in req.body ? str(req.body.bio, 500) : u.bio;
-    const clubId = 'clubId' in req.body ? intId(req.body.clubId) : u.clubId;
     if (!name) return res.status(400).json({ error: 'Name is required.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
-    if (clubId && !db.prepare('SELECT 1 FROM clubs WHERE id = ?').get(clubId)) {
-      return res.status(400).json({ error: 'Unknown club.' });
-    }
-    db.prepare('UPDATE users SET name = ?, country = ?, bio = ?, club_id = ? WHERE id = ?')
-      .run(name, country, bio, clubId, u.id);
+    db.prepare('UPDATE users SET name = ?, country = ?, bio = ? WHERE id = ?').run(name, country, bio, u.id);
     res.json({ user: getMe(u.id) });
   });
 
@@ -142,14 +152,14 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
   api.get('/clubs', (_req, res) => {
     const clubs = db.prepare(`
       SELECT c.id, c.name, c.country, c.city, c.description,
-        (SELECT COUNT(*) FROM users u WHERE u.club_id = c.id) AS members,
+        (SELECT COUNT(*) FROM teams t WHERE t.club_id = c.id) AS teams,
         (SELECT COUNT(*) FROM catches k WHERE k.club_id = c.id) AS catches
       FROM clubs c ORDER BY c.country, c.name
     `).all();
     res.json({ clubs });
   });
 
-  api.post('/clubs', auth.requireUser, (req, res) => {
+  api.post('/clubs', (req, res) => {
     const name = str(req.body.name, 100);
     const country = str(req.body.country, 60);
     if (!name || !COUNTRIES.includes(country)) {
@@ -161,37 +171,188 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const { lastInsertRowid } = db
       .prepare('INSERT INTO clubs (name, country, city, description, created_by) VALUES (?, ?, ?, ?, ?)')
       .run(name, country, str(req.body.city, 80), str(req.body.description, 1000), req.user.id);
-    const id = Number(lastInsertRowid);
-    // The founder joins the new club if they are not in one yet.
-    if (!req.user.clubId) db.prepare('UPDATE users SET club_id = ? WHERE id = ?').run(id, req.user.id);
-    res.status(201).json({ club: db.prepare('SELECT * FROM clubs WHERE id = ?').get(id) });
+    res.status(201).json({ club: db.prepare('SELECT * FROM clubs WHERE id = ?').get(Number(lastInsertRowid)) });
   });
 
   api.get('/clubs/:id', (req, res) => {
     const id = intId(req.params.id);
     const club = id && db.prepare('SELECT id, name, country, city, description, created_at AS createdAt FROM clubs WHERE id = ?').get(id);
     if (!club) return res.status(404).json({ error: 'Club not found.' });
-    const members = db.prepare(`
-      SELECT u.id, u.name,
-        (SELECT COUNT(*) FROM catches k WHERE k.user_id = u.id) AS catches
-      FROM users u WHERE u.club_id = ? ORDER BY catches DESC, u.name
+    const teams = db.prepare(`
+      SELECT t.id, t.name, t.home_port AS homePort,
+        (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members,
+        (SELECT COUNT(*) FROM catches k WHERE k.team_id = t.id) AS catches
+      FROM teams t WHERE t.club_id = ? ORDER BY catches DESC, t.name
     `).all(id);
     const stats = db.prepare(`
-      SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released,
-        MAX(weight_kg) AS heaviestKg
+      SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
       FROM catches WHERE club_id = ?
     `).get(id);
-    res.json({ club, members, stats });
+    res.json({ club, teams, stats });
+  });
+
+  // ---- teams (boats) -----------------------------------------------------
+
+  function validClub(clubId) {
+    return !clubId || !!db.prepare('SELECT 1 FROM clubs WHERE id = ?').get(clubId);
+  }
+
+  api.get('/teams', (_req, res) => {
+    const teams = db.prepare(`
+      SELECT t.id, t.name, t.home_port AS homePort, t.country, c.id AS clubId, c.name AS clubName,
+        (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members,
+        (SELECT COUNT(*) FROM catches k WHERE k.team_id = t.id) AS catches
+      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id ORDER BY t.name
+    `).all();
+    res.json({ teams });
+  });
+
+  api.post('/teams', (req, res) => {
+    if (req.user.teamId) return res.status(409).json({ error: 'Leave your current boat before registering a new one.' });
+    const name = str(req.body.name, 80);
+    const country = str(req.body.country, 60);
+    const clubId = intId(req.body.clubId);
+    if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
+    if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
+    if (!validClub(clubId)) return res.status(400).json({ error: 'Unknown club.' });
+    if (db.prepare('SELECT 1 FROM teams WHERE name = ?').get(name)) {
+      return res.status(409).json({ error: 'A boat with that name is already registered. Ask its captain for the invite code.' });
+    }
+    let code = newCode();
+    while (db.prepare('SELECT 1 FROM teams WHERE join_code = ?').get(code)) code = newCode();
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO teams (name, home_port, country, club_id, captain_id, join_code) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, str(req.body.homePort, 80), country, clubId, req.user.id, code);
+    const id = Number(lastInsertRowid);
+    db.prepare('UPDATE users SET team_id = ? WHERE id = ?').run(id, req.user.id);
+    res.status(201).json({ team: getTeam(id, req.user.id), user: getMe(req.user.id) });
+  });
+
+  function getTeam(id, viewerId) {
+    const team = db.prepare(`
+      SELECT t.id, t.name, t.home_port AS homePort, t.country, t.captain_id AS captainId, t.join_code AS joinCode,
+        t.created_at AS createdAt, c.id AS clubId, c.name AS clubName
+      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id WHERE t.id = ?
+    `).get(id);
+    if (!team) return null;
+    const members = db.prepare(`
+      SELECT u.id, u.name, (SELECT COUNT(*) FROM catches k WHERE k.user_id = u.id AND k.team_id = ?) AS catches
+      FROM users u WHERE u.team_id = ? ORDER BY u.id = ? DESC, u.name
+    `).all(id, id, team.captainId ?? 0);
+    const isMember = members.some((m) => m.id === viewerId);
+    // The invite code is the key to the boat: crew only.
+    if (!isMember) delete team.joinCode;
+    return { ...team, members, isMember, isCaptain: team.captainId === viewerId };
+  }
+
+  api.get('/teams/:id', (req, res) => {
+    const id = intId(req.params.id);
+    const team = id && getTeam(id, req.user.id);
+    if (!team) return res.status(404).json({ error: 'Boat not found.' });
+    const stats = db.prepare(`
+      SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
+      FROM catches WHERE team_id = ?
+    `).get(id);
+    res.json({ team, stats });
+  });
+
+  api.post('/teams/join', (req, res) => {
+    if (req.user.teamId) return res.status(409).json({ error: 'Leave your current boat before joining another.' });
+    const code = str(req.body.code, 12)?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const team = code && db.prepare('SELECT id, captain_id FROM teams WHERE join_code = ?').get(code);
+    if (!team) return res.status(404).json({ error: 'No boat has that invite code. Check it with your captain.' });
+    db.prepare('UPDATE users SET team_id = ? WHERE id = ?').run(team.id, req.user.id);
+    // A boat whose captain left gets a new one from the next person aboard.
+    if (!team.captain_id) db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(req.user.id, team.id);
+    res.json({ team: getTeam(team.id, req.user.id), user: getMe(req.user.id) });
+  });
+
+  api.post('/teams/leave', (req, res) => {
+    const teamId = req.user.teamId;
+    if (!teamId) return res.status(400).json({ error: 'You are not on a boat.' });
+    const team = db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(teamId);
+    const others = db.prepare('SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND id != ?').get(teamId, req.user.id).n;
+    if (team.captain_id === req.user.id && others > 0) {
+      return res.status(409).json({ error: 'Hand the captaincy to another crew member before leaving.' });
+    }
+    db.prepare('UPDATE users SET team_id = NULL WHERE id = ?').run(req.user.id);
+    if (team.captain_id === req.user.id) db.prepare('UPDATE teams SET captain_id = NULL WHERE id = ?').run(teamId);
+    res.json({ user: getMe(req.user.id) });
+  });
+
+  // Captain-only actions on their own boat.
+  function captainOf(req, res) {
+    const id = intId(req.params.id);
+    const team = id && db.prepare('SELECT id, captain_id FROM teams WHERE id = ?').get(id);
+    if (!team) {
+      res.status(404).json({ error: 'Boat not found.' });
+      return null;
+    }
+    if (team.captain_id !== req.user.id) {
+      res.status(403).json({ error: 'Only the captain can do that.' });
+      return null;
+    }
+    return team;
+  }
+
+  api.patch('/teams/:id', (req, res) => {
+    const team = captainOf(req, res);
+    if (!team) return;
+    const cur = db.prepare('SELECT * FROM teams WHERE id = ?').get(team.id);
+    const name = 'name' in req.body ? str(req.body.name, 80) : cur.name;
+    const homePort = 'homePort' in req.body ? str(req.body.homePort, 80) : cur.home_port;
+    const country = 'country' in req.body ? str(req.body.country, 60) : cur.country;
+    const clubId = 'clubId' in req.body ? intId(req.body.clubId) : cur.club_id;
+    if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
+    if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
+    if (!validClub(clubId)) return res.status(400).json({ error: 'Unknown club.' });
+    if (db.prepare('SELECT 1 FROM teams WHERE name = ? AND id != ?').get(name, team.id)) {
+      return res.status(409).json({ error: 'Another boat already has that name.' });
+    }
+    db.prepare('UPDATE teams SET name = ?, home_port = ?, country = ?, club_id = ? WHERE id = ?')
+      .run(name, homePort, country, clubId, team.id);
+    res.json({ team: getTeam(team.id, req.user.id) });
+  });
+
+  api.post('/teams/:id/code', (req, res) => {
+    const team = captainOf(req, res);
+    if (!team) return;
+    let code = newCode();
+    while (db.prepare('SELECT 1 FROM teams WHERE join_code = ?').get(code)) code = newCode();
+    db.prepare('UPDATE teams SET join_code = ? WHERE id = ?').run(code, team.id);
+    res.json({ team: getTeam(team.id, req.user.id) });
+  });
+
+  api.post('/teams/:id/captain', (req, res) => {
+    const team = captainOf(req, res);
+    if (!team) return;
+    const userId = intId(req.body.userId);
+    if (!userId || !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(userId, team.id)) {
+      return res.status(400).json({ error: 'The new captain must be on this boat.' });
+    }
+    db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(userId, team.id);
+    res.json({ team: getTeam(team.id, req.user.id) });
+  });
+
+  api.delete('/teams/:id/members/:userId', (req, res) => {
+    const team = captainOf(req, res);
+    if (!team) return;
+    const userId = intId(req.params.userId);
+    if (userId === req.user.id) return res.status(400).json({ error: 'Use "Leave boat" to leave yourself.' });
+    const r = db.prepare('UPDATE users SET team_id = NULL WHERE id = ? AND team_id = ?').run(userId, team.id);
+    if (!r.changes) return res.status(404).json({ error: 'That angler is not on this boat.' });
+    res.json({ team: getTeam(team.id, req.user.id) });
   });
 
   // ---- catches -----------------------------------------------------------
 
   const CATCH_SELECT = `
     SELECT k.id, k.weight_kg AS weightKg, k.length_cm AS lengthCm, k.released, k.tagged,
-      k.caught_on AS caughtOn, k.country, k.location, k.boat, k.line_class AS lineClass,
-      k.notes, k.photo, k.created_at AS createdAt,
+      k.caught_on AS caughtOn, k.country, k.location, k.line_class AS lineClass,
+      k.notes, k.photo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       s.id AS speciesId, s.name AS species, s.category,
       u.id AS userId, u.name AS angler,
+      t.id AS teamId, t.name AS teamName,
       c.id AS clubId, c.name AS clubName,
       (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
       (SELECT COUNT(*) FROM comments m WHERE m.catch_id = k.id) AS comments,
@@ -199,24 +360,33 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     FROM catches k
     JOIN species s ON s.id = k.species_id
     JOIN users u ON u.id = k.user_id
+    LEFT JOIN teams t ON t.id = k.team_id
     LEFT JOIN clubs c ON c.id = k.club_id
   `;
 
-  function present(row) {
+  function canDelete(row, user) {
+    if (row.userId === user.id || row.loggedBy === user.id) return true;
+    const team = row.teamId && db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(row.teamId);
+    return !!team && team.captain_id === user.id;
+  }
+
+  function present(row, viewer) {
     return {
       ...row,
       released: !!row.released,
       tagged: !!row.tagged,
       liked: !!row.liked,
       photoUrl: row.photo ? `/uploads/${row.photo}` : null,
+      canDelete: canDelete(row, viewer),
     };
   }
 
   api.get('/catches', (req, res) => {
     const where = [];
-    const params = { viewer: req.user?.id ?? 0 };
+    const params = { viewer: req.user.id };
     const filters = {
       club: ['k.club_id = :club', intId],
+      team: ['k.team_id = :team', intId],
       species: ['k.species_id = :species', intId],
       user: ['k.user_id = :user', intId],
       country: ['k.country = :country', (v) => str(v, 60)],
@@ -234,14 +404,14 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const rows = db.prepare(
       `${CATCH_SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY k.id DESC LIMIT ${limit}`
     ).all(params);
-    res.json({ catches: rows.map(present), nextBefore: rows.length === limit ? rows.at(-1).id : null });
+    res.json({ catches: rows.map((r) => present(r, req.user)), nextBefore: rows.length === limit ? rows.at(-1).id : null });
   });
 
   function removeUpload(file) {
     if (file) fs.rm(path.join(uploadDir, path.basename(file)), { force: true }, () => {});
   }
 
-  api.post('/catches', auth.requireUser, upload.single('photo'), (req, res) => {
+  api.post('/catches', requireTeam, upload.single('photo'), (req, res) => {
     const b = req.body;
     const fail = (msg) => {
       removeUpload(req.file?.filename);
@@ -250,6 +420,11 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return fail('Choose a species.');
+    }
+    // Any crew member can log a fish for whoever on the boat caught it.
+    const anglerId = intId(b.anglerId) || req.user.id;
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, req.user.teamId)) {
+      return fail('The angler must be on your boat.');
     }
     const weightKg = num(b.weightKg);
     const lengthCm = num(b.lengthCm);
@@ -260,29 +435,30 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
       return fail('Enter the date of the catch.');
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return fail('Catch date cannot be in the future.');
-    const country = str(b.country, 60) || req.user.country;
+    const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(req.user.teamId);
+    const country = str(b.country, 60) || team.country || req.user.country;
     if (country && !COUNTRIES.includes(country)) return fail('Unknown country.');
 
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO catches (user_id, club_id, species_id, weight_kg, length_cm, released, tagged,
-        caught_on, country, location, boat, line_class, notes, photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO catches (user_id, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
+        caught_on, country, location, line_class, notes, photo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.user.id, req.user.clubId, speciesId, weightKg, lengthCm, bool(b.released), bool(b.tagged),
-      caughtOn, country, str(b.location, 120), str(b.boat, 80), str(b.lineClass, 20),
-      str(b.notes, 2000), req.file?.filename ?? null
+      anglerId, req.user.id, req.user.teamId, team.club_id, speciesId, weightKg, lengthCm, bool(b.released),
+      bool(b.tagged), caughtOn, country, str(b.location, 120), str(b.lineClass, 20), str(b.notes, 2000),
+      req.file?.filename ?? null
     );
-    res.status(201).json({ catch: getCatch(Number(lastInsertRowid), req.user.id) });
+    res.status(201).json({ catch: getCatch(Number(lastInsertRowid), req.user) });
   });
 
   function getCatch(id, viewer) {
-    const row = db.prepare(`${CATCH_SELECT} WHERE k.id = :id`).get({ id, viewer: viewer ?? 0 });
-    return row ? present(row) : null;
+    const row = db.prepare(`${CATCH_SELECT} WHERE k.id = :id`).get({ id, viewer: viewer.id });
+    return row ? present(row, viewer) : null;
   }
 
   api.get('/catches/:id', (req, res) => {
     const id = intId(req.params.id);
-    const item = id && getCatch(id, req.user?.id);
+    const item = id && getCatch(id, req.user);
     if (!item) return res.status(404).json({ error: 'Catch not found.' });
     const comments = db.prepare(`
       SELECT m.id, m.body, m.created_at AS createdAt, u.id AS userId, u.name AS author
@@ -292,17 +468,19 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     res.json({ catch: item, comments });
   });
 
-  api.delete('/catches/:id', auth.requireUser, (req, res) => {
+  api.delete('/catches/:id', (req, res) => {
     const id = intId(req.params.id);
-    const row = id && db.prepare('SELECT user_id, photo FROM catches WHERE id = ?').get(id);
-    if (!row) return res.status(404).json({ error: 'Catch not found.' });
-    if (row.user_id !== req.user.id) return res.status(403).json({ error: 'You can only delete your own catches.' });
+    const item = id && getCatch(id, req.user);
+    if (!item) return res.status(404).json({ error: 'Catch not found.' });
+    if (!item.canDelete) {
+      return res.status(403).json({ error: 'Only the angler, whoever logged it, or the boat captain can delete this catch.' });
+    }
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
-    removeUpload(row.photo);
+    removeUpload(item.photo);
     res.json({ ok: true });
   });
 
-  api.post('/catches/:id/like', auth.requireUser, (req, res) => {
+  api.post('/catches/:id/like', (req, res) => {
     const id = intId(req.params.id);
     if (!id || !db.prepare('SELECT 1 FROM catches WHERE id = ?').get(id)) {
       return res.status(404).json({ error: 'Catch not found.' });
@@ -313,7 +491,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     res.json({ liked: !removed.changes, likes });
   });
 
-  api.post('/catches/:id/comments', auth.requireUser, (req, res) => {
+  api.post('/catches/:id/comments', (req, res) => {
     const id = intId(req.params.id);
     if (!id || !db.prepare('SELECT 1 FROM catches WHERE id = ?').get(id)) {
       return res.status(404).json({ error: 'Catch not found.' });
@@ -349,33 +527,42 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     const records = db.prepare(`
       SELECT * FROM (
         SELECT s.name AS species, s.category, k.id, k.weight_kg AS weightKg, k.caught_on AS caughtOn,
-          u.id AS userId, u.name AS angler, c.name AS clubName,
+          u.id AS userId, u.name AS angler, t.id AS teamId, t.name AS teamName,
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS rn
         FROM catches k JOIN species s ON s.id = k.species_id JOIN users u ON u.id = k.user_id
-        LEFT JOIN clubs c ON c.id = k.club_id
+        LEFT JOIN teams t ON t.id = k.team_id
         WHERE ${filter} AND k.weight_kg IS NOT NULL
       ) WHERE rn = 1 ORDER BY weightKg DESC
     `).all(params).map(({ rn, ...r }) => r);
 
+    const tally = `COUNT(*) AS catches, SUM(k.released) AS released,
+      SUM(CASE WHEN s.category = 'Billfish' THEN 1 ELSE 0 END) AS billfish,
+      ROUND(SUM(COALESCE(k.weight_kg, 0)), 1) AS totalKg`;
+
+    const teams = db.prepare(`
+      SELECT t.id AS teamId, t.name AS teamName, c.name AS clubName, ${tally}
+      FROM catches k JOIN teams t ON t.id = k.team_id JOIN species s ON s.id = k.species_id
+      LEFT JOIN clubs c ON c.id = t.club_id
+      WHERE ${filter}
+      GROUP BY t.id ORDER BY billfish DESC, catches DESC LIMIT 20
+    `).all(params);
+
     const anglers = db.prepare(`
-      SELECT u.id AS userId, u.name AS angler, c.name AS clubName,
-        COUNT(*) AS catches, SUM(k.released) AS released,
-        SUM(CASE WHEN s.category = 'Billfish' THEN 1 ELSE 0 END) AS billfish
+      SELECT u.id AS userId, u.name AS angler, t.name AS teamName, ${tally}
       FROM catches k JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
-      LEFT JOIN clubs c ON c.id = u.club_id
+      LEFT JOIN teams t ON t.id = u.team_id
       WHERE ${filter}
       GROUP BY u.id ORDER BY billfish DESC, catches DESC LIMIT 20
     `).all(params);
 
     const clubs = db.prepare(`
-      SELECT c.id AS clubId, c.name AS clubName, c.country,
-        COUNT(*) AS catches, SUM(k.released) AS released, ROUND(SUM(COALESCE(k.weight_kg, 0)), 1) AS totalKg
-      FROM catches k JOIN clubs c ON c.id = k.club_id
+      SELECT c.id AS clubId, c.name AS clubName, c.country, ${tally}
+      FROM catches k JOIN clubs c ON c.id = k.club_id JOIN species s ON s.id = k.species_id
       WHERE ${filter}
       GROUP BY c.id ORDER BY catches DESC LIMIT 20
     `).all(params);
 
-    res.json({ records, anglers, clubs });
+    res.json({ records, teams, anglers, clubs });
   });
 
   // ---- profiles ----------------------------------------------------------
@@ -383,8 +570,8 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
   api.get('/users/:id', (req, res) => {
     const id = intId(req.params.id);
     const user = id && db.prepare(`
-      SELECT u.id, u.name, u.country, u.bio, u.created_at AS joinedAt, c.id AS clubId, c.name AS clubName
-      FROM users u LEFT JOIN clubs c ON c.id = u.club_id WHERE u.id = ?
+      SELECT u.id, u.name, u.country, u.bio, u.created_at AS joinedAt, t.id AS teamId, t.name AS teamName
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     if (!user) return res.status(404).json({ error: 'Angler not found.' });
     const stats = db.prepare(`
