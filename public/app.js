@@ -52,7 +52,7 @@ const fmtWeight = (kg) => (kg == null ? '' : `${+kg.toFixed(1)} kg · ${kgToLb(k
 const fmtDate = (d) =>
   new Date(d + (d.length === 10 ? 'T12:00:00' : 'Z')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const today = () => new Date().toISOString().slice(0, 10);
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : word.endsWith('ch') ? 'es' : 's'}`;
+const plural = (n, word) => `${n} ${word}${n === 1 || word === 'fish' ? '' : word.endsWith('ch') ? 'es' : 's'}`;
 
 function options(items, selected, placeholder) {
   return html`${placeholder ? raw(`<option value="">${esc(placeholder)}</option>`) : ''}${items.map((it) => {
@@ -951,37 +951,34 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Weighmaster: the digital JHMMC Fish Registration Form, filled in at the dock.
+  // Weighmaster: the digital JHMMC Fish Registration Form. One boat and day,
+  // as many fish as it brought in, submitted together.
   async weigh() {
     if (!state.me?.canWeigh) return needLogin(view, 'register fish (JHMMC weighmasters only)');
     const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
     const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
-    const stations = state.meta.weighStations;
+    const station = state.me.weighStation;
+    if (!station && !state.me.canReview) {
+      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Register fish</h1>
+        <div class="card pad empty">You have no weigh station yet. Ask the club admin to assign you one on the Members page.</div>`;
+      return;
+    }
+    let crew = [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Register a fish</h1>
-      <p class="small muted">Registrations are JHMMC's official record and go to the secretary for points. They don't appear on the feed.
-        Every fish weighed must be photographed hanging freely on a certified scale, with the weight clearly showing (rule 8).</p>
-      <form class="card pad stack" id="record">
+      <h1>Register fish</h1>
+      <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
+        Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
+      <form class="card pad stack" id="sheet">
         <div class="row">
           <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
-          <label>Angler <select name="anglerId" required><option value="">Choose the boat first</option></select></label>
-        </div>
-        <label id="rec-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
-        <div class="row">
-          <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
           <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
         </div>
-        <label class="check"><input type="checkbox" name="released"> Released (photo or video proof, no weight)</label>
-        <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
-          <label>Weigh station <select name="weighStation">${raw(options(stations, null, 'Choose…'))}</select></label>
-        </div>
-        <div class="row">
-          <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
-          <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/jpeg,image/png,image/webp"></label>
-        </div>
+        ${station ? raw(html`<p class="station-fixed">Weigh station: <b>${station}</b></p>`)
+          : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
+        <div id="fish-list" class="stack"></div>
+        <div><button type="button" id="add-fish">+ Add a fish</button></div>
         <p class="error"></p>
-        <div><button type="submit" class="primary">Register fish</button></div>
+        <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
       <h2>Waiting for the secretary (${mine.length})</h2>
       <div class="card"><ul class="list">${mine.length ? mine.map((c) => raw(html`<li>
@@ -989,19 +986,72 @@ const pagesFor = (view) => ({
         <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}${c.weighStation ? ` · ${c.weighStation}` : ''}</div>
       </li>`)) : raw('<li class="muted">Nothing waiting.</li>')}</ul></div>`;
 
-    const rec = view.querySelector('#record');
-    rec.teamId.addEventListener('change', async () => {
-      const id = rec.teamId.value;
-      const crew = id ? (await api(`/teams/${id}`)).team.members : [];
-      rec.anglerId.innerHTML = options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], null, 'Choose…');
+    const sheet = view.querySelector('#sheet');
+    const list = view.querySelector('#fish-list');
+    const anglerOptions = (selected) => options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], selected, crew.length ? 'Choose…' : 'Choose the boat first');
+    const fishRow = () => html`<fieldset class="fish card pad">
+      <legend><b class="fish-no"></b> <button type="button" class="link danger" data-act="remove-fish">Remove</button></legend>
+      <div class="row">
+        <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
+        <label>Angler <select name="anglerId" required>${raw(anglerOptions())}</select></label>
+      </div>
+      <label class="guest-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="released"> Released (photo or video proof, no weight)</label>
+      <div class="row">
+        <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
+        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+      </div>
+      <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/*"></label>
+    </fieldset>`;
+    const renumber = () => {
+      const rows = list.querySelectorAll('.fish');
+      rows.forEach((row, i) => {
+        row.querySelector('.fish-no').textContent = `Fish ${i + 1}`;
+        row.querySelector('[data-act=remove-fish]').hidden = rows.length === 1;
+      });
+      view.querySelector('#submit-sheet').textContent = `Submit ${plural(rows.length, 'fish')}`;
+    };
+    const addFish = () => {
+      list.insertAdjacentHTML('beforeend', fishRow());
+      renumber();
+    };
+    addFish();
+    view.querySelector('#add-fish').addEventListener('click', () => {
+      addFish();
+      list.lastElementChild.querySelector('[name=speciesId]').focus();
     });
-    rec.anglerId.addEventListener('change', () => {
-      view.querySelector('#rec-name').hidden = rec.anglerId.value !== 'other';
+    list.addEventListener('click', (e) => {
+      if (e.target.closest('[data-act=remove-fish]')) {
+        e.target.closest('.fish').remove();
+        renumber();
+      }
     });
-    bindForm(rec, async () => {
-      const fd = await preparePhoto(new FormData(rec), 'scalePhoto');
-      await api('/weigh', { method: 'POST', form: fd });
-      toast('Registered. Sent to the secretary.');
+    list.addEventListener('change', (e) => {
+      if (e.target.name === 'anglerId') e.target.closest('.fish').querySelector('.guest-name').hidden = e.target.value !== 'other';
+    });
+    // The angler lists follow the boat chosen at the top.
+    sheet.teamId.addEventListener('change', async () => {
+      crew = sheet.teamId.value ? (await api(`/teams/${sheet.teamId.value}`)).team.members : [];
+      for (const sel of list.querySelectorAll('[name=anglerId]')) sel.innerHTML = anglerOptions(sel.value);
+    });
+    bindForm(sheet, async () => {
+      const fd = new FormData();
+      fd.set('teamId', sheet.teamId.value);
+      fd.set('caughtOn', sheet.caughtOn.value);
+      if (sheet.weighStation) fd.set('weighStation', sheet.weighStation.value);
+      const fish = [];
+      for (const [i, row] of [...list.querySelectorAll('.fish')].entries()) {
+        const get = (name) => row.querySelector(`[name=${name}]`);
+        fish.push({
+          speciesId: get('speciesId').value, anglerId: get('anglerId').value, anglerName: get('anglerName').value,
+          weightKg: get('weightKg').value, lineClass: get('lineClass').value, released: get('released').checked ? 'on' : '',
+        });
+        const photo = get('scalePhoto').files[0];
+        if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
+      }
+      fd.set('fish', JSON.stringify(fish));
+      const { catches } = await api('/weigh/sheet', { method: 'POST', form: fd });
+      toast(`${plural(catches.length, 'fish')} registered. Sent to the secretary.`);
       route();
     });
   },
@@ -1170,7 +1220,7 @@ const pagesFor = (view) => ({
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Register a fish', 'JHMMC registration at the dock')}
+        ${item('#/weigh', 'weight', 'Register fish', me.weighStation ? `At ${me.weighStation}` : 'JHMMC registration at the dock')}
         ${me.canReview ? item('#/review', 'review', 'Review catches', 'Check and approve points') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Holidays and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
@@ -1215,7 +1265,10 @@ const pagesFor = (view) => ({
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
-        <label class="role">Role <select data-act="role">${raw(options([['', 'Member'], ['weighmaster', 'Weighmaster'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
+        <div class="role">
+          <label>Role <select data-act="role">${raw(options([['', 'Member'], ['weighmaster', 'Weighmaster'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
+          <label class="station" ${u.role === 'weighmaster' ? '' : 'hidden'}>Weigh station <select data-act="station">${raw(options(state.meta.weighStations, u.weighStation, 'Choose…'))}</select></label>
+        </div>
         <div class="reset-out" hidden></div>
       </li>`))}</ul></div>`;
     view.querySelector('.search input').addEventListener('input', (e) => {
@@ -1223,11 +1276,18 @@ const pagesFor = (view) => ({
       for (const li of view.querySelectorAll('.member-row')) li.hidden = !!term && !li.dataset.find.includes(term);
     });
     view.addEventListener('change', async (e) => {
-      const sel = e.target.closest('select[data-act=role]');
+      const sel = e.target.closest('select[data-act=role], select[data-act=station]');
       if (!sel) return;
+      const row = sel.closest('.member-row');
+      const isRole = sel.dataset.act === 'role';
       try {
-        await api(`/admin/users/${sel.closest('.member-row').dataset.id}`, { method: 'PATCH', body: { role: sel.value } });
-        toast(sel.value ? `Now a ${sel.value}` : 'Now a member');
+        await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: isRole ? { role: sel.value } : { weighStation: sel.value } });
+        if (isRole) {
+          row.querySelector('.station').hidden = sel.value !== 'weighmaster';
+          toast(sel.value === 'weighmaster' ? 'Now a weighmaster. Choose their weigh station.' : sel.value ? `Now a ${sel.value}` : 'Now a member');
+        } else {
+          toast(sel.value ? `Weighs at ${sel.value}` : 'No weigh station');
+        }
       } catch (ex) {
         toast(ex.message);
       }

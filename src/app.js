@@ -57,18 +57,21 @@ function createApp({
   const db = openDb(dbFile);
   fs.mkdirSync(uploadDir, { recursive: true });
 
-  const upload = multer({
+  const MAX_FISH_PER_SHEET = 30;
+  const photoUploads = (files) => multer({
     storage: multer.diskStorage({
       destination: uploadDir,
       filename: (_req, file, cb) =>
         cb(null, crypto.randomBytes(12).toString('hex') + PHOTO_TYPES[file.mimetype]),
     }),
-    limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 8 * 1024 * 1024, files },
     fileFilter: (_req, file, cb) => {
       if (PHOTO_TYPES[file.mimetype]) cb(null, true);
       else cb(Object.assign(new Error('Photo must be JPEG, PNG or WebP.'), { status: 400 }));
     },
   });
+  const upload = photoUploads(1);
+  const sheetUpload = photoUploads(MAX_FISH_PER_SHEET);
 
   const app = express();
   app.disable('x-powered-by');
@@ -252,7 +255,7 @@ function createApp({
   function getMe(id) {
     const me = db.prepare(`
       SELECT u.id, u.name, u.email, u.country, u.bio, u.photo,
-        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role
+        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.weigh_station AS weighStation
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, ...rest } = me;
@@ -307,7 +310,7 @@ function createApp({
 
   api.get('/admin/users', requireAdmin, (_req, res) => {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.role, u.created_at AS joinedAt, t.name AS teamName
+      SELECT u.id, u.name, u.email, u.role, u.weigh_station AS weighStation, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
     `).all();
     res.json({ users });
@@ -315,11 +318,16 @@ function createApp({
 
   api.patch('/admin/users/:id', requireAdmin, (req, res) => {
     const id = intId(req.params.id);
-    const role = req.body.role || null;
+    const cur = id && db.prepare('SELECT role, weigh_station FROM users WHERE id = ?').get(id);
+    if (!cur) return res.status(404).json({ error: 'Member not found.' });
+    const role = 'role' in req.body ? req.body.role || null : cur.role;
     if (role && !['weighmaster', 'secretary'].includes(role)) return res.status(400).json({ error: 'Unknown role.' });
-    const r = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
-    if (!r.changes) return res.status(404).json({ error: 'Member not found.' });
-    res.json({ ok: true, role });
+    // Each weighmaster works at one weigh station, chosen here by the admin.
+    let station = 'weighStation' in req.body ? req.body.weighStation || null : cur.weigh_station;
+    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
+    if (!role) station = null;
+    db.prepare('UPDATE users SET role = ?, weigh_station = ? WHERE id = ?').run(role, station, id);
+    res.json({ ok: true, role, weighStation: station });
   });
 
   // A one-time link the admin passes on (e.g. by WhatsApp) to a member who forgot their password.
@@ -693,73 +701,91 @@ function createApp({
     res.json({ catches: rows.map((r) => present(r, req.user)), nextBefore: rows.length === limit ? rows.at(-1).id : null });
   });
 
-  // Checks and saves a catch for a boat. Crews log their own boat's catches;
-  // weighmasters can record one for any boat at the weigh station.
-  function insertCatch(req, res, { teamId, official }) {
-    const b = req.body;
-    const fail = (msg) => {
-      removeUpload(req.file?.filename);
-      res.status(400).json({ error: msg });
-    };
+  // Where an official registration is weighed: a weighmaster's assigned
+  // station; the secretary and admin, who have none, choose one.
+  function stationFor(user, chosen) {
+    if (user.weighStation) return { station: user.weighStation };
+    if (canReview(user) && WEIGH_STATIONS.includes(chosen)) return { station: chosen };
+    if (canReview(user)) return { error: 'Choose the weigh station.' };
+    return { error: 'You have no weigh station yet. Ask the admin to assign you one.' };
+  }
+
+  // Checks one catch for a boat and returns the values to save, or an error.
+  // Crews post their own boat's catches; weighmasters register fish for any
+  // JHMMC boat at the dock.
+  function checkCatch(user, b, file, { teamId, official }) {
     const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId);
-    if (!team) return fail('Choose the boat.');
-    if (official && team.club_id !== homeClubId()) return fail('Only JHMMC boats are registered for points.');
+    if (!team) return { error: 'Choose the boat.' };
+    if (official && team.club_id !== homeClubId()) return { error: 'Only JHMMC boats are registered for points.' };
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
-      return fail('Choose a species.');
+      return { error: 'Choose a species.' };
     }
     // The angler is a crew member of that boat, or anyone else by name
     // (guests don't need an account).
     const anglerName = b.anglerId === 'other' ? str(b.anglerName, 80) : null;
-    if (b.anglerId === 'other' && !anglerName) return fail("Type the angler's name.");
-    const anglerId = anglerName ? null : intId(b.anglerId) || (official ? null : req.user.id);
-    if (!anglerId && !anglerName) return fail('Choose the angler.');
+    if (b.anglerId === 'other' && !anglerName) return { error: "Type the angler's name." };
+    const anglerId = anglerName ? null : intId(b.anglerId) || (official ? null : user.id);
+    if (!anglerId && !anglerName) return { error: 'Choose the angler.' };
     if (anglerId && !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(anglerId, teamId)) {
-      return fail('The angler must be on the boat, or choose "Guest" and type their name.');
+      return { error: 'The angler must be on the boat, or choose "Guest" and type their name.' };
     }
     const weightKg = num(b.weightKg);
     const lengthCm = num(b.lengthCm);
-    if (Number.isNaN(weightKg) || Number.isNaN(lengthCm)) return fail('Weight and length must be positive numbers.');
-    if (weightKg !== null && weightKg > 1500) return fail('Weight looks too large — enter it in kilograms.');
+    if (Number.isNaN(weightKg) || Number.isNaN(lengthCm)) return { error: 'Weight and length must be positive numbers.' };
+    if (weightKg !== null && weightKg > 1500) return { error: 'Weight looks too large — enter it in kilograms.' };
     const caughtOn = str(b.caughtOn, 10);
     if (!caughtOn || !/^\d{4}-\d{2}-\d{2}$/.test(caughtOn) || Number.isNaN(Date.parse(caughtOn))) {
-      return fail('Enter the date of the catch.');
+      return { error: 'Enter the date of the catch.' };
     }
-    if (Date.parse(caughtOn) > Date.now() + 864e5) return fail('Catch date cannot be in the future.');
+    if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
     const lineClass = str(b.lineClass, 20);
-    if (lineClass && !LINE_CLASSES.includes(lineClass)) return fail('Choose a line class from the list.');
-    const country = str(b.country, 60) || team.country || req.user.country;
-    if (country && !COUNTRIES.includes(country)) return fail('Unknown country.');
+    if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
+    const country = str(b.country, 60) || team.country || user.country;
+    if (country && !COUNTRIES.includes(country)) return { error: 'Unknown country.' };
     const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
     const lat = coord(b.lat);
     const lng = coord(b.lng);
     if ((lat === null) !== (lng === null) || (lat !== null && !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180))) {
-      return fail('The GPS location is not valid. Try "Use my location" again.');
+      return { error: 'The GPS location is not valid. Try "Use my location" again.' };
     }
     const released = bool(b.released);
-    const station = official ? str(b.weighStation, 40) : null;
-    if (official && !released && (weightKg === null || !WEIGH_STATIONS.includes(station))) {
-      return fail('Enter the official weight and the weigh station.');
+    let station = null;
+    if (official) {
+      const s = stationFor(user, str(b.weighStation, 40));
+      if (s.error) return s;
+      station = s.station;
+      if (!released && weightKg === null) return { error: 'Enter the official weight.' };
+      // Rule 8: every fish weighed is photographed hanging on the scale.
+      if (!released && !file) return { error: 'Add the photo of the fish hanging on the scale.' };
     }
-    // Rule 8: every fish weighed is photographed hanging on the scale.
-    if (official && !released && !req.file) return fail('Add the photo of the fish hanging on the scale.');
+    const weighed = official && !released;
     // Crew posts are for the feed only; weighmaster registrations go to the secretary.
-    const status = official ? 'pending_review' : 'unofficial';
+    return {
+      values: [
+        anglerId, anglerName, user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
+        bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
+        official ? null : file?.filename ?? null, official ? 'pending_review' : 'unofficial', station,
+        weighed ? user.id : null, weighed ? new Date().toISOString() : null, official ? file?.filename ?? null : null,
+        lat, lng, bool(b.spotPublic),
+      ],
+    };
+  }
 
-    const { lastInsertRowid } = db.prepare(`
-      INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
-        caught_on, country, location, line_class, notes, photo, status, weigh_station, weighed_by, weighed_at, scale_photo,
-        lat, lng, spot_public)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      anglerId, anglerName, req.user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
-      bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
-      official ? null : req.file?.filename ?? null, status, station,
-      official && !released ? req.user.id : null, official && !released ? new Date().toISOString() : null,
-      official ? req.file?.filename ?? null : null,
-      lat, lng, bool(b.spotPublic)
-    );
-    res.status(201).json({ catch: getCatch(Number(lastInsertRowid), req.user) });
+  const insertCatchRow = (values) => Number(db.prepare(`
+    INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
+      caught_on, country, location, line_class, notes, photo, status, weigh_station, weighed_by, weighed_at, scale_photo,
+      lat, lng, spot_public)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(...values).lastInsertRowid);
+
+  function insertCatch(req, res, opts) {
+    const checked = checkCatch(req.user, req.body, req.file, opts);
+    if (checked.error) {
+      removeUpload(req.file?.filename);
+      return res.status(400).json({ error: checked.error });
+    }
+    res.status(201).json({ catch: getCatch(insertCatchRow(checked.values), req.user) });
   }
 
   api.post('/catches', requireTeam, upload.single('photo'), (req, res) => {
@@ -789,6 +815,44 @@ function createApp({
       return res.status(400).json({ error: 'Choose the boat.' });
     }
     insertCatch(req, res, { teamId, official: true });
+  });
+
+  // Weighmaster: a whole boat's fish in one submission, like one paper form.
+  // Each fish's scale photo arrives as file field "scale_<n>". All or nothing:
+  // if any fish is wrong, none are saved and the error names the fish.
+  api.post('/weigh/sheet', requireWeigh, sheetUpload.any(), (req, res) => {
+    const files = req.files ?? [];
+    const fail = (error) => {
+      for (const f of files) removeUpload(f.filename);
+      res.status(400).json({ error });
+    };
+    const teamId = intId(req.body.teamId);
+    if (!teamId) return fail('Choose the boat.');
+    let fish;
+    try {
+      fish = JSON.parse(req.body.fish ?? '[]');
+    } catch {
+      return fail('The list of fish could not be read.');
+    }
+    if (!Array.isArray(fish) || !fish.length) return fail('Add at least one fish.');
+    if (fish.length > MAX_FISH_PER_SHEET) return fail(`At most ${MAX_FISH_PER_SHEET} fish at a time.`);
+    const rows = [];
+    for (const [i, f] of fish.entries()) {
+      const file = files.find((x) => x.fieldname === `scale_${i}`);
+      const checked = checkCatch(req.user, { ...f, caughtOn: req.body.caughtOn, weighStation: req.body.weighStation }, file,
+        { teamId, official: true });
+      if (checked.error) return fail(`Fish ${i + 1}: ${checked.error}`);
+      rows.push(checked.values);
+    }
+    db.exec('BEGIN');
+    try {
+      const ids = rows.map(insertCatchRow);
+      db.exec('COMMIT');
+      res.status(201).json({ catches: ids.map((id) => getCatch(id, req.user)) });
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
   });
 
   // Weighmaster and secretary work lists.
