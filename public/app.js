@@ -2112,26 +2112,11 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('a[data-return]')) state.afterLogin = location.hash;
 });
 
-// On phones the logo (and the feed's Filter button) slide away while
-// scrolling down and come back as soon as you scroll up a little.
-(function revealOnScrollUp() {
-  let last = window.scrollY;
-  let ticking = false;
-  const update = () => {
-    const y = window.scrollY;
-    const root = document.documentElement;
-    root.classList.toggle('scrolled', y > 8);
-    if (y < 80 || y < last - 6) root.classList.remove('chrome-away');
-    else if (y > last + 6) root.classList.add('chrome-away');
-    if (Math.abs(y - last) > 6 || y < 80) last = y;
-    ticking = false;
-  };
-  window.addEventListener('scroll', () => {
-    if (!ticking) requestAnimationFrame(update);
-    ticking = true;
-  }, { passive: true });
-  window.addEventListener('hashchange', () => document.documentElement.classList.remove('chrome-away'));
-})();
+// On phones the logo (and the feed's Filter button) stay pinned at the top;
+// once the page has scrolled they get a solid pill so they read over the feed.
+window.addEventListener('scroll', () => {
+  document.documentElement.classList.toggle('scrolled', window.scrollY > 8);
+}, { passive: true });
 
 (async function init() {
   [state.meta] = await Promise.all([api('/meta'), refreshMe()]);
