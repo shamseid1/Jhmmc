@@ -493,3 +493,13 @@ button.link[hidden] { display: none; }
 .log-filter { display: block; margin-bottom: 12px; }
 .tournament-now { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--sun) 18%, var(--surface)); }
 .tournament-now .icon { color: var(--sun); }
+
+/* ---- feed filters behind one button ---- */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.filter-toggle .icon { width: 18px; height: 18px; vertical-align: 0; }
+.filter-toggle.on { background: var(--accent); color: var(--accent-ink); }
+.filter-toggle.on .tab-count { background: rgba(255, 255, 255, .25); color: inherit; }
+.filter-bar .chip { background: var(--surface); border-color: var(--line); color: var(--text); padding: 6px 12px; }
+.filter-bar .chip a { color: var(--muted); }
+.filter-panel { margin-bottom: 16px; }
+.filter-panel[hidden] { display: none; }

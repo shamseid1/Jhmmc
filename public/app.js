@@ -479,22 +479,52 @@ const pagesFor = (view) => ({
   async home() {
     const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
+    // The filters in use, as chips that each remove one.
+    const nameOf = {
+      species: (v) => state.meta.species.find((x) => String(x.id) === v)?.name,
+      team: (v) => teams.find((t) => String(t.id) === v)?.name,
+      club: (v) => clubs.find((c) => String(c.id) === v)?.name,
+      country: (v) => v,
+      released: () => 'Released only',
+    };
+    const active = Object.keys(nameOf).filter((k) => filters[k]).map((k) => [k, nameOf[k](filters[k]) || filters[k]]);
+    const without = (key) => {
+      const p = new URLSearchParams(filters);
+      p.delete(key);
+      return `#/${p.size ? `?${p}` : ''}`;
+    };
     view.innerHTML = html`
       ${raw(noBoatBanner())}
-      <div class="filters">
-        <select name="species" aria-label="Species">${raw(speciesOptions(filters.species, 'All species'))}</select>
-        <select name="team" aria-label="Boat">${raw(options(teams.map((t) => [t.id, t.name]), filters.team, 'All boats'))}</select>
-        <select name="club" aria-label="Club">${raw(options(clubs.map((c) => [c.id, c.name]), filters.club, 'All clubs'))}</select>
-        <select name="country" aria-label="Country">${raw(options(state.meta.countries, filters.country, 'All countries'))}</select>
-        <select name="released" aria-label="Released">${raw(options([['true', 'Released only']], filters.released, 'Kept & released'))}</select>
+      <div class="filter-bar">
+        <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="filter-panel">
+          ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
+        ${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}
       </div>
+      <form class="card pad filter-panel stack" id="filter-panel" hidden>
+        <label>Species <select name="species">${raw(speciesOptions(filters.species, 'All species'))}</select></label>
+        <label>Boat <select name="team">${raw(options(teams.map((t) => [t.id, t.name]), filters.team, 'All boats'))}</select></label>
+        <label>Club <select name="club">${raw(options(clubs.map((c) => [c.id, c.name]), filters.club, 'All clubs'))}</select></label>
+        <label>Country <select name="country">${raw(options(state.meta.countries, filters.country, 'All countries'))}</select></label>
+        <label>Kept or released <select name="released">${raw(options([['true', 'Released only']], filters.released, 'Kept & released'))}</select></label>
+        <div class="actions"><button type="submit" class="primary">Show catches</button> <button type="button" data-act="clear-filters">Clear all</button></div>
+      </form>
       ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
       <div id="feed"></div>`;
-    view.querySelector('.filters').addEventListener('change', (e) => {
-      const p = new URLSearchParams(filters);
-      if (e.target.value) p.set(e.target.name, e.target.value);
-      else p.delete(e.target.name);
+    // All the filters sit behind one Filter button; they apply together.
+    const panel = view.querySelector('#filter-panel');
+    const toggle = view.querySelector('.filter-toggle');
+    toggle.addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+    });
+    panel.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const p = new URLSearchParams(filters.angler ? { angler: filters.angler } : {});
+      for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
       location.hash = '#/?' + p;
+    });
+    panel.querySelector('[data-act=clear-filters]').addEventListener('click', () => {
+      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : '#/';
     });
     await renderFeed(view.querySelector('#feed'), filters);
   },
@@ -1914,6 +1944,7 @@ const ICONS = {
   eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
