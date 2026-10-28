@@ -116,7 +116,7 @@ function shareText(c) {
   const w = c.weightKg != null ? ` ${+c.weightKg.toFixed(1)} kg` : '';
   const how = c.released ? ' (released)' : '';
   const boat = c.teamName ? ` aboard ${c.teamName}` : '';
-  return `${c.angler} landed a${w} ${c.species}${how}${boat}${c.location ? ' off ' + c.location : ''}! 🎣`;
+  return `${c.angler} landed a${w} ${c.species}${how}${boat}${c.location ? ' off ' + c.location : ''}!`;
 }
 
 async function shareCatch(c) {
@@ -133,6 +133,10 @@ async function shareCatch(c) {
   copyText(`${text} ${url}`, 'Link copied');
 }
 
+// Line icons drawn on a 24px grid with currentColor; see ICONS further down.
+const icon = (name, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+const MARLIN = '<svg class="marlin" viewBox="0 16 64 32" aria-hidden="true"><path d="M9 33C16 26 30 25.5 42 29.5L62 32L42 34.5C30 38.5 16 39 9 33Z"/><path d="M10 33L2 21C5 27 6 30 6 33C6 36 5 39 2 45Z"/><path d="M18 28.2C21 20 30 19 35 26.6Z"/><path d="M26 35L22 41L30 36Z"/></svg>';
+
 // Members have a profile page; anglers without an account link to their catches.
 const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/?angler=${encodeURIComponent(name)}`);
 
@@ -143,7 +147,7 @@ const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 function catchCard(c, { full = false } = {}) {
   const photo = c.photoUrl
     ? html`<img class="catch-photo" src="${c.photoUrl}" alt="${c.species} caught by ${c.angler}" loading="lazy">`
-    : '<div class="catch-photo placeholder" aria-hidden="true">🐟</div>';
+    : `<div class="catch-photo placeholder" aria-hidden="true">${MARLIN}</div>`;
   const details = [c.location, c.country].filter(Boolean).join(', ');
   return html`<article class="card" data-id="${c.id}">
     ${full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
@@ -154,7 +158,7 @@ function catchCard(c, { full = false } = {}) {
       </div>
       <p class="meta">
         <a href="${anglerHref(c.userId, c.angler)}">${c.angler}</a>
-        ${c.teamName ? raw(html` · 🚤 <a href="#/boat/${c.teamId}">${c.teamName}</a>`) : ''}
+        ${c.teamName ? raw(html` · <a href="#/boat/${c.teamId}">${c.teamName}</a>`) : ''}
         ${c.clubName ? raw(html` · <a href="#/club/${c.clubId}">${c.clubName}</a>`) : ''}
         · ${fmtDate(c.caughtOn)}${details ? ' · ' + details : ''}
       </p>
@@ -167,8 +171,8 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
       <div class="actions">
-        <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}">♥ <span>${c.likes}</span></button>
-        <a class="btn" href="#/catch/${c.id}">💬 ${c.comments}</a>
+        <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
+        <a class="btn" href="#/catch/${c.id}" aria-label="Comments">${raw(icon('comment'))} ${c.comments}</a>
         <button data-act="share">Share</button>
         <a class="btn" href="${whatsapp(`${shareText(c)} ${location.origin}/#/catch/${c.id}`)}" target="_blank" rel="noopener">WhatsApp</a>
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
@@ -329,7 +333,7 @@ const pagesFor = (view) => ({
     }
     const { team } = await api(`/teams/${state.me.teamId}`);
     view.innerHTML = html`<h1>Log a catch</h1>
-      <p class="muted">Logging for 🚤 <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}</p>
+      <p class="muted">Logging for <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}</p>
       <form class="card pad stack" id="f">
         <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
@@ -364,7 +368,7 @@ const pagesFor = (view) => ({
       const fd = new FormData(form);
       if (!fd.get('photo')?.size) fd.delete('photo');
       const { catch: c } = await api('/catches', { method: 'POST', form: fd });
-      toast('Catch posted! Tight lines 🎣');
+      toast('Catch posted. Tight lines!');
       location.hash = `#/catch/${c.id}`;
     });
   },
@@ -434,7 +438,7 @@ const pagesFor = (view) => ({
     const bar = (label, n, cls) => (n ? `<div class="tally"><span>${label}</span><b>${n}</b></div>
       <div class="bar ${cls}"><i style="width:${Math.max(6, (n / max) * 100)}%"></i></div>` : '');
     const card = (i) => html`<a class="pcard" href="${i.href}" data-name="${(i.name + ' ' + i.sub).toLowerCase()}">
-      ${i.photoUrl ? raw(html`<img src="${i.photoUrl}" alt="" loading="lazy">`) : raw(`<div class="ph">${tab === 'boats' ? '🚤' : '🎣'}</div>`)}
+      ${i.photoUrl ? raw(html`<img src="${i.photoUrl}" alt="" loading="lazy">`) : raw(`<div class="ph">${icon(tab === 'boats' ? 'boat' : 'user')}</div>`)}
       <div class="pbody">
         <div class="pname">${i.name}</div>
         <div class="psub">${i.sub}</div>
@@ -446,7 +450,7 @@ const pagesFor = (view) => ({
         <a role="tab" href="#/participants?tab=anglers" aria-selected="${tab === 'anglers'}">Anglers</a>
         <a role="tab" href="#/participants?tab=boats" aria-selected="${tab === 'boats'}">Boats</a>
       </div>
-      <label class="search"><span aria-hidden="true">⌕</span>
+      <label class="search">${raw(icon('search'))}
         <input type="search" placeholder="Search ${tab}" aria-label="Search ${tab}" autocomplete="off"></label>
       <div class="pgrid">${items.map((i) => raw(card(i)))}</div>
       <p class="muted empty" id="none" ${items.length ? 'hidden' : ''}>${items.length ? `No ${tab} match that search.` : tab === 'boats' ? 'No boats registered yet.' : 'No anglers yet.'}</p>
@@ -467,7 +471,7 @@ const pagesFor = (view) => ({
     const inviteMsg = `Join our boat ${team.name} on West Africa Big Game: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
-      <h1>🚤 ${team.name}</h1>
+      <h1>${team.name}</h1>
       <p class="muted">${[spec, team.homePort, team.country].filter(Boolean).join(' · ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
       ${team.isMember ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
@@ -619,7 +623,7 @@ const pagesFor = (view) => ({
         <div class="card stat"><b>${stats.heaviestKg ? Math.round(stats.heaviestKg) + ' kg' : '—'}</b><span>heaviest</span></div>
       </div>
       <h2>Boats (${teams.length})</h2>
-      <div class="card"><ul class="list">${teams.length ? teams.map((t) => raw(html`<li><a href="#/boat/${t.id}">🚤 ${t.name}</a> <span class="muted small">· ${t.members} crew · ${plural(t.catches, 'catch')}</span></li>`)) : raw('<li class="muted">No boats in this club yet. Captains can pick the club on their boat page.</li>')}</ul></div>
+      <div class="card"><ul class="list">${teams.length ? teams.map((t) => raw(html`<li><a href="#/boat/${t.id}">${t.name}</a> <span class="muted small">· ${t.members} crew · ${plural(t.catches, 'catch')}</span></li>`)) : raw('<li class="muted">No boats in this club yet. Captains can pick the club on their boat page.</li>')}</ul></div>
       <h2>Club records</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>Species</th><th class="num">Weight</th><th>Angler</th><th>Boat</th><th>Line</th></tr></thead>
@@ -688,33 +692,33 @@ const pagesFor = (view) => ({
   // The menu behind the last tab: your dashboard, rules, clubs, account.
   async more() {
     const me = state.me;
-    const item = (href, icon, label, sub = '') => `<a class="menu-item" href="${href}">
-      <span class="mi-icon" aria-hidden="true">${icon}</span>
+    const item = (href, iconName, label, sub = '') => `<a class="menu-item" href="${href}">
+      <span class="mi-icon">${icon(iconName)}</span>
       <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
       <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<h1 class="center">More</h1>
       ${me ? raw(html`<div class="card pad me-card">
-          ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw('<span class="me-ph">🎣</span>')}
-          <div><b>${me.name}</b><div class="muted small">${me.teamName ? `🚤 ${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
+          ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
+          <div><b>${me.name}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
         </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${me ? raw(`<h2>You</h2><div class="card menu">
-        ${item(`#/user/${me.id}`, '📊', 'My dashboard', 'Your catches, releases and heaviest fish')}
-        ${me.teamId ? item(`#/boat/${me.teamId}`, '🚤', 'My boat', me.teamName) : item('#/crew', '🚤', 'Get on a boat', 'Join a crew or register your boat')}
-        ${item('#/profile', '✏️', 'Edit profile', 'Name, country, photo')}
+        ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
+        ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
+        ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
       <h2>Rules</h2>
       <div class="card menu">
-        ${raw(item('#/rules?book=jhmmc', '📋', 'JHMMC rules', '2026-2027 season'))}
-        ${raw(item('#/rules?book=igfa', '⚖️', 'IGFA rules', 'International Angling Rules summary'))}
+        ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
+        ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
       </div>
       <h2>Records &amp; clubs</h2>
       <div class="card menu">
-        ${raw(item('#/records?club=igfa', '🏆', 'IGFA world records'))}
-        ${raw(item('#/records', '🏅', 'Club records'))}
-        ${raw(item('#/clubs', '⚓', 'Clubs'))}
-        ${raw(item('#/participants?tab=boats', '🚤', 'All boats'))}
+        ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
+        ${raw(item('#/records', 'medal', 'Club records'))}
+        ${raw(item('#/clubs', 'clubs', 'Clubs'))}
+        ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
     view.querySelector('#logout')?.addEventListener('click', async () => {
@@ -804,7 +808,7 @@ const pagesFor = (view) => ({
   async user(id) {
     const { user, stats } = await api(`/users/${id}`);
     view.innerHTML = html`${user.photoUrl ? raw(html`<img class="avatar" src="${user.photoUrl}" alt="">`) : ''}<h1>${user.name}</h1>
-      <p class="muted">${user.teamName ? raw(html`🚤 <a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
+      <p class="muted">${user.teamName ? raw(html`<a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
       ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
       <div class="stats">
@@ -820,7 +824,7 @@ const pagesFor = (view) => ({
     if (!state.me) return needLogin(view, 'see your profile');
     const me = state.me;
     view.innerHTML = html`<h1>Your profile</h1>
-      <p>${me.teamId ? raw(html`🚤 Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
+      <p>${me.teamId ? raw(html`Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
       <form class="card pad stack" id="f">
         <label>Name <input name="name" required maxlength="80" value="${me.name}"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
@@ -892,6 +896,17 @@ const ICONS = {
   participants: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15 14.5c3 0 5.5 2.3 5.5 5.5"/>',
   clubs: '<path d="M4 21V5l8-2 8 2v16"/><path d="M9 21v-5h6v5"/>',
   catch: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  heart: '<path d="M12 20s-7-4.4-9-8.6C1.6 8.5 3.4 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.4 0 5.2 3.5 3.8 6.4C19 15.6 12 20 12 20z"/>',
+  comment: '<path d="M4 5h16v11H9l-5 4z"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  boat: '<path d="M3 15h18l-2.5 5h-13z"/><path d="M6 15V9h8l3 6"/><path d="M9 9V5h3"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+  dashboard: '<path d="M4 4h7v9H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 15h7v5H4z"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
+  rules: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 15h7M9 19h4"/>',
+  scale: '<path d="M12 4v16M7 20h10M5 7h14"/><path d="M5 7l-3 6c0 1.7 1.3 3 3 3s3-1.3 3-3zM19 7l-3 6c0 1.7 1.3 3 3 3s3-1.3 3-3z"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4c0 3 1.5 5 4 5M16 6h4c0 3-1.5 5-4 5M12 13v4M8 21h8M9 17h6v4H9z"/>',
+  medal: '<path d="M8 3l4 7 4-7"/><circle cx="12" cy="15" r="5"/><path d="M12 13v4"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
 };
 

@@ -306,3 +306,15 @@ label[hidden] { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
 .chip a { text-decoration: none; color: var(--muted); }
 .member.guest select { width: auto; padding: 4px 8px; font-size: 14px; }
+
+/* ---- icons (replace emoji) ---- */
+.icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+button.liked .icon { fill: currentColor; }
+.brand { display: inline-flex; align-items: center; gap: 8px; }
+.brand .mark { width: 34px; height: 17px; fill: currentColor; flex: none; }
+.catch-photo.placeholder .marlin { width: 55%; max-width: 260px; fill: rgba(255, 255, 255, .85); }
+.pcard .ph .icon { width: 56px; height: 56px; color: rgba(255, 255, 255, .85); stroke-width: 1.4; }
+.me-ph .icon { width: 30px; height: 30px; color: var(--muted); }
+.mi-icon { display: grid; place-items: center; color: var(--accent); }
+.mi-icon .icon { width: 24px; height: 24px; }
+.search .icon { color: var(--muted); }
