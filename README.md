@@ -1,4 +1,4 @@
-# West Africa Big Game
+# JHMMC
 
 A shared catch log and social feed for big game fishing clubs across West Africa, from Dakar to Lagos.
 

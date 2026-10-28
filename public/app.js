@@ -199,7 +199,7 @@ async function shareCatch(c) {
   const text = shareText(c);
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'West Africa Big Game', text, url });
+      await navigator.share({ title: 'JHMMC', text, url });
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -771,7 +771,7 @@ const pagesFor = (view) => ({
 
   async boat(id) {
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
-    const inviteMsg = `Join our boat ${team.name} on West Africa Big Game: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
+    const inviteMsg = `Join our boat ${team.name} on the JHMMC app: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
@@ -1661,7 +1661,7 @@ const pagesFor = (view) => ({
         out.innerHTML = html`<p class="small muted">New link for ${name}, valid for ${hours} hours. Any older link stops working.</p>
           <input readonly value="${link}" aria-label="Reset link">
           <div class="actions"><button data-act="copy-link">Copy link</button>
-          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for West Africa Big Game. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
+          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the JHMMC app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
         out.hidden = false;
         out.querySelector('input').select();
       } catch (ex) {
@@ -1828,7 +1828,7 @@ const pagesFor = (view) => ({
     if (!state.meta.emailEnabled) {
       // No email sending yet: the admin makes reset links by hand.
       const admin = state.meta.adminEmail;
-      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - West Africa Big Game')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
+      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - JHMMC app')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
       view.innerHTML = html`<h1>Forgot your password?</h1>
         <div class="card pad stack">
           ${admin ? raw(html`<p style="margin:0">Email the club admin from the address you signed up with, and they'll send you a link to choose a new password.</p>
@@ -1966,7 +1966,7 @@ async function refreshPending() {
   } catch {
     return;
   }
-  document.title = `${state.pending ? `(${state.pending}) ` : ''}West Africa Big Game`;
+  document.title = `${state.pending ? `(${state.pending}) ` : ''}JHMMC`;
   if (state.pending !== before) renderNav();
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);

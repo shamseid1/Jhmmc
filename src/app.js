@@ -200,8 +200,8 @@ function createApp({
   function passwordChangedEmail(user, req) {
     return mailer.send({
       to: user.email,
-      subject: 'Your West Africa Big Game password was changed',
-      text: `Hello ${user.name},\n\nThe password for your West Africa Big Game account was just changed. ` +
+      subject: 'Your JHMMC password was changed',
+      text: `Hello ${user.name},\n\nThe password for your JHMMC account was just changed. ` +
         `If this was you, there is nothing to do.\n\nIf it wasn't, reset your password straight away at ` +
         `${baseUrl(req)}/#/forgot and tell your club.\n`,
     }).catch((err) => console.error('Password-changed email failed:', err.message));
@@ -224,8 +224,8 @@ function createApp({
     try {
       await mailer.send({
         to: user.email,
-        subject: 'Reset your West Africa Big Game password',
-        text: `Hello ${user.name},\n\nSomeone asked to reset the password for your West Africa Big Game account. ` +
+        subject: 'Reset your JHMMC password',
+        text: `Hello ${user.name},\n\nSomeone asked to reset the password for your JHMMC account. ` +
           `To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\n` +
           `If you didn't ask for this, ignore this email; your password stays the same.\n`,
       });

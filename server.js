@@ -11,5 +11,5 @@ const app = createApp({
 if (!process.env.SMTP_HOST) console.warn('SMTP_HOST is not set: password reset emails are printed to this log instead of sent.');
 
 app.listen(port, () => {
-  console.log(`West Africa Big Game Fishing running on http://localhost:${port}`);
+  console.log(`JHMMC app running on http://localhost:${port}`);
 });
