@@ -1044,7 +1044,11 @@ const pagesFor = (view) => ({
       <div class="scale-pick">
         <span class="scale-label">Photo on the scale</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
-        <label class="btn scale-button">${raw(icon('camera'))} <span>Add photo</span><input type="file" accept="image/*" data-scale></label>
+        <button type="button" class="scale-button" data-act="scale-menu" aria-expanded="false">${raw(icon('camera'))} <span>Add photo</span></button>
+        <div class="scale-menu" hidden>
+          <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-scale></label>
+          <label class="btn">From photos<input type="file" accept="image/*" data-scale></label>
+        </div>
       </div>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
@@ -1096,13 +1100,22 @@ const pagesFor = (view) => ({
       list.lastElementChild.querySelector('[name=speciesId]').focus();
     });
     list.addEventListener('click', (e) => {
+      const menuBtn = e.target.closest('[data-act=scale-menu]');
+      if (menuBtn) {
+        const menu = menuBtn.nextElementSibling;
+        menu.hidden = !menu.hidden;
+        menuBtn.setAttribute('aria-expanded', String(!menu.hidden));
+        return;
+      }
       if (e.target.closest('[data-act=remove-fish]')) {
         e.target.closest('.fish').remove();
         renumber();
         updatePoints();
       }
     });
-    // The scale photo: the phone offers its camera or its photos.
+    // The scale photo: taken with the camera there and then, or picked from
+    // the phone's photos. (Chrome on newer Android phones shows no camera
+    // unless asked for it, hence the two choices.)
     const scalePhotos = new WeakMap();
     list.addEventListener('change', (e) => {
       if (e.target.matches('[data-scale]')) {
@@ -1116,6 +1129,8 @@ const pagesFor = (view) => ({
         img.src = URL.createObjectURL(file);
         img.hidden = false;
         row.querySelector('.scale-button span').textContent = 'Change photo';
+        row.querySelector('.scale-menu').hidden = true;
+        row.querySelector('.scale-button').setAttribute('aria-expanded', 'false');
         return;
       }
       if (e.target.name === 'anglerId') e.target.closest('.fish').querySelector('.guest-name').hidden = e.target.value !== 'other';
