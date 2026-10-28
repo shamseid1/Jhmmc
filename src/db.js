@@ -35,8 +35,8 @@ const SPECIES = [
   ['Other', null, 'Other'],
 ];
 
-// IGFA line classes, in pounds.
-const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb', '30 lb', '50 lb', '80 lb', '130 lb', 'Unlimited'];
+// IGFA line classes, in pounds, plus 100 lb, which local tournaments use.
+const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb', '30 lb', '50 lb', '80 lb', '100 lb', '130 lb', 'Unlimited'];
 
 const SCHEMA_VERSION = 4;
 

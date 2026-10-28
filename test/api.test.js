@@ -100,6 +100,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   kgLine.set('caughtOn', '2026-06-14');
   kgLine.set('lineClass', '37 kg');
   assert.equal((await kofi('POST', '/catches', kgLine)).status, 400, 'only listed pound classes');
+  assert.ok((await kofi('GET', '/meta')).body.lineClasses.includes('100 lb'));
 
   // Individual angler: can browse, like and comment but not log.
   await ibra('POST', '/auth/register', { name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });
