@@ -1731,7 +1731,7 @@ const pagesFor = (view) => ({
     const homeId = books.find((c) => c.name.toLowerCase() === home)?.id;
     const book = q.get('club') || String(state.me?.clubId || homeId || 'igfa');
     const isIgfa = book === 'igfa';
-    const { species, lineRecords, checked, igfaUrl, club } = await api('/records' + (isIgfa ? '' : `?club=${encodeURIComponent(book)}`));
+    const { species, lineRecords, checked, igfaUrl, club, book: recordBook } = await api('/records' + (isIgfa ? '' : `?club=${encodeURIComponent(book)}`));
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
     const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
     const pct = (s) => Math.round((s.best.weightKg / s.igfa.kg) * 100);
@@ -1750,6 +1750,38 @@ const pagesFor = (view) => ({
             <div class="small muted">${s.igfa.angler} · ${s.igfa.place} · ${s.igfa.date.slice(0, 4)}${s.igfa.note ? ` · ${s.igfa.note}` : ''}</div>`)
             : raw(html`<div class="small muted">No confirmed all-tackle record here. <a href="${igfaUrl}" target="_blank" rel="noopener">Look it up on IGFA</a></div>`)}
         </article>`))}</div>`;
+    } else if (recordBook) {
+      // JHMMC: the club's own record book, with approved app fish ranked in.
+      const when = (r) => (r.caughtOn ? fmtDate(r.caughtOn) : r.year || 'date not recorded');
+      const who = (r) => (r.fromApp ? raw(html`<a href="${anglerHref(r.userId, r.angler)}">${r.angler}</a>`) : r.angler);
+      const boat = (r) => (r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.boat}</a>`) : r.boat || '—');
+      const isNew = (r) => (r.fromApp ? raw('<span class="badge new">New</span>') : '');
+      body = html`<h2>${club.name} record book</h2>
+        <p class="small muted">The club's records as at ${fmtDay(recordBook.asAt)}, with fish approved in the app ranked in among them (marked New).
+          <a href="${recordBook.pdf}" target="_blank" rel="noopener">Download the record book (PDF)</a></p>
+        <div class="records">${recordBook.groups.map((g) => {
+          const [top, ...rest] = g.records;
+          return raw(html`<article class="card pad record">
+            <div class="record-head"><b>${g.title}</b>${top.lineClass ? raw(html`<span class="badge">${top.lineClass} line</span>`) : ''}${isNew(top)}</div>
+            <div>${top.fromApp ? raw(html`<a class="wr-lb" href="#/catch/${top.catchId}">${lb(top.weightKg)}</a>`) : raw(html`<span class="wr-lb">${lb(top.weightKg)}</span>`)}
+              <span class="muted">${kg(top.weightKg)}</span></div>
+            <div class="small muted">${who(top)} · ${boat(top)} · ${when(top)}</div>
+            ${rest.length ? raw(html`<ol class="book-list">${rest.map((r, i) => raw(html`<li>
+              <span class="rank">${i + 2}</span>
+              <span>${who(r)} ${isNew(r)}<span class="muted small">${boat(r)}${r.lineClass ? ` · ${r.lineClass}` : ''} · ${when(r)}</span></span>
+              <span class="num">${r.fromApp ? raw(html`<a href="#/catch/${r.catchId}">${kg(r.weightKg)}</a>`) : kg(r.weightKg)}</span>
+            </li>`))}</ol>`) : ''}
+          </article>`);
+        })}</div>
+        <h2>${club.name} records by line class</h2>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Species</th><th>Line</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
+          <tbody>${recordBook.lineRecords.map((r) => raw(html`<tr>
+            <td>${r.group} ${isNew(r)}</td><td class="nw">${r.lineClass}</td>
+            <td class="num">${r.fromApp ? raw(html`<a href="#/catch/${r.catchId}">${kg(r.weightKg)}</a>`) : kg(r.weightKg)}<div class="muted small">${lb(r.weightKg)}</div></td>
+            <td>${who(r)}<div class="muted small">${when(r)}</div></td><td>${boat(r)}</td>
+          </tr>`))}</tbody>
+        </table></div>`;
     } else {
       const held = species.filter((s) => s.best);
       const open = species.filter((s) => !s.best);

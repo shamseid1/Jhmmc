@@ -138,7 +138,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | PATCH  | `/api/admin/users/:id`        | Admin: `{role: secretary|null}` |
 | PATCH  | `/api/admin/teams/:id`        | Admin: `{weighStation, division}` for a JHMMC boat (its weigh station is also its home port) |
 | DELETE | `/api/catches/:id/comments/:commentId` | Remove a comment (its author, or the admin) |
-| GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club |
+| GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club. For JHMMC, `book` is the club record book (`src/jhmmc-records.js`, from the club's PDF as at 3 May 2026) with approved registrations ranked in |
 | GET    | `/api/users/:id`              | Angler profile and stats               |
 
 ## Ideas for next steps

@@ -508,3 +508,11 @@ button.link[hidden] { display: none; }
 .filter-bar .chip a { color: var(--muted); }
 .filter-panel { margin-bottom: 16px; }
 .filter-panel[hidden] { display: none; }
+
+/* ---- JHMMC record book ---- */
+.book-list { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); font-size: 14px; display: grid; gap: 8px; }
+.book-list li { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: baseline; }
+.book-list .rank { color: var(--muted); font-variant-numeric: tabular-nums; }
+.book-list .muted.small { display: block; font-size: 13px; }
+.book-list .num { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badge.new { background: rgba(63, 207, 142, .15); color: var(--good); margin-left: 6px; }
