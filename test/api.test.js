@@ -106,18 +106,14 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal((await kofi('POST', '/catches', kgLine)).status, 400, 'only listed pound classes');
   assert.ok((await kofi('GET', '/meta')).body.lineClasses.includes('100 lb'));
 
-  // Individual angler without a boat: posts to their own profile, with a weight.
+  // Individual angler without a boat: can browse, like and comment, but not post.
   await ibra('POST', '/auth/register', { name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });
   const solo = new FormData();
   solo.set('speciesId', marlin.id);
   solo.set('caughtOn', '2026-06-14');
-  solo.set('weightKg', '150');
   r = await ibra('POST', '/catches', solo);
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.deepEqual([r.body.catch.angler, r.body.catch.teamId, r.body.catch.clubId, r.body.catch.weightKg], ['Ibrahima Fall', null, null, 150]);
-  solo.set('anglerId', (await kofi('GET', '/me')).body.user.id);
-  assert.equal((await ibra('POST', '/catches', solo)).status, 400, 'without a boat, only your own catches or a guest');
-  await ibra('DELETE', `/catches/${r.body.catch.id}`);
+  assert.equal(r.status, 403);
+  assert.match(r.body.error, /boat/);
   r = await ibra('GET', '/catches');
   assert.equal(r.body.catches.length, 1);
   assert.equal(r.body.catches[0].canDelete, false);

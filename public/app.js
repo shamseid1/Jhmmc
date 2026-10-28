@@ -385,8 +385,8 @@ const HERO = `<section class="hero">
 function noBoatBanner() {
   if (!state.me) return HERO;
   return state.me.teamId ? '' : `<div class="card pad banner">
-    <div><b>You're an individual angler.</b><br><span class="muted small">Post your catches to your own profile with the Post button. If you fish as part of a crew, join your boat.</span></div>
-    <a class="btn" href="#/crew">Get on a boat</a>
+    <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed, like and comment. To post catches, join a boat's crew or register your boat.</span></div>
+    <a class="btn primary" href="#/crew">Get on a boat</a>
   </div>`;
 }
 
@@ -470,12 +470,15 @@ const pagesFor = (view) => ({
 
   async new() {
     if (!state.me) return needLogin(view, 'post a catch');
-    // Anglers without a boat post to their own profile.
-    const team = state.me.teamId ? (await api(`/teams/${state.me.teamId}`)).team : null;
-    const jhmmc = isJhmmc(team?.clubId);
-    const crew = team ? team.members : [{ id: state.me.id, name: state.me.name }];
+    if (!state.me.teamId) {
+      view.innerHTML = html`<h1>Post a catch</h1>${raw(noBoatBanner())}`;
+      return;
+    }
+    const { team } = await api(`/teams/${state.me.teamId}`);
+    const jhmmc = isJhmmc(team.clubId);
+    const crew = team.members;
     view.innerHTML = html`<h1>Post a catch</h1>
-      <p class="muted">${team ? raw(html`For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.`) : 'On your own profile.'}
+      <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.
         ${jhmmc ? 'A photo and the species are enough. JHMMC weights come only from the weighmaster at the dock, so posts from JHMMC boats have no weight.'
           : 'A photo and the species are enough; add the weight and details if you want.'}</p>
       <form class="card pad stack" id="f">
@@ -514,7 +517,7 @@ const pagesFor = (view) => ({
             ${jhmmc ? '' : raw(html`<label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>`)}
             <div class="row">
               <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
-              <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
+              <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
             </div>
           </div>
         </details>
@@ -1572,7 +1575,7 @@ function renderNav(active) {
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
-  if (state.me) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
