@@ -734,8 +734,9 @@ function createApp({
       return { error: 'Enter the date of the catch.' };
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
-    // Registrations are made at the dock on the day: today only (Monrovia time is UTC).
-    if (official && caughtOn !== new Date().toISOString().slice(0, 10)) {
+    // Weighmasters register at the dock on the day: today only (Monrovia time is UTC).
+    // The secretary may enter an earlier day's paper form.
+    if (official && !canReview(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
       return { error: "Registrations are for today's fish only." };
     }
     const lineClass = str(b.lineClass, 20);

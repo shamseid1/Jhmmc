@@ -501,6 +501,10 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY };
     r = await wm('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
     assert.match(r.body.error ?? '', /today/, 'only today can be registered');
+    r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(-3), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
+    assert.equal(r.status, 201, 'the secretary may enter an earlier day');
+    assert.equal((await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(2), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }))).status, 400, 'but not a future one');
+    assert.equal((await sec('DELETE', `/catches/${r.body.catch.id}`)).status, 200, 'the secretary can remove it');
     assert.equal((await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
     r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
     assert.match(r.body.error, /no weigh station/, 'weighmasters need an assigned station');

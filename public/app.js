@@ -975,7 +975,9 @@ const pagesFor = (view) => ({
       <form class="card pad stack" id="sheet">
         <div class="row">
           <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
-          <p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>
+          ${state.me.canReview
+            ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
+            : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
         </div>
         ${station ? raw(html`<p class="station-fixed">Weigh station: <b>${station}</b></p>`)
           : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
