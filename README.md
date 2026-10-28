@@ -14,6 +14,7 @@ A shared catch log and social feed for big game fishing clubs across West Africa
 - **Shared feed** filtered by species, boat, club, country or released-only, with likes, comments and sharing through the phone's share sheet, a copied link or WhatsApp.
 - **Leaderboards**: heaviest fish per species, top boats, top anglers (billfish count first) and top clubs, by season and country.
 - **Records**: the IGFA all-tackle world record for each species (weight, angler, place, year, African records flagged) beside the heaviest fish logged in the app and how close it came, plus the app's own records by species and IGFA line class. The world records live in `src/igfa-records.js`; check them against https://igfa.org/world-records/ and update that file when a record falls.
+- **Club records**: each club page lists the club's heaviest fish of every species (angler, boat, line class), and the Records page can be switched to any club, opening on the angler's own club.
 - **Boat, club and angler pages** with crew, stats and recent catches.
 - Mobile-first layout with a bottom tab bar on phones, and dark mode.
 
@@ -88,7 +89,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/catches/:id/like`       | Toggle like                            |
 | POST   | `/api/catches/:id/comments`   | Add a comment                          |
 | GET    | `/api/leaderboard`            | `year`, `country` filters              |
-| GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records |
+| GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club |
 | GET    | `/api/users/:id`              | Angler profile and stats               |
 
 ## Ideas for next steps

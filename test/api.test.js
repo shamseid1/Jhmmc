@@ -134,6 +134,11 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal(r.body.species.find((x) => x.name === 'Little tunny').igfa, null, 'unconfirmed records are left out');
   assert.deepEqual(r.body.lineRecords.map((x) => [x.species, x.lineClass, x.weightKg]), [['Atlantic blue marlin', '80 lb', 212.5]]);
   assert.equal(c.worldRecordKg, 636);
+  r = await ibra('GET', `/records?club=${clubId}`);
+  assert.equal(r.body.club.name, 'Dakar Offshore Club');
+  assert.equal(r.body.species.find((x) => x.name === 'Atlantic blue marlin').best.weightKg, 212.5);
+  assert.equal((await ibra('GET', '/records?club=9999')).status, 404);
+  assert.equal((await kofi('GET', '/me')).body.user.clubId, clubId);
 
   r = await ibra('GET', '/leaderboard');
   assert.equal(r.body.teams[0].teamName, 'Sea Hunter');
@@ -181,6 +186,9 @@ test('participants: boats and anglers with photos and tallies', async () => {
   }
 
   const anon = client();
+  const otherClub = (await cap('POST', '/clubs', { name: 'Freetown Game Fishing Club', country: 'Sierra Leone' })).body.club;
+  r = await anon('GET', `/records?club=${otherClub.id}`);
+  assert.ok(r.body.species.every((x) => x.best === null), 'a club only sees its own catches');
   const boat = (await anon('GET', '/teams')).body.teams.find((t) => t.id === team.id);
   assert.deepEqual([boat.catches, boat.released, boat.weighed, boat.members], [2, 1, 1, 1]);
   let musa = (await anon('GET', '/anglers')).body.anglers.find((a) => a.name === 'Musa Kamara');

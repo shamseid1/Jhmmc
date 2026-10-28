@@ -578,7 +578,8 @@ const pagesFor = (view) => ({
   },
 
   async club(id) {
-    const { club, teams, stats } = await api(`/clubs/${id}`);
+    const [{ club, teams, stats }, records] = await Promise.all([api(`/clubs/${id}`), api(`/records?club=${id}`)]);
+    const clubRecords = records.species.filter((s) => s.best);
     view.innerHTML = html`<h1>${club.name}</h1>
       <p class="muted">${[club.city, club.country].filter(Boolean).join(', ')}</p>
       ${club.description ? raw(html`<p>${club.description}</p>`) : ''}
@@ -589,6 +590,18 @@ const pagesFor = (view) => ({
       </div>
       <h2>Boats (${teams.length})</h2>
       <div class="card"><ul class="list">${teams.length ? teams.map((t) => raw(html`<li><a href="#/boat/${t.id}">🚤 ${t.name}</a> <span class="muted small">· ${t.members} crew · ${plural(t.catches, 'catch')}</span></li>`)) : raw('<li class="muted">No boats in this club yet. Captains can pick the club on their boat page.</li>')}</ul></div>
+      <h2>Club records</h2>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Species</th><th class="num">Weight</th><th>Angler</th><th>Boat</th><th>Line</th></tr></thead>
+        <tbody>${clubRecords.length ? clubRecords.map((s) => raw(html`<tr>
+          <td>${s.name}</td>
+          <td class="num"><a href="#/catch/${s.best.catchId}">${Math.round(s.best.weightKg * 10) / 10} kg</a><div class="muted small">${Math.round(s.best.weightKg * 2.20462)} lb</div></td>
+          <td><a href="#/user/${s.best.userId}">${s.best.angler}</a><div class="muted small">${fmtDate(s.best.caughtOn)}</div></td>
+          <td>${s.best.teamId ? raw(html`<a href="#/boat/${s.best.teamId}">${s.best.teamName}</a>`) : '—'}</td>
+          <td class="nw">${s.best.lineClass || '—'}</td>
+        </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches from this club yet.</td></tr>')}</tbody>
+      </table></div>
+      <p class="small"><a href="#/records?club=${club.id}">Club records by line class, and against the IGFA world records</a></p>
       <h2>Recent catches</h2>
       <div id="feed"></div>`;
     await renderFeed(view.querySelector('#feed'), { club: club.id });
@@ -642,13 +655,23 @@ const pagesFor = (view) => ({
   },
 
   async records() {
-    const { species, lineRecords, checked, igfaUrl } = await api('/records');
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    // Anglers whose boat is in a club start on their club's records.
+    const clubParam = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : 'all');
+    const [{ species, lineRecords, checked, igfaUrl, club }, clubs] = await Promise.all([
+      api('/records' + (clubParam !== 'all' ? `?club=${encodeURIComponent(clubParam)}` : '')),
+      loadClubs(),
+    ]);
+    const where = club ? club.name : 'here';
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
     const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
     const month = new Date(checked + '-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     view.innerHTML = html`${raw(boardTabs('records'))}
+      <label class="club-pick">Records for
+        <select id="club-pick">${raw(options([['all', 'All clubs'], ...clubs.map((c) => [c.id, c.name])], club ? club.id : 'all'))}</select>
+      </label>
       <h2>IGFA all-tackle world records</h2>
-      <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association, next to the biggest one logged here. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
+      <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association, next to the biggest one logged ${club ? `in ${club.name}` : 'here'}. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
       <div class="records">
         ${species.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.igfa?.african ? raw('<span class="badge release">Caught in Africa</span>') : ''}</div>
@@ -656,15 +679,15 @@ const pagesFor = (view) => ({
             <div class="small muted">${s.igfa.angler} · ${s.igfa.place} · ${s.igfa.date.slice(0, 4)}${s.igfa.note ? ` · ${s.igfa.note}` : ''}</div>`)
             : raw(html`<div class="small muted">No confirmed all-tackle record here. <a href="${igfaUrl}" target="_blank" rel="noopener">Look it up on IGFA</a></div>`)}
           <div class="ours">
-            ${s.best ? raw(html`<span>Best here: <a href="#/catch/${s.best.catchId}">${kg(s.best.weightKg)} · ${lb(s.best.weightKg)}</a> by <a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` (${s.best.teamName})` : ''}</span>
+            ${s.best ? raw(html`<span>Best ${club ? 'in club' : 'here'}: <a href="#/catch/${s.best.catchId}">${kg(s.best.weightKg)} · ${lb(s.best.weightKg)}</a> by <a href="#/user/${s.best.userId}">${s.best.angler}</a>${s.best.teamName ? ` (${s.best.teamName})` : ''}</span>
               ${s.igfa ? raw(html`<div class="bar blue" title="Share of the world record"><i style="width:${Math.min(100, Math.max(2, (s.best.weightKg / s.igfa.kg) * 100))}%"></i></div>
               <span class="small muted">${Math.round((s.best.weightKg / s.igfa.kg) * 100)}% of the world record</span>`) : ''}`)
-              : raw('<span class="small muted">None weighed here yet.</span>')}
+              : raw(html`<span class="small muted">None weighed ${club ? 'in this club' : 'here'} yet.</span>`)}
           </div>
         </article>`))}
       </div>
-      <h2>Our records by line class</h2>
-      <p class="small muted">The heaviest weighed fish logged here for each species and IGFA line class.</p>
+      <h2>${club ? `${club.name} records` : 'Our records'} by line class</h2>
+      <p class="small muted">The heaviest weighed fish logged ${where === 'here' ? 'here' : `by ${where} boats`} for each species and line class.</p>
       <div class="card table-wrap"><table>
         <thead><tr><th>Species</th><th>Line</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
         <tbody>${lineRecords.length ? lineRecords.map((r) => raw(html`<tr>
@@ -673,6 +696,9 @@ const pagesFor = (view) => ({
           <td><a href="#/user/${r.userId}">${r.angler}</a></td><td>${r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.teamName}</a>`) : '—'}</td>
         </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
       </table></div>`;
+    view.querySelector('#club-pick').addEventListener('change', (e) => {
+      location.hash = `#/records?club=${e.target.value}`;
+    });
   },
 
   async user(id) {

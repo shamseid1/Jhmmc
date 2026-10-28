@@ -151,7 +151,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
   function getMe(id) {
     const me = db.prepare(`
       SELECT u.id, u.name, u.email, u.country, u.bio, u.photo,
-        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain
+        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, ...rest } = me;
@@ -582,7 +582,10 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   // IGFA all-tackle world records beside the heaviest fish logged here, plus
   // the app's own records for each species and line class.
-  api.get('/records', (_req, res) => {
+  api.get('/records', (req, res) => {
+    const clubId = intId(req.query.club);
+    const club = clubId && db.prepare('SELECT id, name FROM clubs WHERE id = ?').get(clubId);
+    if (clubId && !club) return res.status(404).json({ error: 'Club not found.' });
     const best = db.prepare(`
       SELECT * FROM (
         SELECT k.species_id AS speciesId, k.line_class AS lineClass, k.id AS catchId, k.weight_kg AS weightKg,
@@ -590,15 +593,16 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
         FROM catches k JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
-        WHERE k.weight_kg IS NOT NULL
+        WHERE k.weight_kg IS NOT NULL ${club ? 'AND k.club_id = :club' : ''}
       ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
-    `).all();
+    `).all(club ? { club: club.id } : {});
     const species = db.prepare('SELECT id, name, category FROM species ORDER BY category, name').all();
     const names = Object.fromEntries(species.map((s) => [s.id, s.name]));
     const strip = ({ overall, inClass, ...r }) => r;
     const lineOrder = (c) => (c === 'Unlimited' ? 1e9 : parseFloat(c));
 
     res.json({
+      club: club || null,
       checked: igfa.CHECKED,
       igfaUrl: igfa.IGFA_SEARCH_URL,
       species: species.filter((s) => s.name !== 'Other').map((s) => {
