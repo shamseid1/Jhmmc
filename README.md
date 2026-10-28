@@ -36,6 +36,17 @@ Environment variables:
 
 Upgrading from the first version: the database layout changed when boats were added. Move the old `data/fishing.db` aside and restart; the app refuses to start on an old database rather than lose data.
 
+## Putting it online (Render)
+
+The repo includes `render.yaml`, which sets up one web service with a 1 GB persistent disk at `/var/data` for the database and photos.
+
+1. Create an account at https://render.com and sign in with GitHub.
+2. Choose **New → Blueprint**, pick the `Jhmmc` repository and the branch to deploy, and confirm.
+3. Render builds the app and gives it an address like `https://west-africa-big-game.onrender.com`.
+4. Optional: add your own domain under the service's **Settings → Custom Domains**.
+
+Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Back up `/var/data` (the service's **Disks** tab offers snapshots).
+
 ## Project layout
 
 ```

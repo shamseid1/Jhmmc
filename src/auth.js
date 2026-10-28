@@ -59,6 +59,30 @@ function sessionMiddleware(db) {
   };
 }
 
+// Simple in-memory limiter: at most `max` attempts per key in each window.
+// Enough for a single server; slows down password guessing.
+function rateLimit({ windowMs, max, key, message }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const k = key(req);
+    let entry = hits.get(k);
+    if (!entry || entry.reset <= now) {
+      entry = { count: 0, reset: now + windowMs };
+      hits.set(k, entry);
+    }
+    entry.count += 1;
+    if (hits.size > 10000) {
+      for (const [hk, e] of hits) if (e.reset <= now) hits.delete(hk);
+    }
+    if (entry.count > max) {
+      res.set('Retry-After', String(Math.ceil((entry.reset - now) / 1000)));
+      return res.status(429).json({ error: message });
+    }
+    next();
+  };
+}
+
 function requireUser(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Please sign in first.' });
   next();
@@ -71,4 +95,5 @@ module.exports = {
   destroySession,
   sessionMiddleware,
   requireUser,
+  rateLimit,
 };

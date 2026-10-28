@@ -54,6 +54,9 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   const app = express();
   app.disable('x-powered-by');
+  // Hosts such as Render sit behind one proxy; trust it so req.ip is the visitor's.
+  app.set('trust proxy', 1);
+  app.get('/healthz', (_req, res) => res.json({ ok: true }));
   app.use(express.json({ limit: '100kb' }));
   app.use((req, _res, next) => {
     req.body ??= {};
@@ -82,7 +85,20 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
 
   // ---- auth --------------------------------------------------------------
 
-  api.post('/auth/register', (req, res) => {
+  const loginLimit = auth.rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    key: (req) => `${req.ip}|${String(req.body.email ?? '').toLowerCase()}`,
+    message: 'Too many sign-in attempts. Wait 15 minutes and try again.',
+  });
+  const registerLimit = auth.rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    key: (req) => req.ip,
+    message: 'Too many new accounts from this connection. Try again later.',
+  });
+
+  api.post('/auth/register', registerLimit, (req, res) => {
     const name = str(req.body.name, 80);
     const email = str(req.body.email, 120)?.toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
@@ -104,7 +120,7 @@ function createApp({ dbFile = 'data/fishing.db', uploadDir = 'uploads', secureCo
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
   });
 
-  api.post('/auth/login', (req, res) => {
+  api.post('/auth/login', loginLimit, (req, res) => {
     const email = str(req.body.email, 120)?.toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const row = email && db.prepare('SELECT id, password_hash FROM users WHERE email = ?').get(email);

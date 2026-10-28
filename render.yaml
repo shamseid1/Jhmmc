@@ -1,0 +1,21 @@
+# Render Blueprint: one web service with a persistent disk for the
+# SQLite database and catch photos. See README "Putting it online".
+services:
+  - type: web
+    name: west-africa-big-game
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_FILE
+        value: /var/data/fishing.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

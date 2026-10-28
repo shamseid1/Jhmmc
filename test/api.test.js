@@ -172,3 +172,12 @@ test('validation and auth errors', async () => {
   await u('POST', '/auth/logout');
   assert.equal((await u('GET', '/me')).body.user, null);
 });
+
+test('repeated failed sign-ins are slowed down', async () => {
+  const c = client();
+  const tries = [];
+  for (let i = 0; i < 11; i++) tries.push((await c('POST', '/auth/login', { email: 'victim@example.com', password: 'guess' + i })).status);
+  assert.deepEqual(tries.slice(0, 10), Array(10).fill(401));
+  assert.equal(tries[10], 429);
+  assert.equal((await fetch(base + '/healthz')).status, 200);
+});
