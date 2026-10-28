@@ -128,6 +128,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/catches/:id/review`     | Secretary: `{decision: approve|reject, points?, note?}` |
 | PATCH  | `/api/admin/users/:id`        | Admin: `{role: weighmaster|secretary|null, weighStation}` |
 | PATCH  | `/api/admin/teams/:id`        | Admin: `{weighStation}` for a JHMMC boat (the station it weighs at) |
+| DELETE | `/api/catches/:id/comments/:commentId` | Remove a comment (its author, or the admin) |
 | GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club |
 | GET    | `/api/users/:id`              | Angler profile and stats               |
 

@@ -466,8 +466,9 @@ const pagesFor = (view) => ({
       <div class="feed">${raw(catchCard(c, { full: true }))}</div>
       <h2>Comments</h2>
       <div class="card pad">
-        ${comments.length ? comments.map((m) => raw(html`<div class="comment">
+        ${comments.length ? comments.map((m) => raw(html`<div class="comment" data-cid="${m.id}">
           <a href="#/user/${m.userId}"><b>${m.author}</b></a> <span class="muted small">${fmtDate(m.createdAt)}</span>
+          ${state.me && (m.userId === state.me.id || state.me.isAdmin) ? raw('<button data-act="delete-comment" class="link danger">Remove</button>') : ''}
           <div>${m.body}</div></div>`)) : raw('<p class="muted">No comments yet.</p>')}
         ${state.me ? raw(`<form class="stack" id="comment">
           <textarea name="body" required maxlength="1000" placeholder="Congratulate the angler…"></textarea>
@@ -476,6 +477,16 @@ const pagesFor = (view) => ({
         </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to comment.</p>')}
       </div>`;
     wireCards(view.querySelector('.feed'), new Map([[String(c.id), c]]));
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act=delete-comment]');
+      if (!btn || !confirm('Remove this comment?')) return;
+      try {
+        await api(`/catches/${id}/comments/${btn.closest('[data-cid]').dataset.cid}`, { method: 'DELETE' });
+        route();
+      } catch (ex) {
+        toast(ex.message);
+      }
+    });
     const form = view.querySelector('#comment');
     if (form) bindForm(form, async () => {
       await api(`/catches/${id}/comments`, { method: 'POST', body: formData(form) });
@@ -705,12 +716,12 @@ const pagesFor = (view) => ({
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
       <h1>${team.name}</h1>
       <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
-      ${team.isMember ? raw(html`<div class="card pad invite">
+      ${team.isMember || team.canManage ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
           <button data-act="copy-code">Copy code</button>
           <a class="btn" target="_blank" rel="noopener" href="${whatsapp(inviteMsg)}">Invite on WhatsApp</a>
-          ${team.isCaptain ? raw('<button data-act="new-code">New code</button>') : ''}
+          ${team.canManage ? raw('<button data-act="new-code">New code</button>') : ''}
         </div>
       </div>`) : ''}
       <div class="stats">
@@ -722,9 +733,9 @@ const pagesFor = (view) => ({
       <div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
         <span><a href="#/user/${m.id}">${m.name}</a> ${m.id === team.captainId ? raw('<span class="badge">Captain</span>') : ''}
           <span class="muted small">· ${plural(m.catches, 'catch')}</span></span>
-        ${team.isCaptain && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
+        ${team.canManage && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
       </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>
-      ${team.isCaptain && team.guests.length ? raw(html`<h2>Guest anglers</h2>
+      ${team.canManage && team.guests.length ? raw(html`<h2>Guest anglers</h2>
       <p class="small muted">Catches logged under a typed name. If one of them joins the crew, move their catches to their account.</p>
       <div class="card"><ul class="list">${team.guests.map((g) => raw(html`<li class="member guest" data-name="${g.name}">
         <span><a href="${anglerHref(null, g.name)}">${g.name}</a> <span class="muted small">· ${plural(g.catches, 'catch')}</span></span>
@@ -733,7 +744,7 @@ const pagesFor = (view) => ({
           <button data-act="link">Move</button>
         </span>
       </li>`))}</ul></div>`) : ''}
-      ${team.isCaptain ? raw(html`<h2>Boat details</h2>
+      ${team.canManage ? raw(html`<h2>Boat details</h2>
       <form class="card pad stack" id="edit">
         <label>Boat name <input name="name" required maxlength="80" value="${team.name}"></label>
         <div class="row">

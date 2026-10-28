@@ -473,15 +473,18 @@ function createApp({
       FROM users u WHERE u.team_id = ? ORDER BY u.id = ? DESC, u.name
     `).all(id, id, team.captainId ?? 0);
     const isMember = members.some((m) => m.id === viewerId);
-    // The invite code is the key to the boat: crew only.
-    if (!isMember) delete team.joinCode;
+    // The captain runs the boat; the club admin can do the same on any boat.
+    const isCaptain = team.captainId === viewerId;
+    const canManage = isCaptain || isAdminUser(viewerId && db.prepare('SELECT email FROM users WHERE id = ?').get(viewerId));
+    // The invite code is the key to the boat: crew (and the admin) only.
+    if (!isMember && !canManage) delete team.joinCode;
     // Names typed for anglers without an account, so the captain can move them to one.
     const guests = db.prepare(`
       SELECT angler_name AS name, MIN(id) AS first, COUNT(*) AS catches FROM catches
       WHERE team_id = ? AND user_id IS NULL GROUP BY lower(angler_name) ORDER BY name COLLATE NOCASE
     `).all(id).map(({ first, ...g }) => g);
     const { photo, ...rest } = team;
-    return { ...rest, photoUrl: photoUrl(photo), members, guests, isMember, isCaptain: team.captainId === viewerId };
+    return { ...rest, photoUrl: photoUrl(photo), members, guests, isMember, isCaptain, canManage };
   }
 
   api.get('/teams/:id', (req, res) => {
@@ -519,7 +522,7 @@ function createApp({
     res.json({ user: getMe(req.user.id) });
   });
 
-  // Captain-only actions on their own boat.
+  // Captain-only actions on their own boat; the club admin may act on any boat.
   function captainOf(req, res) {
     const id = intId(req.params.id);
     const team = id && db.prepare('SELECT id, captain_id FROM teams WHERE id = ?').get(id);
@@ -527,7 +530,7 @@ function createApp({
       res.status(404).json({ error: 'Boat not found.' });
       return null;
     }
-    if (team.captain_id !== req.user.id) {
+    if (team.captain_id !== req.user.id && !isAdminUser(req.user)) {
       res.status(403).json({ error: 'Only the captain can do that.' });
       return null;
     }
@@ -617,6 +620,9 @@ function createApp({
     if (!team) return;
     const userId = intId(req.params.userId);
     if (userId === req.user.id) return res.status(400).json({ error: 'Use "Leave boat" to leave yourself.' });
+    if (userId === db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(team.id).captain_id) {
+      return res.status(400).json({ error: 'Make someone else captain before removing the captain.' });
+    }
     const r = db.prepare('UPDATE users SET team_id = NULL WHERE id = ? AND team_id = ?').run(userId, team.id);
     if (!r.changes) return res.status(404).json({ error: 'That angler is not on this boat.' });
     res.json({ team: getTeam(team.id, req.user.id) });
@@ -1088,6 +1094,18 @@ function createApp({
     res.status(201).json({
       comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.name },
     });
+  });
+
+  // Whoever wrote a comment can remove it; the club admin can remove any.
+  api.delete('/catches/:id/comments/:commentId', (req, res) => {
+    const comment = db.prepare('SELECT id, user_id AS userId FROM comments WHERE id = ? AND catch_id = ?')
+      .get(intId(req.params.commentId) ?? 0, intId(req.params.id) ?? 0);
+    if (!comment) return res.status(404).json({ error: 'Comment not found.' });
+    if (comment.userId !== req.user.id && !isAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Only whoever wrote it or the club admin can remove a comment.' });
+    }
+    db.prepare('DELETE FROM comments WHERE id = ?').run(comment.id);
+    res.json({ ok: true });
   });
 
   // ---- records -----------------------------------------------------------

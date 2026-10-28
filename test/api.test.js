@@ -544,6 +544,22 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await cap('DELETE', `/catches/${secret.id}`);
     await cap('DELETE', `/catches/${shared.id}`);
 
+    // The club admin can run any boat and remove any comment.
+    const boat = (await boss('GET', `/teams/${ocean.id}`)).body.team;
+    assert.deepEqual([boat.canManage, boat.isCaptain, typeof boat.joinCode], [true, false, 'string']);
+    assert.equal((await sec('GET', `/teams/${ocean.id}`)).body.team.canManage, false);
+    assert.equal((await sec('PATCH', `/teams/${ocean.id}`, { name: 'Renamed' })).status, 403);
+    assert.equal((await boss('PATCH', `/teams/${ocean.id}`, { name: 'Sea Hunter II' })).body.team.name, 'Sea Hunter II');
+    await boss('PATCH', `/teams/${ocean.id}`, { name: 'Sea Hunter' });
+    assert.equal((await boss('POST', `/teams/${ocean.id}/code`)).status, 200);
+    assert.match((await boss('DELETE', `/teams/${ocean.id}/members/${capId}`)).body.error, /captain/, 'the captain stays until replaced');
+    const said = (await other('POST', `/catches/${post.id}/comments`, { body: 'Nice fish' })).body.comment;
+    assert.equal((await sec('DELETE', `/catches/${post.id}/comments/${said.id}`)).status, 403);
+    assert.equal((await boss('DELETE', `/catches/${post.id}/comments/${said.id}`)).status, 200);
+    const mine = (await other('POST', `/catches/${post.id}/comments`, { body: 'Oops' })).body.comment;
+    assert.equal((await other('DELETE', `/catches/${post.id}/comments/${mine.id}`)).status, 200, 'authors remove their own');
+    assert.equal((await as()('GET', `/catches/${post.id}`)).body.comments.length, 0);
+
     // The feed only shows posts; a boat's registrations are listed separately.
     const feed = (await as()('GET', `/catches?team=${ocean.id}`)).body.catches.map((c) => c.id);
     assert.deepEqual(feed, [post.id]);
