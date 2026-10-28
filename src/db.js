@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -177,6 +177,13 @@ CREATE TABLE IF NOT EXISTS events (
   end_date TEXT,
   kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament')),
   name TEXT NOT NULL
+);
+
+-- Boats entered in a tournament: only their fish count for its results.
+CREATE TABLE IF NOT EXISTS tournament_entries (
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  PRIMARY KEY (event_id, team_id)
 );
 
 CREATE TABLE IF NOT EXISTS settings (

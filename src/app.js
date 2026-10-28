@@ -1146,7 +1146,10 @@ function createApp({
     const end = setting('season_end');
     res.json({
       season: { start, end },
-      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name FROM events WHERE COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date`).all(start, end),
+      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name,
+          (SELECT json_group_array(team_id) FROM tournament_entries WHERE event_id = events.id) AS entries
+        FROM events WHERE COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date`).all(start, end)
+        .map((e) => ({ ...e, entries: JSON.parse(e.entries) })),
     });
   });
 
@@ -1203,8 +1206,8 @@ function createApp({
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end
-      ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e WHERE e.kind = 'tournament'
-        AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
+      ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e JOIN tournament_entries te ON te.event_id = e.id
+        WHERE e.kind = 'tournament' AND te.team_id = k.team_id AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
     const params = { division, start, end, home: homeClubId() };
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
@@ -1223,10 +1226,10 @@ function createApp({
         ...e,
         winner: db.prepare(`
           SELECT t.id AS teamId, t.name AS teamName, ROUND(SUM(k.points), 1) AS points
-          FROM catches k JOIN teams t ON t.id = k.team_id
+          FROM catches k JOIN teams t ON t.id = k.team_id JOIN tournament_entries te ON te.team_id = t.id AND te.event_id = ?
           WHERE k.status = 'approved' AND k.club_id = ? AND t.division = ? AND k.caught_on BETWEEN ? AND ?
           GROUP BY t.id ORDER BY points DESC LIMIT 1
-        `).get(params.home, division, e.date, e.endDate) ?? null,
+        `).get(e.id, params.home, division, e.date, e.endDate) ?? null,
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
@@ -1238,8 +1241,10 @@ function createApp({
     const event = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
     const division = req.query.division === 'river' ? 'river' : 'ocean';
+    // Only boats entered in the tournament compete in it; others fishing that day score for the season only.
     const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on BETWEEN :date AND :endDate AND t.division = :division AND k.status = 'approved'
-      AND k.club_id = :home ORDER BY k.points DESC`).all({ date: event.date, endDate: event.endDate, division, home: homeClubId(), viewer: req.user?.id ?? 0 });
+      AND k.club_id = :home AND k.team_id IN (SELECT team_id FROM tournament_entries WHERE event_id = :event)
+      ORDER BY k.points DESC`).all({ date: event.date, endDate: event.endDate, division, home: homeClubId(), event: event.id, viewer: req.user?.id ?? 0 });
     const boats = new Map();
     for (const r of rows) {
       const b = boats.get(r.teamId) ?? { teamId: r.teamId, teamName: r.teamName, points: 0, catches: [] };
@@ -1247,7 +1252,21 @@ function createApp({
       b.catches.push(present(r, req.user));
       boats.set(r.teamId, b);
     }
-    res.json({ tournament: event, division, results: [...boats.values()].sort((a, b) => b.points - a.points) });
+    const entries = db.prepare(`SELECT t.id AS teamId, t.name AS teamName, t.division FROM tournament_entries te
+      JOIN teams t ON t.id = te.team_id WHERE te.event_id = ? ORDER BY t.name COLLATE NOCASE`).all(event.id);
+    res.json({ tournament: event, division, entries, results: [...boats.values()].sort((a, b) => b.points - a.points) });
+  });
+
+  // The secretary enters a JHMMC boat in a tournament, or takes it out.
+  api.put('/tournaments/:id/entries/:teamId', requireReview, (req, res) => {
+    const event = db.prepare("SELECT id FROM events WHERE id = ? AND kind = 'tournament'").get(intId(req.params.id) ?? 0);
+    if (!event) return res.status(404).json({ error: 'Tournament not found.' });
+    const team = db.prepare('SELECT id, club_id AS clubId FROM teams WHERE id = ?').get(intId(req.params.teamId) ?? 0);
+    if (!team) return res.status(404).json({ error: 'Boat not found.' });
+    if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats can enter club tournaments.' });
+    if (req.body.entered) db.prepare('INSERT OR IGNORE INTO tournament_entries (event_id, team_id) VALUES (?, ?)').run(event.id, team.id);
+    else db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
+    res.json({ ok: true, entered: !!req.body.entered });
   });
 
   function getCatch(id, viewer) {

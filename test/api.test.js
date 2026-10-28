@@ -639,6 +639,10 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // Today is a tournament: the secretary adds it to the calendar.
     assert.equal((await cap('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).status, 403);
     const cup = (await sec('POST', '/events', { date: TODAY, kind: 'tournament', name: 'October Cup' })).body.event;
+    // Sea Hunter is entered; only the secretary manages entries, for JHMMC boats.
+    assert.equal((await cap('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 403);
+    assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${visitor.id}`, { entered: true })).status, 400);
+    assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 200);
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
       caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club', declared: 'yes' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
@@ -661,6 +665,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('POST', '/events', { date: day(-14), endDate: TODAY, kind: 'tournament', name: 'Too long' })).status, 400);
     const weekend = (await sec('POST', '/events', { date: day(-1), endDate: TODAY, kind: 'tournament', name: 'Weekend Classic' })).body.event;
     assert.deepEqual([weekend.date, weekend.endDate], [day(-1), TODAY]);
+    await sec('PUT', `/tournaments/${weekend.id}/entries/${ocean.id}`, { entered: true });
     r = await sec('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Wahoo').id,
       caughtOn: day(-1), weightKg: '10', weighStation: 'Extreme' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
@@ -677,6 +682,22 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const listed = (await as()('GET', '/points?division=ocean')).body.tournaments.find((t) => t.id === weekend.id);
     assert.deepEqual([listed.endDate, listed.winner.points], [TODAY, 775]);
     assert.equal((await as()('GET', '/events')).body.events.find((e) => e.id === cup.id).endDate, TODAY, 'one-day events end the same day');
+    assert.deepEqual((await as()('GET', '/events')).body.events.find((e) => e.id === cup.id).entries, [ocean.id]);
+
+    // A boat fishing on a tournament day without entering scores for the season only.
+    const cap2 = as();
+    await cap2('POST', '/auth/register', { name: 'Reel Captain', email: 'reel@example.com', password: 'password1' });
+    const reel = (await cap2('POST', '/teams', { name: 'Reel Deal', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
+    r = await sec('POST', '/weigh', weighed({ teamId: reel.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Little tunny').id,
+      caughtOn: TODAY, weightKg: '5', weighStation: 'Extreme' }));
+    await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
+    assert.ok((await as()('GET', '/points?division=ocean')).body.boats.some((b) => b.teamName === 'Reel Deal'), 'counts overall');
+    assert.ok(!(await as()('GET', '/points?division=ocean&scope=tournaments')).body.boats.some((b) => b.teamName === 'Reel Deal'), 'not for the tournament trophy');
+    assert.ok(!(await as()('GET', `/tournaments/${cup.id}`)).body.results.some((b) => b.teamName === 'Reel Deal'), "not in the cup's results");
+    await sec('PUT', `/tournaments/${cup.id}/entries/${reel.id}`, { entered: true });
+    assert.deepEqual((await as()('GET', `/tournaments/${cup.id}`)).body.results.map((b) => b.teamName), ['Sea Hunter', 'Reel Deal'], 'once entered, it counts');
+    await sec('PUT', `/tournaments/${cup.id}/entries/${reel.id}`, { entered: false });
+    assert.deepEqual((await as()('GET', `/tournaments/${cup.id}`)).body.entries.map((e) => e.teamName), ['Sea Hunter']);
 
     // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.
     const jhBook = (await as()('GET', `/records?club=${jhmmc}`)).body.book;

@@ -1035,7 +1035,11 @@ const pagesFor = (view) => ({
 
   async tournament(id) {
     const division = new URLSearchParams(location.hash.split('?')[1] || '').get('division') === 'river' ? 'river' : 'ocean';
-    const { tournament, results } = await api(`/tournaments/${id}?division=${division}`);
+    const [{ tournament, results, entries }, boats] = await Promise.all([
+      api(`/tournaments/${id}?division=${division}`),
+      state.me?.canReview ? api('/teams').then(({ teams }) => teams.filter((t) => isJhmmc(t.clubId))) : null,
+    ]);
+    const entered = new Set(entries.map((e) => e.teamId));
     view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)}</p>
@@ -1044,7 +1048,27 @@ const pagesFor = (view) => ({
         <div class="catch-head"><h3 class="catch-title">${i + 1}. <a href="#/boat/${b.teamId}">${b.teamName}</a></h3><span class="weight">${fmtPoints(b.points)}</span></div>
         <ul class="list compact">${b.catches.map((c) => raw(html`<li><a href="#/catch/${c.id}">${c.species}</a>
           ${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : c.released ? ' · released' : ''} · ${c.angler}<span class="num-right">${fmtPoints(c.points)}</span></li>`))}</ul>
-      </section>`)) : raw('<div class="card pad empty">No approved results for this tournament yet.</div>')}`;
+      </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
+      <h2>Boats entered (${entries.length})</h2>
+      <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
+      ${boats ? raw(html`<div class="card"><ul class="list entries">${boats.length ? boats.map((t) => raw(html`<li>
+        <label class="check"><input type="checkbox" data-team="${t.id}" ${entered.has(t.id) ? 'checked' : ''}>
+          <span>${t.name} <span class="muted small">· ${t.division === 'river' ? 'River' : 'Ocean'}</span></span></label>
+      </li>`)) : raw('<li class="muted">No JHMMC boats yet.</li>')}</ul></div>`)
+        : raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a>
+          <span class="muted small">· ${e.division === 'river' ? 'River' : 'Ocean'}</span></li>`)) : raw('<li class="muted">No boats entered yet.</li>')}</ul></div>`)}`;
+    view.querySelector('.entries')?.addEventListener('change', async (e) => {
+      const box = e.target.closest('input[data-team]');
+      if (!box) return;
+      try {
+        await api(`/tournaments/${id}/entries/${box.dataset.team}`, { method: 'PUT', body: { entered: box.checked } });
+        toast(box.checked ? 'Entered' : 'Taken out');
+        route();
+      } catch (ex) {
+        box.checked = !box.checked;
+        toast(ex.message);
+      }
+    });
   },
 
   // Points per kg for each species; the secretary can edit it.
@@ -1095,6 +1119,10 @@ const pagesFor = (view) => ({
     // Fish on a tournament day count for the season and for that tournament.
     const onNow = events.find((e) => e.kind === 'tournament' && e.date <= today() && today() <= e.endDate);
     const official = state.me.canReview;
+    // Fish count for today's tournament only if the boat is entered in it.
+    const entryNote = (teamId) => (!teamId ? 'choose the boat to see if it is entered'
+      : onNow.entries.includes(Number(teamId)) ? "entered: today's fish also count for this tournament"
+        : 'not entered: fish count for the season only');
     const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
     // A captain's own boat, with its weigh station (its home port).
@@ -1104,7 +1132,7 @@ const pagesFor = (view) => ({
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
-      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · today's fish also count for this tournament</p>`) : ''}
+      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
       <form class="card pad stack" id="sheet">
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
@@ -1240,6 +1268,7 @@ const pagesFor = (view) => ({
     sheet.teamId.addEventListener('change', async () => {
       const boat = jhmmcBoats.find((t) => String(t.id) === sheet.teamId.value);
       if (boat?.weighStation && sheet.weighStation) sheet.weighStation.value = boat.weighStation;
+      if (onNow) view.querySelector('#entry-note').textContent = entryNote(boat?.id);
       crew = boat ? (await api(`/teams/${boat.id}`)).team.members : [];
       for (const sel of list.querySelectorAll('[name=anglerId]')) sel.innerHTML = anglerOptions(sel.value);
     });
@@ -1376,7 +1405,8 @@ const pagesFor = (view) => ({
       </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
-        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDays(ev)}</div></span>
+        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDays(ev)}</div>
+          ${ev.kind === 'tournament' ? raw(html`<div class="small"><a href="#/tournament/${ev.id}">${plural(ev.entries.length, 'boat')} entered${editable ? ' · manage entries' : ''}</a></div>`) : ''}</span>
         ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
       </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
       ${editable ? raw(html`<h2>Add a tournament</h2>
