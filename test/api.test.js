@@ -285,6 +285,8 @@ test('visitors without an account can look but not act', async () => {
   const clubs = (await anon('GET', '/clubs')).body.clubs;
   assert.deepEqual(clubs.filter((c) => c.name === 'JHMMC').map((c) => c.country), ['Liberia'], 'home club exists once');
   assert.equal((await anon('GET', '/meta')).body.homeClub, 'JHMMC');
+  const species = (await anon('GET', '/meta')).body.species.map((x) => x.name);
+  assert.ok(species.includes('Barracuda') && !species.includes('Guinean barracuda'));
 });
 
 test('validation and auth errors', async () => {

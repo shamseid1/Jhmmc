@@ -16,7 +16,7 @@ const RECORDS = {
   'Skipjack tuna': { lb: 46, oz: 5, angler: 'Joeri Van Laken', place: 'La Gomera, Spain', date: '2020-11-15' },
   'Wahoo': { lb: 184, oz: 0, angler: 'Sara Hayward', place: 'Cabo San Lucas, Mexico', date: '2005' },
   'Dorado (mahi-mahi)': { lb: 87, oz: 0, angler: 'Manuel Salazar', place: 'Papagayo, Costa Rica', date: '1976' },
-  'Guinean barracuda': { lb: 102, oz: 0, angler: 'Thomas Gibson', place: 'Barra do Kwanza, Angola', date: '2013' },
+  'Barracuda': { lb: 102, oz: 0, angler: 'Thomas Gibson', place: 'Barra do Kwanza, Angola', date: '2013', note: 'Sphyraena afra' },
   'Crevalle jack': { lb: 66, oz: 2, angler: 'Carlos Alberto Leal Simões', place: 'Barra do Dande, Angola', date: '2010' },
   'African pompano': { lb: 50, oz: 8, angler: 'Tom Sargent', place: 'Daytona Beach, USA', date: '1990-04-21' },
   'Cubera snapper': { lb: 124, oz: 12, angler: 'Marion Rose', place: 'Garden Banks, Louisiana, USA', date: '2007-06-23' },

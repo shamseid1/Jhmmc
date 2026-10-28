@@ -21,7 +21,7 @@ const SPECIES = [
   ['Wahoo', 'Acanthocybium solandri', 'Pelagic'],
   ['Dorado (mahi-mahi)', 'Coryphaena hippurus', 'Pelagic'],
   ['West African Spanish mackerel', 'Scomberomorus tritor', 'Pelagic'],
-  ['Guinean barracuda', 'Sphyraena afra', 'Pelagic'],
+  ['Barracuda', 'Sphyraena afra', 'Pelagic'],
   ['Greater amberjack', 'Seriola dumerili', 'Reef & jacks'],
   ['Crevalle jack', 'Caranx hippos', 'Reef & jacks'],
   ['African pompano', 'Alectis ciliaris', 'Reef & jacks'],
@@ -179,6 +179,8 @@ function openDb(file) {
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  // Species renamed since earlier versions; catches keep pointing at the same row.
+  db.prepare("UPDATE species SET name = 'Barracuda' WHERE name = 'Guinean barracuda'").run();
   const insert = db.prepare(
     'INSERT OR IGNORE INTO species (name, scientific_name, category) VALUES (?, ?, ?)'
   );
