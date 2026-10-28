@@ -1181,23 +1181,39 @@ const pagesFor = (view) => ({
   async review() {
     if (!state.me?.canReview) return needLogin(view, 'review catches (the secretary only)');
     const { toReview } = await api('/officials/queue');
-    // Grouped by day and boat, like the paper registration forms.
-    const groups = new Map();
-    for (const c of toReview) {
-      const key = `${c.caughtOn}|${c.teamId}`;
-      if (!groups.has(key)) groups.set(key, { date: c.caughtOn, boat: c.teamName, division: c.division, catches: [] });
-      groups.get(key).catches.push(c);
-    }
+    // Split by weigh station, then grouped by day and boat like the paper forms.
+    const NONE = 'No station';
+    const stationOf = (c) => c.weighStation || NONE;
+    const stations = [...state.meta.weighStations, NONE].filter((w) => toReview.some((c) => stationOf(c) === w));
+    const pick = new URLSearchParams(location.hash.split('?')[1] || '').get('station');
+    const shown = stations.includes(pick) ? [pick] : stations;
+    const count = (w) => toReview.filter((c) => stationOf(c) === w).length;
+    const sheetsAt = (w) => {
+      const groups = new Map();
+      for (const c of toReview.filter((x) => stationOf(x) === w)) {
+        const key = `${c.caughtOn}|${c.teamId}`;
+        if (!groups.has(key)) groups.set(key, { date: c.caughtOn, boat: c.teamName, division: c.division, catches: [] });
+        groups.get(key).catches.push(c);
+      }
+      return [...groups.values()];
+    };
+    const tab = (label, href, n, on) => html`<a href="${href}" class="station-tab" ${on ? raw('aria-current="page"') : ''} data-count-for="${label}">${label} <span class="tab-count">${n}</span></a>`;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
       <div class="card pad notify" id="notify"></div>
+      ${stations.length > 1 ? raw(html`<nav class="station-tabs" aria-label="Weigh stations">
+        ${raw(tab('All', '#/review', toReview.length, shown.length > 1))}
+        ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), shown.length === 1 && shown[0] === w)))}
+      </nav>`) : ''}
       <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
-      ${groups.size ? [...groups.values()].map((g) => raw(html`<section class="sheet">
-        <h2>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h2>
+      ${shown.length ? shown.map((w) => raw(html`<section class="station" data-station="${w}">
+        <h2 class="station-head">${w} <span class="muted small" data-left>${plural(count(w), 'fish')}</span></h2>
+        ${sheetsAt(w).map((g) => raw(html`<section class="sheet">
+        <h3>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h3>
         ${g.catches.map((c) => raw(html`<article class="card pad review-item">
           <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
             <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
-          <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}${c.weighStation ? ` · weighed at ${c.weighStation}` : ''}</p>
+          <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
           <div class="thumbs">
             ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
             ${c.photoUrl ? raw(html`<a href="${c.photoUrl}" target="_blank" rel="noopener"><img src="${c.photoUrl}" alt="Catch photo"></a>`) : ''}
@@ -1205,7 +1221,19 @@ const pagesFor = (view) => ({
           </div>
           ${raw(reviewForm(c))}
         </article>`))}
+      </section>`))}
       </section>`)) : raw('<div class="card pad empty">Nothing to review. Fish the weighmasters register appear here.</div>')}`;
+    // After a decision, the station tabs and headings count down.
+    const recount = (station) => {
+      const left = view.querySelectorAll(`.station[data-station="${CSS.escape(station)}"] .review-item`).length;
+      const head = view.querySelector(`.station[data-station="${CSS.escape(station)}"] [data-left]`);
+      if (head) head.textContent = left ? plural(left, 'fish') : 'all done';
+      const chip = view.querySelector(`.station-tab[data-count-for="${CSS.escape(station)}"] .tab-count`);
+      if (chip) chip.textContent = Number(chip.textContent) - 1;
+      const allChip = view.querySelector('.station-tab[data-count-for="All"] .tab-count');
+      if (allChip) allChip.textContent = Number(allChip.textContent) - 1;
+      for (const sheet of view.querySelectorAll('.sheet')) if (!sheet.querySelector('.review-item')) sheet.remove();
+    };
     view.addEventListener('click', (e) => {
       const btn = e.target.closest('form.review button[name=decision]');
       if (btn) btn.form.dataset.decision = btn.value;
@@ -1218,7 +1246,10 @@ const pagesFor = (view) => ({
       err.textContent = '';
       try {
         await api(`/catches/${form.dataset.id}/review`, { method: 'POST', body: { ...formData(form), decision: form.dataset.decision } });
+        const station = form.closest('.station').dataset.station;
         form.closest('.review-item').remove();
+        recount(station);
+        refreshPending();
         toast(form.dataset.decision === 'approve' ? 'Approved' : 'Rejected');
       } catch (ex) {
         err.textContent = ex.message;

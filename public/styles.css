@@ -343,7 +343,7 @@ button.liked .icon { fill: currentColor; }
 .review { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 8px; }
 .review .actions { margin-top: 0; }
 .review-item { margin-bottom: 12px; }
-.sheet h2 .small { font-weight: 400; }
+.sheet h2 .small, .sheet h3 .small, .station-head .small { font-weight: 400; }
 .result { margin-bottom: 12px; }
 .list.compact li { padding: 8px 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .num-right { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -438,3 +438,17 @@ button.link[hidden] { display: none; }
 .notify p:last-child { margin-bottom: 0; }
 .notify-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .notify-row .icon { width: 18px; height: 18px; color: var(--good); }
+
+/* ---- review screen split by weigh station ---- */
+.station-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; margin: 0 -2px 4px; scrollbar-width: none; }
+.station-tabs::-webkit-scrollbar { display: none; }
+.station-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 600; font-size: 14px; text-decoration: none;
+}
+.station-tab[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tab-count { min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--bg); color: var(--text); font-size: 12px; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.station-tab[aria-current="page"] .tab-count { background: rgba(255, 255, 255, .25); color: inherit; }
+.station { margin-top: 8px; }
+.station-head { margin-top: 20px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.station .sheet h3 { margin: 16px 0 8px; font-size: 1.05rem; }
