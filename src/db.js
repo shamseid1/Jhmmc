@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -72,6 +72,10 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   -- Official scoring: weighed at the dock by a weighmaster, then approved by the secretary.
   status TEXT NOT NULL DEFAULT 'pending_review',
+  -- Where the fish was caught (phone GPS). Private to the boat unless spot_public.
+  lat REAL,
+  lng REAL,
+  spot_public INTEGER NOT NULL DEFAULT 0,
   weigh_station TEXT,
   weighed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   weighed_at TEXT,
@@ -251,6 +255,12 @@ function openDb(file) {
       WHERE status = 'pending_weigh'
         OR (status = 'pending_review' AND COALESCE((SELECT role FROM users WHERE id = catches.logged_by), '') = '')
     `);
+  }
+  if (hasTables && version < 9) {
+    const has = (column) => db.prepare('PRAGMA table_info(catches)').all().some((c) => c.name === column);
+    if (!has('lat')) db.exec('ALTER TABLE catches ADD COLUMN lat REAL');
+    if (!has('lng')) db.exec('ALTER TABLE catches ADD COLUMN lng REAL');
+    if (!has('spot_public')) db.exec('ALTER TABLE catches ADD COLUMN spot_public INTEGER NOT NULL DEFAULT 0');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

@@ -611,6 +611,7 @@ function createApp({
     SELECT k.id, k.weight_kg AS weightKg, k.length_cm AS lengthCm, k.released, k.tagged,
       k.caught_on AS caughtOn, k.country, k.location, k.line_class AS lineClass,
       k.notes, k.photo, k.created_at AS createdAt, k.logged_by AS loggedBy,
+      k.lat, k.lng, k.spot_public AS spotPublic,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
@@ -638,9 +639,22 @@ function createApp({
     return !!team && team.captain_id === user.id;
   }
 
+  // The exact GPS spot is shown to everyone only if the poster chose to;
+  // otherwise just to the boat's crew, whoever posted it and the officials.
+  function canSeeSpot(row, viewer) {
+    if (row.spotPublic) return true;
+    if (!viewer) return false;
+    return viewer.teamId === row.teamId || row.loggedBy === viewer.id || row.userId === viewer.id || canReview(viewer);
+  }
+
   function present(row, viewer) {
+    const showSpot = row.lat != null && canSeeSpot(row, viewer);
     return {
       ...row,
+      lat: showSpot ? row.lat : null,
+      lng: showSpot ? row.lng : null,
+      spotPublic: !!row.spotPublic,
+      hasSpot: row.lat != null,
       released: !!row.released,
       tagged: !!row.tagged,
       liked: !!row.liked,
@@ -716,6 +730,12 @@ function createApp({
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return fail('Choose a line class from the list.');
     const country = str(b.country, 60) || team.country || req.user.country;
     if (country && !COUNTRIES.includes(country)) return fail('Unknown country.');
+    const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+    const lat = coord(b.lat);
+    const lng = coord(b.lng);
+    if ((lat === null) !== (lng === null) || (lat !== null && !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180))) {
+      return fail('The GPS location is not valid. Try "Use my location" again.');
+    }
     const released = bool(b.released);
     const station = official ? str(b.weighStation, 40) : null;
     if (official && !released && (weightKg === null || !WEIGH_STATIONS.includes(station))) {
@@ -728,14 +748,16 @@ function createApp({
 
     const { lastInsertRowid } = db.prepare(`
       INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
-        caught_on, country, location, line_class, notes, photo, status, weigh_station, weighed_by, weighed_at, scale_photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        caught_on, country, location, line_class, notes, photo, status, weigh_station, weighed_by, weighed_at, scale_photo,
+        lat, lng, spot_public)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       anglerId, anglerName, req.user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
       bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
       official ? null : req.file?.filename ?? null, status, station,
       official && !released ? req.user.id : null, official && !released ? new Date().toISOString() : null,
-      official ? req.file?.filename ?? null : null
+      official ? req.file?.filename ?? null : null,
+      lat, lng, bool(b.spotPublic)
     );
     res.status(201).json({ catch: getCatch(Number(lastInsertRowid), req.user) });
   }

@@ -501,6 +501,21 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(r.status, 201, 'released fish need no weight or scale photo');
     const marlin = r.body.catch;
 
+    // GPS spot: private to the boat unless the poster shares it.
+    const spotPost = (extra) => form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', location: 'Banana Islands', lat: '6.31', lng: '-10.81', ...extra });
+    assert.equal((await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', lat: '95', lng: '0' }))).status, 400);
+    assert.equal((await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', lat: 'abc', lng: '1' }))).status, 400);
+    const secret = (await cap('POST', '/catches', spotPost({}))).body.catch;
+    assert.deepEqual([secret.lat, secret.lng, secret.hasSpot], [6.31, -10.81, true], 'the poster sees the spot');
+    const seen = (await as()('GET', `/catches/${secret.id}`)).body.catch;
+    assert.deepEqual([seen.lat, seen.lng, seen.hasSpot, seen.location], [null, null, true, 'Banana Islands'], 'hidden from the public');
+    assert.equal((await other('GET', `/catches/${secret.id}`)).body.catch.lat, null, 'hidden from other boats');
+    assert.equal((await sec('GET', `/catches/${secret.id}`)).body.catch.lat, 6.31, 'officials see it');
+    const shared = (await cap('POST', '/catches', spotPost({ spotPublic: 'on' }))).body.catch;
+    assert.equal((await as()('GET', `/catches/${shared.id}`)).body.catch.lng, -10.81, 'shared spots are public');
+    await cap('DELETE', `/catches/${secret.id}`);
+    await cap('DELETE', `/catches/${shared.id}`);
+
     // The feed only shows posts; a boat's registrations are listed separately.
     const feed = (await as()('GET', `/catches?team=${ocean.id}`)).body.catches.map((c) => c.id);
     assert.deepEqual(feed, [post.id]);

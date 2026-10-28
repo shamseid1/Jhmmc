@@ -181,6 +181,21 @@ function syncDivision(form) {
   if (field) field.hidden = !isJhmmc(form.clubId.value);
 }
 
+// 6.31°N 10.81°W, the way charts and GPS units show it.
+const fmtCoords = (lat, lng) =>
+  `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
+
+function spotMap(c) {
+  if (c.lat == null) return '';
+  const d = 0.08;
+  const bbox = [c.lng - d, c.lat - d, c.lng + d, c.lat + d].join(',');
+  return html`<div class="spot-map">
+    <iframe title="Where it was caught" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}"></iframe>
+    <p class="small">${raw(icon('pin'))} ${fmtCoords(c.lat, c.lng)} · <a href="https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}" target="_blank" rel="noopener">Open in maps</a>
+      ${c.spotPublic ? '' : raw('<span class="muted"> · Only your crew can see this spot</span>')}</p>
+  </div>`;
+}
+
 const fmtPoints = (p) => `${Number.isInteger(p) ? p : p.toFixed(1)} pts`;
 
 // Where a catch is in the official process: weigh-in, secretary, decision.
@@ -219,6 +234,7 @@ function catchCard(c, { full = false } = {}) {
       </div>
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
+      ${full ? raw(spotMap(c)) : ''}
       ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
@@ -419,6 +435,15 @@ const pagesFor = (view) => ({
         </label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
+        <div class="stack spot">
+          <label>Where <input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
+          <div class="spot-row">
+            <button type="button" id="locate">${raw(icon('locate'))} Use my location</button>
+            <span class="small muted" id="spot-status"></span>
+          </div>
+          <input type="hidden" name="lat"><input type="hidden" name="lng">
+          <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
+        </div>
         <details class="more-details">
           <summary>Add weight and details</summary>
           <div class="stack">
@@ -433,7 +458,6 @@ const pagesFor = (view) => ({
               <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
             </div>
             <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
-            <label>Location / spot <input name="location" maxlength="120" placeholder="e.g. Banana Islands, Mesurado"></label>
             <div class="row">
               <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
               <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
@@ -449,6 +473,25 @@ const pagesFor = (view) => ({
       nameBox.hidden = form.anglerId.value !== 'other';
       form.anglerName.required = !nameBox.hidden;
       if (!nameBox.hidden) form.anglerName.focus();
+    });
+    // Phone GPS works at sea without signal; the post uploads when there's a connection.
+    view.querySelector('#locate').addEventListener('click', () => {
+      const status = view.querySelector('#spot-status');
+      if (!navigator.geolocation) {
+        status.textContent = 'This phone or browser can\'t share its location.';
+        return;
+      }
+      status.textContent = 'Finding you…';
+      navigator.geolocation.getCurrentPosition((pos) => {
+        form.lat.value = pos.coords.latitude.toFixed(5);
+        form.lng.value = pos.coords.longitude.toFixed(5);
+        status.textContent = `${fmtCoords(pos.coords.latitude, pos.coords.longitude)} (±${Math.round(pos.coords.accuracy)} m)`;
+        view.querySelector('#spot-share').hidden = false;
+      }, (err) => {
+        status.textContent = err.code === 1
+          ? 'Location is blocked. Allow it for this site in your phone settings, or type the place instead.'
+          : 'Couldn\'t get a GPS fix. Try again in the open, or type the place instead.';
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
     });
     // Show the chosen photo so it's clear it's attached.
     form.photo.addEventListener('change', () => {
@@ -1384,6 +1427,8 @@ const ICONS = {
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
