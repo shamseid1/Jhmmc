@@ -981,7 +981,10 @@ const pagesFor = (view) => ({
           : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
-        <p class="sheet-total" id="sheet-total"></p>
+        <div class="sheet-totals" id="sheet-total">
+          <div><span>Total weight</span><b id="total-weight">0 kg</b></div>
+          <div><span>Total points</span><b id="total-points">0 pts</b></div>
+        </div>
         <p class="error"></p>
         <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
@@ -1002,12 +1005,13 @@ const pagesFor = (view) => ({
       </div>
       <label class="guest-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
       <label class="check"><input type="checkbox" name="released"> Released (photo or video proof, no weight)</label>
-      <div class="row">
-        <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
-        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+      <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
+      <div class="points-field">
+        <span class="points-label">Points (automatic)</span>
+        <p class="points-preview" aria-live="polite"></p>
       </div>
+      <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/*"></label>
-      <p class="points-preview" aria-live="polite"></p>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
     const updatePoints = () => {
@@ -1015,14 +1019,15 @@ const pagesFor = (view) => ({
       const date = sheet.caughtOn.value;
       const scoringDay = !!date && (scoring.isSunday(date) || events.some((e) => e.date === date));
       let total = 0;
-      let counted = 0;
+      let totalKg = 0;
       for (const row of list.querySelectorAll('.fish')) {
         const out = row.querySelector('.points-preview');
         const sp = state.meta.species.find((x) => String(x.id) === row.querySelector('[name=speciesId]').value);
         const weight = row.querySelector('[name=weightKg]').value;
         const released = row.querySelector('[name=released]').checked;
+        if (!released && weight !== '' && Number(weight) > 0) totalKg += Number(weight);
         if (!sp || (!released && weight === '')) {
-          out.textContent = 'Points appear when you enter the species and weight.';
+          out.textContent = 'Enter the species and weight.';
           out.className = 'points-preview muted';
           continue;
         }
@@ -1033,9 +1038,9 @@ const pagesFor = (view) => ({
         out.innerHTML = html`<b>${fmtPoints(r.points)}</b> · ${r.note}`;
         out.className = `points-preview ${r.points > 0 ? 'good' : r.points < 0 ? 'bad' : 'muted'}`;
         total += r.points;
-        counted++;
       }
-      view.querySelector('#sheet-total').innerHTML = counted ? html`Total for the sheet: <b>${fmtPoints(Math.round(total * 10) / 10)}</b>` : '';
+      view.querySelector('#total-weight').innerHTML = html`${Math.round(totalKg * 10) / 10} kg <small>${kgToLb(totalKg)} lb</small>`;
+      view.querySelector('#total-points').textContent = fmtPoints(Math.round(total * 10) / 10);
     };
     list.addEventListener('input', updatePoints);
     sheet.addEventListener('change', updatePoints);

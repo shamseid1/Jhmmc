@@ -377,7 +377,14 @@ button.link[hidden] { display: none; }
 .member-row .role { flex-wrap: wrap; }
 .member-row .role label { display: flex; align-items: center; gap: 6px; font-weight: 500; }
 .member-row .role label[hidden] { display: none; }
-.points-preview { margin: 0; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: var(--bg); }
+.points-field { display: grid; gap: 4px; }
+.points-label { font-weight: 600; font-size: 14px; }
+.points-preview { margin: 0; font-size: 14px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.points-preview b { font-size: 1.05rem; }
+.sheet-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sheet-totals div { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 2px; }
+.sheet-totals span { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.sheet-totals b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .points-preview.good { color: var(--good); }
 .points-preview.bad { color: var(--danger); }
-.sheet-total { margin: 0; font-size: 1.05rem; }
+.sheet-totals small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
