@@ -459,12 +459,19 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     const cap = as();
     await cap('POST', '/auth/register', { name: 'Ocean Captain', email: 'oc@example.com', password: 'password1' });
-    const ocean = (await cap('POST', '/teams', { name: 'Sea Hunter' })).body.team;
+    const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
+    const ocean = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc })).body.team;
     assert.equal(ocean.division, 'ocean');
     const rcap = as();
     await rcap('POST', '/auth/register', { name: 'River Captain', email: 'rc@example.com', password: 'password1' });
-    const river = (await rcap('POST', '/teams', { name: 'Lofa Runner', division: 'river' })).body.team;
+    const river = (await rcap('POST', '/teams', { name: 'Lofa Runner', division: 'river', clubId: jhmmc })).body.team;
     assert.equal(river.division, 'river');
+    // A boat from another club: no division, no JHMMC weigh-in or points.
+    const other = as();
+    await other('POST', '/auth/register', { name: 'Tema Captain', email: 'tc@example.com', password: 'password1' });
+    const tema = (await other('POST', '/clubs', { name: 'Tema Game Fishing', country: 'Ghana' })).body.club;
+    const visitor = (await other('POST', '/teams', { name: 'Black Star', division: 'river', clubId: tema.id })).body.team;
+    assert.equal(visitor.division, 'ocean', 'division only applies to JHMMC boats');
 
     const species = (await cap('GET', '/meta')).body.species;
     const sp = (n) => species.find((x) => x.name === n);
@@ -478,6 +485,11 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     r = await cap('POST', '/catches', form({ speciesId: sp('Atlantic blue marlin').id, caughtOn: '2026-10-25', released: 'on' }));
     const marlin = r.body.catch;
     assert.equal(marlin.status, 'pending_review', 'released fish go straight to the secretary');
+    r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
+    assert.equal(r.body.catch.status, 'unofficial', 'other clubs skip the JHMMC process');
+    assert.equal((await wm('POST', `/catches/${r.body.catch.id}/weigh`, weighed({ weightKg: '30', weighStation: 'Extreme' }))).status, 409);
+    assert.equal((await wm('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
+      caughtOn: '2026-10-25', weightKg: '30', weighStation: 'Extreme' }))).status, 400);
 
     assert.equal((await cap('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Extreme' }))).status, 403);
     assert.equal((await wm('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Nowhere' }))).status, 400);

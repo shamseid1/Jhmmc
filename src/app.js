@@ -93,6 +93,8 @@ function createApp({
   }
 
   const setting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
+  // JHMMC's own scoring (weigh-in, approval, points) applies to its boats only.
+  const homeClubId = () => db.prepare('SELECT id FROM clubs WHERE name = ? COLLATE NOCASE').get(HOME_CLUB.name)?.id ?? null;
 
   // Club officials: the admin (ADMIN_EMAIL), secretaries who approve points,
   // and weighmasters who record official weights at the dock.
@@ -119,7 +121,7 @@ function createApp({
     `).all();
     res.json({
       countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name,
-      emailEnabled: mailer.configured, adminEmail, weighStations: WEIGH_STATIONS,
+      emailEnabled: mailer.configured, adminEmail, weighStations: WEIGH_STATIONS, homeClubId: homeClubId(),
       season: { start: setting('season_start'), end: setting('season_end') },
     });
   });
@@ -421,7 +423,7 @@ function createApp({
     const country = str(req.body.country, 60);
     const clubId = intId(req.body.clubId);
     const length = lengthFt(req.body.lengthFt);
-    const division = req.body.division === 'river' ? 'river' : 'ocean';
+    const division = clubId === homeClubId() && req.body.division === 'river' ? 'river' : 'ocean';
     if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
     if (Number.isNaN(length)) return res.status(400).json({ error: 'Boat length should be in feet, between 10 and 200.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
@@ -523,7 +525,8 @@ function createApp({
     const clubId = 'clubId' in req.body ? intId(req.body.clubId) : cur.club_id;
     const length = 'lengthFt' in req.body ? lengthFt(req.body.lengthFt) : cur.length_ft;
     const make = 'make' in req.body ? str(req.body.make, 60) : cur.make;
-    const division = 'division' in req.body ? (req.body.division === 'river' ? 'river' : 'ocean') : cur.division;
+    const division = clubId !== homeClubId() ? 'ocean'
+      : 'division' in req.body ? (req.body.division === 'river' ? 'river' : 'ocean') : cur.division;
     if (!name) return res.status(400).json({ error: 'Enter the boat name.' });
     if (Number.isNaN(length)) return res.status(400).json({ error: 'Boat length should be in feet, between 10 and 200.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
@@ -680,6 +683,8 @@ function createApp({
     };
     const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId);
     if (!team) return fail('Choose the boat.');
+    const jhmmc = team.club_id === homeClubId();
+    if (official && !jhmmc) return fail('Only JHMMC boats are weighed for points.');
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return fail('Choose a species.');
@@ -715,7 +720,7 @@ function createApp({
     if (official && !released && !req.file) return fail('Add the photo of the fish hanging on the scale.');
     // Kept fish wait for a weighmaster; released fish (and anything a
     // weighmaster records) go straight to the secretary.
-    const status = official || released ? 'pending_review' : 'pending_weigh';
+    const status = !jhmmc ? 'unofficial' : official || released ? 'pending_review' : 'pending_weigh';
 
     const { lastInsertRowid } = db.prepare(`
       INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
@@ -769,6 +774,7 @@ function createApp({
       res.status(status).json({ error });
     };
     if (!row) return fail(404, 'Catch not found.');
+    if (row.status === 'unofficial') return fail(409, 'Only JHMMC boats are weighed for points.');
     if (row.status === 'approved' || row.status === 'rejected') return fail(409, 'The secretary has already decided on this catch.');
     const weightKg = num(req.body.weightKg);
     const station = str(req.body.weighStation, 40);
@@ -869,8 +875,8 @@ function createApp({
     const start = setting('season_start');
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status = 'approved' AND t.division = :division AND k.caught_on BETWEEN :start AND :end`;
-    const params = { division, start, end };
+      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end`;
+    const params = { division, start, end, home: homeClubId() };
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
@@ -888,8 +894,8 @@ function createApp({
         winner: db.prepare(`
           SELECT t.id AS teamId, t.name AS teamName, ROUND(SUM(k.points), 1) AS points
           FROM catches k JOIN teams t ON t.id = k.team_id
-          WHERE k.status = 'approved' AND t.division = ? AND k.caught_on = ? GROUP BY t.id ORDER BY points DESC LIMIT 1
-        `).get(division, e.date) ?? null,
+          WHERE k.status = 'approved' AND k.club_id = ? AND t.division = ? AND k.caught_on = ? GROUP BY t.id ORDER BY points DESC LIMIT 1
+        `).get(params.home, division, e.date) ?? null,
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status IN ('pending_weigh', 'pending_review') AND t.division = ?`).get(division).n;
@@ -902,7 +908,7 @@ function createApp({
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
     const division = req.query.division === 'river' ? 'river' : 'ocean';
     const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on = :date AND t.division = :division AND k.status = 'approved'
-      ORDER BY k.points DESC`).all({ date: event.date, division, viewer: req.user?.id ?? 0 });
+      AND k.club_id = :home ORDER BY k.points DESC`).all({ date: event.date, division, home: homeClubId(), viewer: req.user?.id ?? 0 });
     const boats = new Map();
     for (const r of rows) {
       const b = boats.get(r.teamId) ?? { teamId: r.teamId, teamName: r.teamName, points: 0, catches: [] };

@@ -146,10 +146,19 @@ const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 // ---- catch card -----------------------------------------------------------
 
 const DIVISIONS = [['ocean', 'Ocean'], ['river', 'River']];
+const isJhmmc = (clubId) => clubId != null && String(clubId) === String(state.meta.homeClubId);
+
+// Ocean / River is only asked for JHMMC boats: show it when the club picked is JHMMC.
+function syncDivision(form) {
+  const field = form.querySelector('.division-field');
+  if (field) field.hidden = !isJhmmc(form.clubId.value);
+}
+
 const fmtPoints = (p) => `${Number.isInteger(p) ? p : p.toFixed(1)} pts`;
 
 // Where a catch is in the official process: weigh-in, secretary, decision.
 function statusBadge(c) {
+  if (c.status === 'unofficial') return '';
   if (c.status === 'approved') return `<span class="badge status ok">${esc(fmtPoints(c.points))}</span>`;
   if (c.status === 'rejected') return '<span class="badge status no">Not counted</span>';
   if (c.status === 'pending_weigh') return '<span class="badge status wait">Waiting for weigh-in</span>';
@@ -373,8 +382,8 @@ const pagesFor = (view) => ({
     }
     const { team } = await api(`/teams/${state.me.teamId}`);
     view.innerHTML = html`<h1>Log a catch</h1>
-      <p class="muted">Logging for <b>${team.name}</b> (${team.division === 'river' ? 'River' : 'Ocean'})${team.clubName ? ` · ${team.clubName}` : ''}.
-        Kept fish are weighed by a JHMMC weighmaster at the dock, then the secretary approves the points.</p>
+      <p class="muted">Logging for <b>${team.name}</b>${isJhmmc(team.clubId) ? ` (${team.division === 'river' ? 'River' : 'Ocean'})` : ''}${team.clubName ? ` · ${team.clubName}` : ''}.
+        ${isJhmmc(team.clubId) ? 'Kept fish are weighed by a JHMMC weighmaster at the dock, then the secretary approves the points.' : ''}</p>
       <form class="card pad stack" id="f">
         <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
@@ -444,7 +453,7 @@ const pagesFor = (view) => ({
           </div>
           <div class="row">
             <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), null, 'No club'))}</select></label>
-            <label>Registered for <select name="division">${raw(options(DIVISIONS, 'ocean'))}</select></label>
+            <label class="division-field" hidden>Registered for <select name="division">${raw(options(DIVISIONS, 'ocean'))}</select></label>
           </div>
           <p class="error"></p>
           <div><button type="submit" class="primary">Register boat</button></div>
@@ -459,6 +468,7 @@ const pagesFor = (view) => ({
     const join = view.querySelector('#join');
     bindForm(join, async () => done(await api('/teams/join', { method: 'POST', body: formData(join) }), 'Welcome aboard!'));
     const create = view.querySelector('#create');
+    create.clubId.addEventListener('change', () => syncDivision(create));
     bindForm(create, async () => done(await api('/teams', { method: 'POST', body: formData(create) }), 'Boat registered. Share the invite code with your crew.'));
   },
 
@@ -514,9 +524,11 @@ const pagesFor = (view) => ({
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
     const inviteMsg = `Join our boat ${team.name} on West Africa Big Game: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
+    const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
+    const facts = [division, spec, team.homePort, team.country].filter(Boolean).join(' · ');
     view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
       <h1>${team.name}</h1>
-      <p class="muted">${[team.division === 'river' ? 'River boat' : 'Ocean boat', spec, team.homePort, team.country].filter(Boolean).join(' · ')}${team.clubName ? raw(html` · <a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+      <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
       ${team.isMember ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
@@ -559,7 +571,7 @@ const pagesFor = (view) => ({
         </div>
         <div class="row">
           <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), team.clubId, 'No club'))}</select></label>
-          <label>Registered for <select name="division">${raw(options(DIVISIONS, team.division))}</select></label>
+          <label class="division-field" ${isJhmmc(team.clubId) ? '' : 'hidden'}>Registered for <select name="division">${raw(options(DIVISIONS, team.division))}</select></label>
         </div>
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
@@ -615,6 +627,7 @@ const pagesFor = (view) => ({
       }
     });
     const edit = view.querySelector('#edit');
+    edit?.clubId.addEventListener('change', () => syncDivision(edit));
     if (edit) bindForm(edit, async () => {
       const { photo, ...fields } = formData(edit);
       await api(`/teams/${id}`, { method: 'PATCH', body: fields });
@@ -794,7 +807,7 @@ const pagesFor = (view) => ({
       <h2>Record a catch at the dock</h2>
       <form class="card pad stack" id="record">
         <div class="row">
-          <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
+          <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
           <label>Angler <select name="anglerId" required><option value="">Choose the boat first</option></select></label>
         </div>
         <label id="rec-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
