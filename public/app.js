@@ -383,13 +383,13 @@ const pagesFor = (view) => ({
     const { team } = await api(`/teams/${state.me.teamId}`);
     view.innerHTML = html`<h1>Log a catch</h1>
       <p class="muted">Logging for <b>${team.name}</b>${isJhmmc(team.clubId) ? ` (${team.division === 'river' ? 'River' : 'Ocean'})` : ''}${team.clubName ? ` · ${team.clubName}` : ''}.
-        ${isJhmmc(team.clubId) ? 'Kept fish are weighed by a JHMMC weighmaster at the dock, then the secretary approves the points.' : ''}</p>
+        Posts go on the feed${isJhmmc(team.clubId) ? '. JHMMC points only come from fish a weighmaster registers at the dock' : ''}.</p>
       <form class="card pad stack" id="f">
         <label>Angler <select name="anglerId">${raw(options([...team.members.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="your estimate"></label>
+          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="e.g. 180"></label>
           <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
         </div>
         <div class="row">
@@ -577,8 +577,19 @@ const pagesFor = (view) => ({
         <div><button type="submit" class="primary">Save</button></div>
       </form>`) : ''}
       ${team.isMember ? raw('<p><button data-act="leave" class="danger">Leave this boat</button></p>') : ''}
-      <h2>Boat catches</h2>
+      ${isJhmmc(team.clubId) ? raw(html`<h2>JHMMC registrations</h2>
+      <p class="small muted">Fish registered by a weighmaster for JHMMC points.</p>
+      <div class="card"><ul class="list" id="regs"><li class="muted">Loading…</li></ul></div>`) : ''}
+      <h2>Posts</h2>
       <div id="feed"></div>`;
+    if (isJhmmc(team.clubId)) {
+      api(`/catches?team=${team.id}&official=1&limit=50`).then(({ catches }) => {
+        view.querySelector('#regs').innerHTML = catches.length ? catches.map((c) => html`<li>
+          <a href="#/catch/${c.id}"><b>${c.species}</b></a> · ${c.angler} ${raw(statusBadge(c))}
+          <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}</div></li>`).join('')
+          : '<li class="muted">No registrations yet.</li>';
+      }).catch(() => {});
+    }
 
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act]');
@@ -709,8 +720,8 @@ const pagesFor = (view) => ({
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('points'))}
       ${raw(divisionTabs('#/points', division))}
-      <p class="small muted">Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Approved catches from Sundays, holidays and tournaments.
-        ${pending ? `${plural(pending, 'catch')} waiting to be weighed or approved.` : ''} <a href="#/scoring">How points work</a></p>
+      <p class="small muted">JHMMC season ${fmtDay(season.start)} to ${fmtDay(season.end)}: fish registered by weighmasters and approved by the secretary, on Sundays, holidays and tournaments.
+        ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       <h2>Boats</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
@@ -755,7 +766,8 @@ const pagesFor = (view) => ({
       <div class="card pad rulebook">
         <ul>
           <li>Only <b>Sundays, public holidays and tournament days</b> score. The secretary keeps the calendar.</li>
-          <li>A kept fish scores its <b>weight in kg × the points for its species</b>, once a JHMMC weighmaster has weighed it and the secretary has approved it.</li>
+          <li>Only fish <b>registered by a JHMMC weighmaster</b> at the dock count, once the secretary approves them. Posts on the feed never count.</li>
+          <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept has its points <b>deducted</b>.</li>
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
           <li>Fish under <b>2 kg (ocean)</b> or <b>1 kg (river)</b> don't count. Ocean and river boats have separate standings.</li>
@@ -782,29 +794,16 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Weighmaster: official weights for logged catches, or record one at the dock.
+  // Weighmaster: the digital JHMMC Fish Registration Form, filled in at the dock.
   async weigh() {
-    if (!state.me?.canWeigh) return needLogin(view, 'use the weigh station (weighmasters only)');
-    const [{ toWeigh }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
+    if (!state.me?.canWeigh) return needLogin(view, 'register fish (JHMMC weighmasters only)');
+    const [{ toReview }, { teams }] = await Promise.all([api('/officials/queue'), api('/teams')]);
+    const mine = state.me.canReview ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
     const stations = state.meta.weighStations;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Weigh station</h1>
-      <p class="small muted">Every fish weighed must be photographed hanging freely on a certified scale, with the weight clearly showing (rule 8).</p>
-      <h2>Waiting to be weighed (${toWeigh.length})</h2>
-      ${toWeigh.length ? toWeigh.map((c) => raw(html`<form class="card pad stack weigh-one" data-id="${c.id}">
-        <div><b>${c.species}</b> · ${c.teamName} · ${c.angler}<div class="muted small">${fmtDay(c.caughtOn)}${c.weightKg ? ` · crew estimate ${fmtWeight(c.weightKg)}` : ''}</div></div>
-        <div class="row">
-          <label>Official weight (kg) <input name="weightKg" type="number" step="0.1" min="0" required inputmode="decimal"></label>
-          <label>Weigh station <select name="weighStation" required>${raw(options(stations, null, 'Choose…'))}</select></label>
-        </div>
-        <div class="row">
-          <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, c.lineClass, 'Not recorded'))}</select></label>
-          <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/jpeg,image/png,image/webp" required></label>
-        </div>
-        <p class="error"></p>
-        <div><button type="submit" class="primary">Record weight</button></div>
-      </form>`)) : raw('<div class="card pad empty">Nothing waiting. Crews log their catches; they appear here to be weighed.</div>')}
-      <h2>Record a catch at the dock</h2>
+      <h1>Register a fish</h1>
+      <p class="small muted">Registrations are JHMMC's official record and go to the secretary for points. They don't appear on the feed.
+        Every fish weighed must be photographed hanging freely on a certified scale, with the weight clearly showing (rule 8).</p>
       <form class="card pad stack" id="record">
         <div class="row">
           <label>Boat <select name="teamId" required>${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`]), null, 'Choose…'))}</select></label>
@@ -815,27 +814,24 @@ const pagesFor = (view) => ({
           <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
           <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
         </div>
-        <label class="check"><input type="checkbox" name="released"> Released (no weight)</label>
+        <label class="check"><input type="checkbox" name="released"> Released (photo or video proof, no weight)</label>
         <div class="row">
-          <label>Official weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
+          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
           <label>Weigh station <select name="weighStation">${raw(options(stations, null, 'Choose…'))}</select></label>
         </div>
         <div class="row">
           <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
           <label>Photo on the scale <input name="scalePhoto" type="file" accept="image/jpeg,image/png,image/webp"></label>
         </div>
-        <p class="small muted">The scale photo is needed for kept fish (rule 8).</p>
         <p class="error"></p>
-        <div><button type="submit" class="primary">Record catch</button></div>
-      </form>`;
+        <div><button type="submit" class="primary">Register fish</button></div>
+      </form>
+      <h2>Waiting for the secretary (${mine.length})</h2>
+      <div class="card"><ul class="list">${mine.length ? mine.map((c) => raw(html`<li>
+        <a href="#/catch/${c.id}"><b>${c.species}</b></a> · ${c.teamName} · ${c.angler}
+        <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}${c.weighStation ? ` · ${c.weighStation}` : ''}</div>
+      </li>`)) : raw('<li class="muted">Nothing waiting.</li>')}</ul></div>`;
 
-    for (const f of view.querySelectorAll('.weigh-one')) {
-      bindForm(f, async () => {
-        await api(`/catches/${f.dataset.id}/weigh`, { method: 'POST', form: new FormData(f) });
-        toast('Weight recorded. Sent to the secretary.');
-        route();
-      });
-    }
     const rec = view.querySelector('#record');
     rec.teamId.addEventListener('change', async () => {
       const id = rec.teamId.value;
@@ -849,7 +845,7 @@ const pagesFor = (view) => ({
       const fd = new FormData(rec);
       if (!fd.get('scalePhoto')?.size) fd.delete('scalePhoto');
       await api('/weigh', { method: 'POST', form: fd });
-      toast('Catch recorded. Sent to the secretary.');
+      toast('Registered. Sent to the secretary.');
       route();
     });
   },
@@ -857,7 +853,7 @@ const pagesFor = (view) => ({
   // Secretary: check each weighed or released catch and approve its points.
   async review() {
     if (!state.me?.canReview) return needLogin(view, 'review catches (the secretary only)');
-    const { toReview, toWeigh } = await api('/officials/queue');
+    const { toReview } = await api('/officials/queue');
     // Grouped by day and boat, like the paper registration forms.
     const groups = new Map();
     for (const c of toReview) {
@@ -867,7 +863,7 @@ const pagesFor = (view) => ({
     }
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
-      <p class="small muted">${plural(toReview.length, 'catch')} to check${toWeigh.length ? ` · ${toWeigh.length} still waiting for a weighmaster` : ''}. Approving gives the points shown; change them with a note if needed.</p>
+      <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
       ${groups.size ? [...groups.values()].map((g) => raw(html`<section class="sheet">
         <h2>${g.boat} <span class="muted small">· ${g.division === 'river' ? 'River' : 'Ocean'} · ${fmtDay(g.date)}</span></h2>
         ${g.catches.map((c) => raw(html`<article class="card pad review-item">
@@ -881,7 +877,7 @@ const pagesFor = (view) => ({
           </div>
           ${raw(reviewForm(c))}
         </article>`))}
-      </section>`)) : raw('<div class="card pad empty">Nothing to review. Weighed and released catches appear here.</div>')}`;
+      </section>`)) : raw('<div class="card pad empty">Nothing to review. Fish the weighmasters register appear here.</div>')}`;
     view.addEventListener('click', (e) => {
       const btn = e.target.closest('form.review button[name=decision]');
       if (btn) btn.form.dataset.decision = btn.value;
@@ -1018,7 +1014,7 @@ const pagesFor = (view) => ({
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>Club officials</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Weigh station', 'Record official weights')}
+        ${item('#/weigh', 'weight', 'Register a fish', 'JHMMC registration at the dock')}
         ${me.canReview ? item('#/review', 'review', 'Review catches', 'Check and approve points') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Holidays and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}

@@ -47,7 +47,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -242,6 +242,15 @@ function openDb(file) {
       WHERE status IN ('pending_weigh', 'pending_review')
         AND (club_id IS NULL OR club_id NOT IN (SELECT id FROM clubs WHERE name = ? COLLATE NOCASE))
     `).run(HOME_CLUB.name);
+  }
+  if (hasTables && version < 8) {
+    // Feed posts and JHMMC registrations are now separate: anything a crew
+    // logged becomes a feed post; only weighmaster registrations stay official.
+    db.exec(`
+      UPDATE catches SET status = 'unofficial'
+      WHERE status = 'pending_weigh'
+        OR (status = 'pending_review' AND COALESCE((SELECT role FROM users WHERE id = catches.logged_by), '') = '')
+    `);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

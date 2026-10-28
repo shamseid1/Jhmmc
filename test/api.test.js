@@ -478,25 +478,35 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sp('Wahoo').pointsPerKg, 5);
     assert.equal(sp('Butter nose').pointsPerKg, 5);
 
-    // Sunday 25 Oct 2026: crew logs a kept wahoo and a released marlin.
+    // Crew posts are for the feed only, whatever the date: they never enter JHMMC scoring.
     let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '19' }));
-    const wahoo = r.body.catch;
-    assert.equal(wahoo.status, 'pending_weigh', 'kept fish wait for the weighmaster');
-    r = await cap('POST', '/catches', form({ speciesId: sp('Atlantic blue marlin').id, caughtOn: '2026-10-25', released: 'on' }));
-    const marlin = r.body.catch;
-    assert.equal(marlin.status, 'pending_review', 'released fish go straight to the secretary');
+    const post = r.body.catch;
+    assert.equal(post.status, 'unofficial');
     r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
-    assert.equal(r.body.catch.status, 'unofficial', 'other clubs skip the JHMMC process');
-    assert.equal((await wm('POST', `/catches/${r.body.catch.id}/weigh`, weighed({ weightKg: '30', weighStation: 'Extreme' }))).status, 409);
+    assert.equal(r.body.catch.status, 'unofficial');
     assert.equal((await wm('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: '2026-10-25', weightKg: '30', weighStation: 'Extreme' }))).status, 400);
+      caughtOn: '2026-10-25', weightKg: '30', weighStation: 'Extreme' }))).status, 400, 'only JHMMC boats are registered');
 
-    assert.equal((await cap('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Extreme' }))).status, 403);
-    assert.equal((await wm('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Nowhere' }))).status, 400);
-    assert.equal((await wm('POST', `/catches/${wahoo.id}/weigh`, form({ weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
-    r = await wm('POST', `/catches/${wahoo.id}/weigh`, weighed({ weightKg: '21', weighStation: 'Extreme', lineClass: '50 lb' }));
-    assert.match(r.body.catch.scalePhotoUrl, /^\/uploads\//);
-    assert.deepEqual([r.body.catch.status, r.body.catch.weightKg, r.body.catch.weighStation], ['pending_review', 21, 'Extreme']);
+    // Sunday 25 Oct 2026: the weighmaster registers a wahoo and a released marlin for Sea Hunter.
+    const capId = (await cap('GET', '/me')).body.user.id;
+    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: '2026-10-25' };
+    assert.equal((await cap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
+    assert.equal((await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Nowhere' }))).status, 400);
+    assert.equal((await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 400, 'scale photo needed');
+    r = await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme', lineClass: '50 lb' }));
+    const wahoo = r.body.catch;
+    assert.match(wahoo.scalePhotoUrl, /^\/uploads\//);
+    assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
+    r = await wm('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
+    assert.equal(r.status, 201, 'released fish need no weight or scale photo');
+    const marlin = r.body.catch;
+
+    // The feed only shows posts; a boat's registrations are listed separately.
+    const feed = (await as()('GET', `/catches?team=${ocean.id}`)).body.catches.map((c) => c.id);
+    assert.deepEqual(feed, [post.id]);
+    const regs = (await as()('GET', `/catches?team=${ocean.id}&official=1`)).body.catches.map((c) => c.id);
+    assert.deepEqual(regs.sort(), [wahoo.id, marlin.id].sort());
+    assert.equal((await cap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'crews cannot remove registrations');
 
     // Weighmaster records a river fish brought to Lofa River for a guest.
     r = await wm('POST', '/weigh', weighed({ teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
@@ -514,7 +524,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sug(marlin.id), 500);
     assert.equal(sug(snapper.id), 7.5, 'river minimum is 1 kg');
     assert.equal(sug(saturday.id), 0, 'Saturday is not a scoring day');
-    assert.equal((await wm('GET', '/officials/queue')).body.toReview.length, 0, 'weighmasters do not approve');
+    const wmQueue = (await wm('GET', '/officials/queue')).body.toReview;
+    assert.ok(wmQueue.length > 0 && wmQueue.every((c) => c.loggedBy === idOf('wm@example.com')), 'weighmasters see only their own registrations');
 
     assert.equal((await wm('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' })).status, 403);
     assert.equal((await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve', points: 90 })).status, 400, 'changed points need a note');
@@ -541,6 +552,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual(riverTable.boats.map((b) => [b.teamName, b.points]), [['Lofa Runner', 7.5]]);
     const results = (await as()('GET', `/tournaments/${cup.id}`)).body.results;
     assert.deepEqual(results.map((b) => [b.teamName, b.points, b.catches.length]), [['Sea Hunter', 120, 1]]);
+
+    // JHMMC's records come from approved registrations; the West Africa leaderboard from posts.
+    const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
+    assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'registration, not the 19 kg post');
+    const lb = (await as()('GET', '/leaderboard')).body;
+    assert.deepEqual(lb.records.filter((x) => x.species === 'Wahoo').map((x) => x.weightKg), [30], 'posts only');
 
     // Scoring table and season dates.
     assert.equal((await sec('PATCH', `/species/${sp('Atlantic sailfish').id}`, { pointsPerKg: 4 })).status, 200);

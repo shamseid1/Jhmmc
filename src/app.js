@@ -95,6 +95,10 @@ function createApp({
   const setting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
   // JHMMC's own scoring (weigh-in, approval, points) applies to its boats only.
   const homeClubId = () => db.prepare('SELECT id FROM clubs WHERE name = ? COLLATE NOCASE').get(HOME_CLUB.name)?.id ?? null;
+  // Two separate books: members' feed posts (status 'unofficial') make the
+  // West Africa feed, leaderboards and records; JHMMC's own figures come only
+  // from weighmaster registrations the secretary approved.
+  const clubBook = (clubId) => (clubId === homeClubId() ? 'approved' : 'unofficial');
 
   // Club officials: the admin (ADMIN_EMAIL), secretaries who approve points,
   // and weighmasters who record official weights at the dock.
@@ -365,13 +369,13 @@ function createApp({
     const teams = db.prepare(`
       SELECT t.id, t.name, t.home_port AS homePort,
         (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members,
-        (SELECT COUNT(*) FROM catches k WHERE k.team_id = t.id) AS catches
+        (SELECT COUNT(*) FROM catches k WHERE k.team_id = t.id AND k.status = ?) AS catches
       FROM teams t WHERE t.club_id = ? ORDER BY catches DESC, t.name
-    `).all(id);
+    `).all(clubBook(id), id);
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE club_id = ? AND status != 'rejected'
-    `).get(id);
+      FROM catches WHERE club_id = ? AND status = ?
+    `).get(id, clubBook(id));
     res.json({ club, teams, stats });
   });
 
@@ -390,7 +394,7 @@ function createApp({
       SELECT t.id, t.name, t.home_port AS homePort, t.country, t.length_ft AS lengthFt, t.make, t.photo, t.division,
         c.id AS clubId, c.name AS clubName,
         (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members, ${TALLY}
-      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status != 'rejected'
+      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status = 'unofficial'
       GROUP BY t.id ORDER BY t.name COLLATE NOCASE
     `).all();
     res.json({ teams: teams.map(({ photo, ...t }) => ({ ...t, photoUrl: photoUrl(photo) })) });
@@ -399,7 +403,7 @@ function createApp({
   api.get('/anglers', (_req, res) => {
     const anglers = db.prepare(`
       SELECT u.id, u.name, u.country, u.photo, t.id AS teamId, t.name AS teamName, t.photo AS teamPhoto, ${TALLY}
-      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status != 'rejected'
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'unofficial'
       GROUP BY u.id ORDER BY u.name COLLATE NOCASE
     `).all();
     // Anglers without an account, known only by the name typed on their catches.
@@ -407,7 +411,7 @@ function createApp({
       SELECT NULL AS id, k.angler_name AS name, t.id AS teamId, t.name AS teamName,
         t.photo AS teamPhoto, MIN(k.id) AS first, ${TALLY}
       FROM catches k LEFT JOIN teams t ON t.id = k.team_id
-      WHERE k.user_id IS NULL AND k.status != 'rejected' GROUP BY lower(k.angler_name)
+      WHERE k.user_id IS NULL AND k.status = 'unofficial' GROUP BY lower(k.angler_name)
     `).all();
     // An angler without their own photo is shown with their boat's.
     res.json({
@@ -471,7 +475,7 @@ function createApp({
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE team_id = ? AND status != 'rejected'
+      FROM catches WHERE team_id = ? AND status = 'unofficial'
     `).get(id);
     res.json({ team, stats });
   });
@@ -626,8 +630,9 @@ function createApp({
   function canDelete(row, user) {
     if (!user) return false;
     if (canReview(user)) return true;
-    // Approved catches carry official points; only the secretary can remove them.
-    if (row.status === 'approved') return false;
+    // JHMMC registrations belong to the officials: the weighmaster who made
+    // one can withdraw it until the secretary decides.
+    if (row.status !== 'unofficial') return row.status === 'pending_review' && row.loggedBy === user.id;
     if (row.userId === user.id || row.loggedBy === user.id) return true;
     const team = row.teamId && db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(row.teamId);
     return !!team && team.captain_id === user.id;
@@ -666,6 +671,7 @@ function createApp({
       }
     }
     if (req.query.released === 'true') where.push('k.released = 1');
+    where.push(req.query.official === '1' ? "k.status != 'unofficial'" : "k.status = 'unofficial'");
     const limit = Math.min(intId(req.query.limit) || 20, 50);
     const rows = db.prepare(
       `${CATCH_SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY k.id DESC LIMIT ${limit}`
@@ -683,8 +689,7 @@ function createApp({
     };
     const team = db.prepare('SELECT club_id, country FROM teams WHERE id = ?').get(teamId);
     if (!team) return fail('Choose the boat.');
-    const jhmmc = team.club_id === homeClubId();
-    if (official && !jhmmc) return fail('Only JHMMC boats are weighed for points.');
+    if (official && team.club_id !== homeClubId()) return fail('Only JHMMC boats are registered for points.');
     const speciesId = intId(b.speciesId);
     if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
       return fail('Choose a species.');
@@ -718,9 +723,8 @@ function createApp({
     }
     // Rule 8: every fish weighed is photographed hanging on the scale.
     if (official && !released && !req.file) return fail('Add the photo of the fish hanging on the scale.');
-    // Kept fish wait for a weighmaster; released fish (and anything a
-    // weighmaster records) go straight to the secretary.
-    const status = !jhmmc ? 'unofficial' : official || released ? 'pending_review' : 'pending_weigh';
+    // Crew posts are for the feed only; weighmaster registrations go to the secretary.
+    const status = official ? 'pending_review' : 'unofficial';
 
     const { lastInsertRowid } = db.prepare(`
       INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
@@ -755,7 +759,7 @@ function createApp({
     return scoring.scoreCatch({ ...row, released: !!row.released, scoringDay: isScoringDay(row.caughtOn) });
   }
 
-  // Weighmaster: record a catch brought to the weigh station for any boat.
+  // Weighmaster: register a fish at the dock for a JHMMC boat (the digital Fish Registration Form).
   api.post('/weigh', requireWeigh, upload.single('scalePhoto'), (req, res) => {
     const teamId = intId(req.body.teamId);
     if (!teamId) {
@@ -765,39 +769,13 @@ function createApp({
     insertCatch(req, res, { teamId, official: true });
   });
 
-  // Weighmaster: the official weight for a catch a crew already logged.
-  api.post('/catches/:id/weigh', requireWeigh, upload.single('scalePhoto'), (req, res) => {
-    const id = intId(req.params.id);
-    const row = id && db.prepare('SELECT status, scale_photo FROM catches WHERE id = ?').get(id);
-    const fail = (status, error) => {
-      removeUpload(req.file?.filename);
-      res.status(status).json({ error });
-    };
-    if (!row) return fail(404, 'Catch not found.');
-    if (row.status === 'unofficial') return fail(409, 'Only JHMMC boats are weighed for points.');
-    if (row.status === 'approved' || row.status === 'rejected') return fail(409, 'The secretary has already decided on this catch.');
-    const weightKg = num(req.body.weightKg);
-    const station = str(req.body.weighStation, 40);
-    const lineClass = str(req.body.lineClass, 20);
-    if (!weightKg || Number.isNaN(weightKg) || weightKg > 1500) return fail(400, 'Enter the official weight in kilograms.');
-    if (!WEIGH_STATIONS.includes(station)) return fail(400, 'Choose the weigh station.');
-    if (lineClass && !LINE_CLASSES.includes(lineClass)) return fail(400, 'Choose a line class from the list.');
-    // Rule 8: every fish weighed is photographed hanging on the scale.
-    if (!req.file && !row.scale_photo) return fail(400, 'Add the photo of the fish hanging on the scale.');
-    db.prepare(`
-      UPDATE catches SET weight_kg = ?, weigh_station = ?, line_class = COALESCE(?, line_class), weighed_by = ?, weighed_at = ?,
-        scale_photo = COALESCE(?, scale_photo), status = 'pending_review' WHERE id = ?
-    `).run(weightKg, station, lineClass, req.user.id, new Date().toISOString(), req.file?.filename ?? null, id);
-    if (req.file && row.scale_photo) removeUpload(row.scale_photo);
-    res.json({ catch: getCatch(id, req.user) });
-  });
-
   // Weighmaster and secretary work lists.
   api.get('/officials/queue', requireWeigh, (req, res) => {
-    const list = (status) => db.prepare(`${CATCH_SELECT} WHERE k.status = :status ORDER BY k.caught_on, t.name, k.id`)
-      .all({ status, viewer: req.user.id })
+    const toReview = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.caught_on, t.name, k.id`)
+      .all({ viewer: req.user.id })
       .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn) }));
-    res.json({ toWeigh: list('pending_weigh'), toReview: canReview(req.user) ? list('pending_review') : [] });
+    // Weighmasters see what they registered that the secretary hasn't decided yet.
+    res.json({ toReview: canReview(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
   });
 
   // Secretary: approve (with the rules' points or a corrected figure) or reject.
@@ -898,7 +876,7 @@ function createApp({
         `).get(params.home, division, e.date) ?? null,
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status IN ('pending_weigh', 'pending_review') AND t.division = ?`).get(division).n;
+      WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
     res.json({ division, season: { start, end }, boats, anglers, tournaments, pending });
   });
 
@@ -941,8 +919,8 @@ function createApp({
     const item = id && getCatch(id, req.user);
     if (!item) return res.status(404).json({ error: 'Catch not found.' });
     if (!item.canDelete) {
-      return res.status(403).json({ error: item.status === 'approved'
-        ? 'This catch has been approved for points; ask the secretary to remove it.'
+      return res.status(403).json({ error: item.status !== 'unofficial'
+        ? 'This is a JHMMC registration; ask the secretary to remove it.'
         : 'Only the angler, whoever logged it, or the boat captain can delete this catch.' });
     }
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
@@ -991,9 +969,9 @@ function createApp({
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
         FROM catches k LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
-        WHERE k.weight_kg IS NOT NULL AND k.status != 'rejected' ${club ? 'AND k.club_id = :club' : ''}
+        WHERE k.weight_kg IS NOT NULL AND k.status = :book ${club ? 'AND k.club_id = :club' : ''}
       ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
-    `).all(club ? { club: club.id } : {});
+    `).all(club ? { club: club.id, book: clubBook(club.id) } : { book: 'unofficial' });
     const species = db.prepare('SELECT id, name, category FROM species ORDER BY category, name').all();
     const names = Object.fromEntries(species.map((s) => [s.id, s.name]));
     const strip = ({ overall, inClass, ...r }) => r;
@@ -1019,7 +997,7 @@ function createApp({
   api.get('/leaderboard', (req, res) => {
     const year = /^\d{4}$/.test(req.query.year ?? '') ? req.query.year : null;
     const country = str(req.query.country, 60);
-    const where = ["k.status != 'rejected'"];
+    const where = ["k.status = 'unofficial'"];
     const params = {};
     if (year) {
       where.push("strftime('%Y', k.caught_on) = :year");
@@ -1086,7 +1064,7 @@ function createApp({
     delete user.photo;
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE user_id = ? AND status != 'rejected'
+      FROM catches WHERE user_id = ? AND status = 'unofficial'
     `).get(id);
     res.json({ user, stats });
   });
