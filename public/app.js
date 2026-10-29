@@ -1864,8 +1864,9 @@ const pagesFor = (view) => ({
     const iphone = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const samsung = /SamsungBrowser/.test(ua);
     const steps = iphone
-      ? ['Open this page in <b>Safari</b> (other iPhone browsers can\'t install apps).', 'Tap the <b>Share</b> button (the square with an arrow, at the bottom).',
-        'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.']
+      ? ['Tap the <b>Share</b> button: the square with an arrow (at the bottom in Safari, at the top right in Chrome).',
+        'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.',
+        'Open <b>Big Game</b> from your home screen (notifications only work there).']
       : samsung
         ? ['Tap the <b>menu</b> (☰) at the bottom right.', 'Tap <b>Add page to</b>, then <b>Home screen</b>.', 'Tap <b>Add</b>.']
         : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
