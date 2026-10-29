@@ -564,7 +564,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
     assert.deepEqual([wahoo.points, wahoo.pointsNote], [105, '21 kg × 5 points per kg.'], 'points worked out at registration');
     r = await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
-    assert.equal(r.status, 201, 'released fish need no weight or scale photo');
+    assert.match(r.body.error, /video of the release/, 'a released fish needs a video');
+    const release = form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' });
+    release.set('scaleVideo', new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), 'release.mp4');
+    r = await cap('POST', '/weigh', release);
+    assert.equal(r.status, 201, 'released fish need a video, no weight or scale photo');
+    assert.match(r.body.catch.scaleVideoUrl, /\.mp4$/);
     const marlin = r.body.catch;
 
     // GPS spot: private to the boat unless the poster shares it.
@@ -630,9 +635,10 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sug(snapper.id), 7.5, 'river minimum is 1 kg');
     assert.equal(sug(extra.id), 24, 'every day scores');
     // A whole boat's sheet in one go: all or nothing.
-    const sheet = (fish, photos) => {
+    const sheet = (fish, photos, videos = []) => {
       const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish), declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' });
       for (const i of photos) fd.set(`scale_${i}`, new Blob([PNG], { type: 'image/png' }), `s${i}.png`);
+      for (const i of videos) fd.set(`scalevideo_${i}`, new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), `v${i}.mp4`);
       return fd;
     };
     const three = [
@@ -645,7 +651,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(r.status, 400);
     assert.match(r.body.error, /^Fish 2: .*scale/, 'names the fish that is wrong');
     assert.equal((await sec('GET', '/officials/queue')).body.toReview.length, before, 'nothing saved');
-    r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1]));
+    assert.match((await cap('POST', '/weigh/sheet', sheet(three, [0, 1]))).body.error, /^Fish 3: .*video of the release/);
+    r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1], [2]));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation, c.points]),
       [['Dorado (mahi-mahi)', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Atlantic sailfish', 'Extreme', 125]]);

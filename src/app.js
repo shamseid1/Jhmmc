@@ -927,8 +927,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (s.error) return s;
       station = s.station;
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
-      // Rule 8: every fish weighed is photographed hanging on the scale.
+      // Rule 8: every fish weighed is photographed hanging on the scale;
+      // a released fish is proved by a video of the release.
       if (!released && !file) return { error: 'Add the photo of the fish hanging on the scale.' };
+      if (released && !video) return { error: 'Add the video of the release.' };
     }
     const weighed = official && !released;
     // Crew posts are for the feed only; registrations go to the secretary.

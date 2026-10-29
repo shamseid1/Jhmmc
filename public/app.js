@@ -65,6 +65,8 @@ function options(items, selected, placeholder) {
 
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
+// A release video comes from the camera roll, but from today's fishing.
+const RELEASE_VIDEO_MAX_AGE = 24 * 60 * 60 * 1000;
 // Videos go up as recorded (photos are shrunk first): about a minute at most.
 const MAX_VIDEO_MB = 100;
 function videoTooBig(file) {
@@ -1489,7 +1491,7 @@ const pagesFor = (view) => ({
         <label>Angler <select name="anglerId" required>${raw(anglerOptions())}</select></label>
       </div>
       <label class="guest-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
-      <label class="check"><input type="checkbox" name="released"> Released (photo or video proof, no weight)</label>
+      <label class="check"><input type="checkbox" name="released"> Released (no weight; needs a video of the release)</label>
       <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
       <div class="points-field">
         <span class="points-label">Points (automatic)</span>
@@ -1497,12 +1499,13 @@ const pagesFor = (view) => ({
       </div>
       <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       <div class="scale-pick">
-        <span class="scale-label">On the scale: a photo, and a video if you like</span>
+        <span class="scale-label" data-kept="On the scale: a photo, and a video if you like" data-released="Video of the release (required)">On the scale: a photo, and a video if you like</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
         <video class="scale-video-preview" controls playsinline preload="metadata" hidden></video>
         <div class="scale-buttons">
           <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
           <label class="btn scale-video-button">${raw(icon('video'))} <span>Record video</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
+          <label class="btn roll-video-button">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="video/*" data-release-video></label>
         </div>
       </div>
     </fieldset>`;
@@ -1569,13 +1572,26 @@ const pagesFor = (view) => ({
     // A video of the fish on the scale is optional, and also taken there and then.
     const scaleVideos = new WeakMap();
     list.addEventListener('change', (e) => {
-      if (e.target.matches('[data-scale-video]')) {
+      // A released fish: the photo gives way to the release video, which may come
+      // from the camera roll (the release happened out at sea).
+      if (e.target.name === 'released') {
+        const row = e.target.closest('.fish');
+        row.classList.toggle('is-released', e.target.checked);
+        const label = row.querySelector('.scale-label');
+        label.textContent = e.target.checked ? label.dataset.released : label.dataset.kept;
+      }
+      if (e.target.matches('[data-scale-video], [data-release-video]')) {
         const row = e.target.closest('.fish');
         const file = e.target.files[0];
+        const fromRoll = e.target.matches('[data-release-video]');
         e.target.value = '';
         if (!file) return;
-        if (Date.now() - file.lastModified > SCALE_PHOTO_MAX_AGE) {
+        if (!fromRoll && Date.now() - file.lastModified > SCALE_PHOTO_MAX_AGE) {
           toast('Record the video now, with the fish on the scale. Older videos can\'t be used.');
+          return;
+        }
+        if (fromRoll && Date.now() - file.lastModified > RELEASE_VIDEO_MAX_AGE) {
+          toast("That video is more than a day old. Choose today's video of the release.");
           return;
         }
         if (videoTooBig(file)) return;
@@ -1585,6 +1601,7 @@ const pagesFor = (view) => ({
         vid.src = URL.createObjectURL(file);
         vid.hidden = false;
         row.querySelector('.scale-video-button span').textContent = 'Record again';
+        row.querySelector('.roll-video-button span').textContent = 'Choose another';
         return;
       }
       if (e.target.matches('[data-scale]')) {
@@ -1641,6 +1658,7 @@ const pagesFor = (view) => ({
         const photo = scalePhotos.get(row);
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
         const video = scaleVideos.get(row);
+        if (get('released').checked && !video) throw new Error(`Fish ${i + 1}: add the video of the release.`);
         if (video) fd.set(`scalevideo_${i}`, video);
       }
       fd.set('fish', JSON.stringify(fish));
@@ -2641,6 +2659,7 @@ const ICONS = {
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   brush: '<path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>',
   settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
