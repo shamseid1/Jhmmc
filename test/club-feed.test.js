@@ -136,6 +136,23 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     await cap('DELETE', `/catches/${fish2.id}`);
     await cap('DELETE', `/catches/${shown.id}`);
 
+    // Ticked: the fish also goes on the West Africa feed, with its own copy of the photo.
+    assert.match((await cap('POST', '/club-feed', form({ body: 'Just words', shareWa: 'true' }))).body.error, /species/);
+    const both = form({ body: 'Sail on the fly!', speciesId: sail, released: 'true', weightKg: '', shareWa: 'true' });
+    both.set('photo', new Blob([PNG], { type: 'image/png' }), 'sail.png');
+    const made = (await cap('POST', '/club-feed', both)).body;
+    assert.ok(made.catchId, 'a West Africa catch was made');
+    const wa = (await as()('GET', `/catches/${made.catchId}`)).body.catch;
+    assert.deepEqual([wa.species, wa.released, wa.notes, wa.status], ['Atlantic sailfish', true, 'Sail on the fly!', 'unofficial']);
+    const clubCopy = (await cap('GET', '/club-feed')).body.items.find((i) => i.id === made.id && i.kind === 'post');
+    assert.notEqual(wa.photoUrl, clubCopy.photoUrl, 'separate copies');
+    assert.equal((await cap('DELETE', `/club-feed/${made.id}`)).status, 200);
+    assert.equal((await fetch(at.replace('/api', '') + wa.photoUrl)).status, 200, "removing the club post leaves the West Africa one's photo");
+    await cap('DELETE', `/catches/${made.catchId}`);
+    const noBoat = await person('Ama', 'Owusu', 'ama@example.com');
+    await boss('PATCH', `/admin/users/${(await boss('GET', '/admin/users')).body.users.find((u) => u.email === 'ama@example.com').id}`, { jhmmc: true });
+    assert.match((await noBoat('POST', '/club-feed', form({ speciesId: sail, shareWa: 'true' }))).body.error, /boat/);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;

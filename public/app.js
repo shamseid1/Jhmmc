@@ -640,6 +640,7 @@ async function clubFeed(view, filters = {}) {
         <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional"></label>
           <label class="check"><input type="checkbox" name="released" value="true"> Released</label></div>
       </div>
+      <label class="check share-wa"><input type="checkbox" name="shareWa" value="true"> Also post on the West Africa feed</label>
       <p class="error"></p>
       <div><button type="submit" class="primary">Post</button></div>
     </form>
@@ -668,6 +669,10 @@ async function clubFeed(view, filters = {}) {
   const media = wireMediaPick(form);
   const fishBtn = form.querySelector('[data-act=add-fish]');
   const fishFields = form.querySelector('.fish-fields');
+  // The West Africa feed is catches: ticking it brings up the fish.
+  form.shareWa.addEventListener('change', () => {
+    if (form.shareWa.checked && fishFields.hidden) fishBtn.click();
+  });
   fishBtn.addEventListener('click', () => {
     fishFields.hidden = !fishFields.hidden;
     fishBtn.setAttribute('aria-expanded', String(!fishFields.hidden));
@@ -696,13 +701,15 @@ async function clubFeed(view, filters = {}) {
   bindForm(form, async () => {
     const fd = new FormData(form);
     if (fishFields.hidden) ['speciesId', 'weightKg', 'released'].forEach((k) => fd.delete(k));
+    if (form.shareWa.checked && !fd.get('speciesId')) throw new Error('Choose the species to post it on the West Africa feed.');
     if (!fd.get('body')?.trim() && !media.picked.photo && !media.picked.video && !fd.get('speciesId')) {
       throw new Error('Write something, add a photo, a video or a fish.');
     }
     const btn = form.querySelector('button[type=submit]');
     btn.textContent = 'Posting…';
     try {
-      await api('/club-feed', { method: 'POST', form: await media.addTo(fd) });
+      const { catchId } = await api('/club-feed', { method: 'POST', form: await media.addTo(fd) });
+      if (catchId) toast('Posted here and on the West Africa feed.');
     } finally {
       btn.textContent = 'Post';
     }

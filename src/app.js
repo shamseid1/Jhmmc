@@ -1704,10 +1704,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const weight = req.body.weightKg ? Number(req.body.weightKg) : null;
     if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
     if (!body && !photo && !video && !speciesId) return fail(400, 'Write something, add a photo, a video or a fish.');
+    // Ticked "also post on the West Africa feed": the same fish as a public catch.
+    // It has its own copy of the photo and video, so removing one post leaves the other.
+    let shared = null;
+    if (bool(req.body.shareWa)) {
+      if (!speciesId) return fail(400, 'Choose the species to post it on the West Africa feed.');
+      if (!req.user.teamId) return fail(400, 'Join or register a boat to post catches on the West Africa feed.');
+      const copy = (f) => {
+        if (!f) return undefined;
+        const filename = crypto.randomBytes(12).toString('hex') + path.extname(f.filename);
+        fs.copyFileSync(path.join(uploadDir, f.filename), path.join(uploadDir, filename));
+        return { filename };
+      };
+      const fish = { speciesId, weightKg: req.body.weightKg, released: released ? 'on' : '', notes: body };
+      const opts = { teamId: req.user.teamId, official: false };
+      const checked = checkCatch(req.user, fish, {}, opts);
+      if (checked.error) return fail(400, checked.error);
+      shared = { id: insertCatchRow(checkCatch(req.user, fish, { photo: copy(photo), video: copy(video) }, opts).values) };
+    }
     const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,
       speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0);
-    res.status(201).json({ id: Number(lastInsertRowid) });
+    res.status(201).json({ id: Number(lastInsertRowid), catchId: shared?.id ?? null });
   });
 
   api.delete('/club-feed/:id', requireMember, (req, res) => {
