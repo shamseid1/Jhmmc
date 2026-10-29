@@ -1064,11 +1064,8 @@ const pagesFor = (view) => ({
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         ${raw(fishFields)}
         <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
-        <details class="more-details">
-          <summary>Place, date and country (optional)</summary>
-          <div class="stack">
         <div class="stack spot">
-          <label>Where <input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
+          <label>Where <span class="muted small">(optional)</span><input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
           <div class="spot-row">
             <button type="button" id="locate">${raw(icon('locate'))} Use my location</button>
             <span class="small muted">or type the coordinates</span>
@@ -1079,12 +1076,10 @@ const pagesFor = (view) => ({
           <input type="hidden" name="lat"><input type="hidden" name="lng">
           <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
         </div>
-            <div class="row">
-              <label>Date <input name="caughtOn" type="date" max="${today()}" placeholder="Today"></label>
-              <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
-            </div>
-          </div>
-        </details>
+        <div class="row">
+          <label>Date <span class="muted small">(today if empty)</span><input name="caughtOn" type="date" max="${today()}"></label>
+          <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
+        </div>
         <p class="error"></p>
         <div><button type="submit" class="primary">Post</button></div>
       </form>`;
