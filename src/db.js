@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 26;
+const SCHEMA_VERSION = 27;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -317,6 +317,17 @@ CREATE TABLE IF NOT EXISTS club_post_comments (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS club_post_comments_post ON club_post_comments(post_id, id);
+
+-- More photos on a post (the first stays in the post's own photo column):
+-- 'catch' for a West Africa post, 'club' for a JHMMC feed post.
+CREATE TABLE IF NOT EXISTS post_photos (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('catch', 'club')),
+  post_id INTEGER NOT NULL,
+  file TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS post_photos_post ON post_photos(kind, post_id, id);
 
 CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY,

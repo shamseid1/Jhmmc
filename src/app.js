@@ -828,7 +828,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       tagged: !!row.tagged,
       liked: !!row.liked,
       photoUrl: photoUrl(row.photo),
+      photos: postPhotos('catch', row.id, row.photo),
       videoUrl: photoUrl(row.video),
+      canEdit: row.status === 'unofficial' && canDelete(row, viewer),
       scalePhotoUrl: photoUrl(row.scalePhoto),
       scaleVideoUrl: photoUrl(row.scaleVideo),
       canDelete: canDelete(row, viewer),
@@ -1559,6 +1561,126 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true, member, paid });
   });
 
+  // ---- more photos on a post, and editing posts --------------------------
+
+  const extraPhotos = db.prepare('SELECT id, file FROM post_photos WHERE kind = ? AND post_id = ? ORDER BY id');
+  // A post's photos, the first one (its own photo column) as "cover".
+  const postPhotos = (kind, id, cover) => [
+    ...(cover ? [{ id: 'cover', url: photoUrl(cover) }] : []),
+    ...extraPhotos.all(kind, id).map((x) => ({ id: x.id, url: photoUrl(x.file) })),
+  ];
+  function dropPostPhotos(kind, id) {
+    for (const x of extraPhotos.all(kind, id)) removeUpload(x.file);
+    db.prepare('DELETE FROM post_photos WHERE kind = ? AND post_id = ?').run(kind, id);
+  }
+  const MAX_PHOTOS = 10;
+  const editUpload = mediaUploads(MAX_PHOTOS + 1).fields([{ name: 'photos', maxCount: MAX_PHOTOS }, { name: 'video', maxCount: 1 }]);
+  // New photos, removed photos ("removePhotos": ids, "cover" for the first) and a
+  // new or removed video ("removeVideo"), applied to a post whose photo and video
+  // live in `table`. Returns an error, or null once done.
+  function editMedia(req, kind, table, row) {
+    const added = req.files?.photos ?? [];
+    const video = req.files?.video?.[0];
+    let remove = [];
+    try {
+      remove = JSON.parse(req.body.removePhotos || '[]');
+    } catch {
+      return 'The photos to remove could not be read.';
+    }
+    const extras = extraPhotos.all(kind, row.id);
+    const gone = extras.filter((x) => remove.includes(x.id));
+    const kept = extras.length - gone.length + (row.photo && !remove.includes('cover') ? 1 : 0);
+    if (kept + added.length > MAX_PHOTOS) return `At most ${MAX_PHOTOS} photos on a post.`;
+    let cover = row.photo;
+    if (cover && remove.includes('cover')) {
+      removeUpload(cover);
+      cover = null;
+    }
+    for (const x of gone) {
+      removeUpload(x.file);
+      db.prepare('DELETE FROM post_photos WHERE id = ?').run(x.id);
+    }
+    const addExtra = db.prepare('INSERT INTO post_photos (kind, post_id, file) VALUES (?, ?, ?)');
+    for (const f of added) {
+      if (!cover) cover = f.filename;
+      else addExtra.run(kind, row.id, f.filename);
+    }
+    // No cover left: the next photo moves up.
+    if (!cover) {
+      const next = extraPhotos.get(kind, row.id);
+      if (next) {
+        cover = next.file;
+        db.prepare('DELETE FROM post_photos WHERE id = ?').run(next.id);
+      }
+    }
+    let newVideo = row.video;
+    if (video || bool(req.body.removeVideo)) {
+      removeUpload(row.video);
+      newVideo = video?.filename ?? null;
+    }
+    db.prepare(`UPDATE ${table} SET photo = ?, video = ? WHERE id = ?`).run(cover, newVideo, row.id);
+    return null;
+  }
+
+  // Edit a West Africa post: add the weight, more photos, the spot... once back
+  // on land. JHMMC registrations can't be edited (they're withdrawn instead).
+  api.patch('/catches/:id', editUpload, (req, res) => {
+    const id = intId(req.params.id);
+    const item = id && getCatch(id, req.user);
+    if (!item) {
+      discardUploads(req);
+      return res.status(404).json({ error: 'Catch not found.' });
+    }
+    if (!item.canEdit) {
+      discardUploads(req);
+      return res.status(403).json({ error: item.status !== 'unofficial'
+        ? "A JHMMC registration can't be edited; ask the secretary."
+        : 'Only the angler, whoever logged it, or the boat captain can edit this catch.' });
+    }
+    const b = req.body;
+    const has = (k) => k in b;
+    // The stored spot, whether or not this person may see it.
+    const row = db.prepare('SELECT id, photo, video, lat, lng FROM catches WHERE id = ?').get(id);
+    // Checked like a new post, from what's sent and what the post already has.
+    const merged = {
+      speciesId: has('speciesId') ? b.speciesId : item.speciesId,
+      anglerId: 'other', anglerName: item.angler, // the angler isn't changed here
+      weightKg: has('weightKg') ? b.weightKg : item.weightKg ?? '',
+      lengthCm: has('lengthCm') ? b.lengthCm : item.lengthCm ?? '',
+      caughtOn: has('caughtOn') ? b.caughtOn : item.caughtOn,
+      lineClass: has('lineClass') ? b.lineClass : item.lineClass ?? '',
+      country: has('country') ? b.country : item.country ?? '',
+      location: has('location') ? b.location : item.location ?? '',
+      notes: has('notes') ? b.notes : item.notes ?? '',
+      released: has('released') ? b.released : item.released ? 'on' : '',
+      tagged: has('tagged') ? b.tagged : item.tagged ? 'on' : '',
+      spotPublic: has('spotPublic') ? b.spotPublic : item.spotPublic ? 'on' : '',
+      lat: has('lat') ? b.lat : row.lat ?? '',
+      lng: has('lng') ? b.lng : row.lng ?? '',
+    };
+    const checked = checkCatch(req.user, merged, {}, { teamId: item.teamId, official: false });
+    if (checked.error) {
+      discardUploads(req);
+      return res.status(400).json({ error: checked.error });
+    }
+    const v = checked.values;
+    db.exec('BEGIN');
+    try {
+      const mediaError = editMedia(req, 'catch', 'catches', row);
+      if (mediaError) throw Object.assign(new Error(mediaError), { status: 400 });
+      db.prepare(`UPDATE catches SET species_id = ?, weight_kg = ?, length_cm = ?, released = ?, tagged = ?, caught_on = ?,
+        country = ?, location = ?, line_class = ?, notes = ?, lat = ?, lng = ?, spot_public = ? WHERE id = ?`)
+        .run(v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12], v[13], v[14], v[21], v[22], v[23], id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      discardUploads(req);
+      if (err.status === 400) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    res.json({ catch: getCatch(id, req.user) });
+  });
+
   function getCatch(id, viewer) {
     const row = db.prepare(`${CATCH_SELECT} WHERE k.id = :id`).get({ id, viewer: viewer?.id ?? 0 });
     return row ? present(row, viewer) : null;
@@ -1591,6 +1713,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
     // A registration's scale photo and video stay as evidence in the record.
     removeUpload(item.photo);
+    dropPostPhotos('catch', id);
     removeUpload(item.video);
     res.json({ ok: true });
   });
@@ -1722,7 +1845,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       // The spot is the poster's own: others only see that there is one.
       const mine = p.userId === req.user.id;
       return {
-        hasSpot: lat != null, lat: mine ? lat : null, lng: mine ? lng : null,
+        hasSpot: lat != null, lat: mine ? lat : null, lng: mine ? lng : null, canEdit: mine, photos: postPhotos('club', r.id, photo),
         kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), videoUrl: photoUrl(video),
         authorPhotoUrl: photoUrl(authorPhoto),
         canDelete: canRemoveClubPost(req.user, p.userId),
@@ -1774,6 +1897,52 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.status(201).json({ id: Number(lastInsertRowid), catchId: shared?.id ?? null });
   });
 
+  // Edit your own JHMMC feed post: the words, the fish, the spot, the photos and video.
+  api.patch('/club-feed/:id', requireMember, editUpload, (req, res) => {
+    const fail = (status, error) => {
+      discardUploads(req);
+      res.status(status).json({ error });
+    };
+    const row = db.prepare('SELECT id, user_id AS userId, body, photo, video, species_id AS speciesId, weight_kg AS weightKg, released, lat, lng FROM club_posts WHERE id = ?')
+      .get(intId(req.params.id) ?? 0);
+    if (!row) return fail(404, 'Post not found.');
+    if (row.userId !== req.user.id) return fail(403, 'Only whoever posted it can edit a post.');
+    const b = req.body;
+    const has = (k) => k in b;
+    const body = has('body') ? str(b.body, 2000) : row.body;
+    const speciesId = has('speciesId') ? intId(b.speciesId) : row.speciesId;
+    if (speciesId && !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return fail(400, 'Unknown species.');
+    const weight = has('weightKg') ? (b.weightKg ? Number(b.weightKg) : null) : row.weightKg;
+    if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
+    const released = has('released') ? bool(b.released) : !!row.released;
+    const spot = has('lat') || has('lng') ? readSpot(b) : { lat: row.lat, lng: row.lng };
+    if (spot.error) return fail(400, spot.error);
+    // Something has to be left: words, a photo, a video or a fish.
+    let remove = [];
+    try {
+      remove = JSON.parse(b.removePhotos || '[]');
+    } catch {
+      return fail(400, 'The photos to remove could not be read.');
+    }
+    const photosLeft = (row.photo && !remove.includes('cover') ? 1 : 0) + (req.files?.photos?.length ?? 0)
+      + extraPhotos.all('club', row.id).filter((x) => !remove.includes(x.id)).length;
+    const videoLeft = !!req.files?.video?.[0] || (!!row.video && !bool(b.removeVideo));
+    if (!body && !speciesId && !photosLeft && !videoLeft) return fail(400, 'Write something, add a photo, a video or a fish.');
+    db.exec('BEGIN');
+    try {
+      const mediaError = editMedia(req, 'club', 'club_posts', row);
+      if (mediaError) throw Object.assign(new Error(mediaError), { status: 400 });
+      db.prepare('UPDATE club_posts SET body = ?, species_id = ?, weight_kg = ?, released = ?, lat = ?, lng = ? WHERE id = ?')
+        .run(body, speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0, speciesId ? spot.lat : null, speciesId ? spot.lng : null, row.id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      if (err.status === 400) return fail(400, err.message);
+      throw err;
+    }
+    res.json({ ok: true });
+  });
+
   api.delete('/club-feed/:id', requireMember, (req, res) => {
     const p = clubPostById(intId(req.params.id));
     if (!p) return res.status(404).json({ error: 'Post not found.' });
@@ -1781,6 +1950,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('DELETE FROM club_posts WHERE id = ?').run(p.id);
     removeUpload(p.photo);
     removeUpload(p.video);
+    dropPostPhotos('club', p.id);
     res.json({ ok: true });
   });
 

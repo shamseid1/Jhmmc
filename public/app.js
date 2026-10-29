@@ -156,6 +156,72 @@ function wireMediaPick(root) {
   };
 }
 
+// Editing a post's photos and video: tap a photo to mark it for removal, add
+// more (taken now or from the phone), replace or remove the video.
+function photoManager(item) {
+  const photos = item.photos ?? [];
+  return html`<div class="stack photo-manager">
+    <span class="spot-head">Photos <span class="muted small">(tap one to remove it)</span></span>
+    <div class="pm-grid">${photos.map((x) => raw(html`<button type="button" class="pm-photo" data-photo-id="${x.id}" aria-pressed="false">
+      <img src="${x.url}" alt=""><span class="pm-x">✕</span></button>`))}<span class="pm-new"></span></div>
+    <div class="photo-menu">
+      <label class="btn">${raw(icon('camera'))} Take photo<input type="file" accept="image/*" capture="environment" data-add-photo></label>
+      <label class="btn">${raw(icon('upload'))} Add from photos<input type="file" accept="image/*" multiple data-add-photo></label>
+    </div>
+    <span class="spot-head">Video</span>
+    ${item.videoUrl ? raw(html`<video class="video-preview" src="${item.videoUrl}" controls playsinline preload="metadata"></video>
+      <label class="check"><input type="checkbox" name="removeVideo" value="true"> Remove the video</label>`) : ''}
+    <video class="video-preview pm-video-new" controls playsinline hidden></video>
+    <div class="photo-menu">
+      <label class="btn">${raw(icon('video'))} Record video<input type="file" accept="video/*" capture="environment" data-set-video></label>
+      <label class="btn">${raw(icon('upload'))} ${item.videoUrl ? 'Replace from phone' : 'Video from phone'}<input type="file" accept="video/*" data-set-video></label>
+    </div>
+  </div>`;
+}
+function wirePhotoManager(root) {
+  const added = [];
+  let video = null;
+  const remove = new Set();
+  root.querySelector('.pm-grid').addEventListener('click', (e) => {
+    const tile = e.target.closest('[data-photo-id]');
+    if (!tile) return;
+    const id = tile.dataset.photoId === 'cover' ? 'cover' : Number(tile.dataset.photoId);
+    if (remove.has(id)) remove.delete(id);
+    else remove.add(id);
+    tile.setAttribute('aria-pressed', String(remove.has(id)));
+  });
+  root.addEventListener('change', (e) => {
+    if (e.target.matches('[data-add-photo]')) {
+      for (const file of e.target.files) {
+        added.push(file);
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.className = 'pm-added';
+        root.querySelector('.pm-new').before(img);
+      }
+      e.target.value = '';
+    }
+    if (e.target.matches('[data-set-video]')) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file || videoTooBig(file)) return;
+      video = file;
+      const el = root.querySelector('.pm-video-new');
+      URL.revokeObjectURL(el.src);
+      el.src = URL.createObjectURL(file);
+      el.hidden = false;
+    }
+  });
+  return {
+    async addTo(fd) {
+      for (const f of added) fd.append('photos', await shrinkPhoto(f));
+      if (video) fd.set('video', video);
+      if (remove.size) fd.set('removePhotos', JSON.stringify([...remove]));
+      return fd;
+    },
+  };
+}
+
 // The map library (Leaflet 1.9.4, kept in public/vendor), loaded the first time a map is shown.
 let leaflet = null;
 function loadLeaflet() {
@@ -178,8 +244,8 @@ function loadLeaflet() {
 
 // Where a fish was caught, for the JHMMC feed's post box: the phone's GPS or typed
 // coordinates, into hidden lat/lng fields.
-const spotFields = () => `<div class="stack spot">
-  <span class="spot-head">Where you caught it <span class="muted small">(optional, only you see it)</span></span>
+const spotFields = (hint = 'optional, only you see it') => `<div class="stack spot">
+  <span class="spot-head">Where you caught it <span class="muted small">(${hint})</span></span>
   <div class="spot-row"><button type="button" data-act="locate">${icon('locate')} Use my location</button>
     <span class="small muted">or type the coordinates</span></div>
   <input name="coords" autocomplete="off" inputmode="text" aria-label="Coordinates" placeholder="e.g. 6°18.63'N 10°48.44'W or 6.3105, -10.8074">
@@ -223,12 +289,17 @@ function wireSpot(root) {
   };
 }
 
-// A post's media: its video (with the photo as the still before it plays) or its photo.
+// A post's media: its video (with the first photo as the still before it plays)
+// and its photos; more than one swipes sideways.
 function mediaHtml(item, alt = '') {
-  if (item.videoUrl) {
-    return html`<video class="catch-photo" src="${item.videoUrl}" ${item.photoUrl ? raw(html`poster="${item.photoUrl}"`) : ''} controls playsinline preload="metadata"></video>`;
-  }
-  return item.photoUrl ? html`<img class="catch-photo" src="${item.photoUrl}" alt="${alt}" loading="lazy">` : '';
+  const photos = item.photos ?? (item.photoUrl ? [{ url: item.photoUrl }] : []);
+  const slides = [
+    ...(item.videoUrl ? [html`<video class="catch-photo" src="${item.videoUrl}" ${photos[0] ? raw(html`poster="${photos[0].url}"`) : ''} controls playsinline preload="metadata"></video>`] : []),
+    ...photos.map((x) => html`<img class="catch-photo" src="${x.url}" alt="${alt}" loading="lazy">`),
+  ];
+  if (slides.length < 2) return slides[0] ?? '';
+  return html`<div class="gallery-wrap"><div class="gallery">${slides.map((x) => raw(x))}</div>
+    <span class="gallery-count">${raw(icon('camera'))} ${slides.length}</span></div>`;
 }
 
 // Club roles and how they read.
@@ -532,7 +603,7 @@ function catchCard(c, { full = false } = {}) {
     : `<div class="catch-photo placeholder" aria-hidden="true">${MARLIN}</div>`;
   const details = [c.location, c.country].filter(Boolean).join(', ');
   return html`<article class="card" data-id="${c.id}">
-    ${c.videoUrl ? raw(mediaHtml(c)) : full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
+    ${c.videoUrl || c.photos?.length > 1 ? raw(mediaHtml(c, `${c.species} caught by ${c.angler}`)) : full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
     <div class="pad">
       <div class="catch-head">
         <h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
@@ -565,6 +636,7 @@ function catchCard(c, { full = false } = {}) {
         <a class="btn" href="#/catch/${c.id}" aria-label="Comments">${raw(icon('comment'))} ${c.comments}</a>
         <button data-act="share">Share</button>
         <a class="btn" href="${whatsapp(`${shareText(c)} ${location.origin}/#/catch/${c.id}`)}" target="_blank" rel="noopener">WhatsApp</a>
+        ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
     </div>
@@ -681,6 +753,7 @@ function clubItem(i) {
     <div class="pad">
       <p class="club-who"><a href="#/user/${i.userId}"><b>${i.author}</b></a>${i.teamName ? raw(html` <span class="muted small">· ${i.teamName}</span>`) : ''}
         <span class="muted small">· ${fmtWhen(i.createdAt)}</span>
+        ${i.canEdit ? raw(html`<a class="small edit-link" href="#/club-edit/${i.id}">Edit</a>`) : ''}
         ${i.canDelete ? raw('<button type="button" data-act="del-post" class="link danger small">Remove</button>') : ''}</p>
       ${i.body ? raw(html`<p class="club-body">${i.body}</p>`) : ''}
     </div>
@@ -1958,6 +2031,116 @@ const pagesFor = (view) => ({
   },
 
   // The menu behind the last tab: your dashboard, rules, clubs, account.
+  // Edit a West Africa post: add the weight, more photos, the spot... once back on land.
+  async edit(id) {
+    if (!state.me) return needLogin(view, 'edit a post');
+    const { catch: c } = await api(`/catches/${id}`);
+    if (!c.canEdit) {
+      view.innerHTML = '<div class="card pad empty">Only the angler, whoever logged it or the boat captain can edit this post.</div>';
+      return;
+    }
+    view.innerHTML = html`<p class="back"><a href="#/catch/${c.id}">‹ Back to the catch</a></p>
+      <h1>Edit post</h1>
+      <form class="card pad stack" id="f">
+        ${raw(photoManager(c))}
+        <label>Species <select name="speciesId" required>${raw(speciesOptions(String(c.speciesId), 'Choose species…'))}</select></label>
+        <div class="row">
+          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional" value="${c.weightKg ?? ''}"></label>
+          <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional" value="${c.lengthCm ?? ''}"></label>
+        </div>
+        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, c.lineClass, 'Not recorded'))}</select></label>
+        <div class="row">
+          <label class="check"><input type="checkbox" name="released" ${c.released ? 'checked' : ''}> Released alive</label>
+          <label class="check"><input type="checkbox" name="tagged" ${c.tagged ? 'checked' : ''}> Tagged</label>
+        </div>
+        <label>Caption <textarea name="notes" maxlength="2000" rows="2">${c.notes || ''}</textarea></label>
+        <label>Place <span class="muted small">(optional)</span><input name="location" maxlength="120" value="${c.location || ''}" placeholder="e.g. Banana Islands, off Mesurado"></label>
+        ${raw(spotFields('optional'))}
+        <label class="check"><input type="checkbox" name="spotPublic" ${c.spotPublic ? 'checked' : ''}> Show the exact spot to everyone (otherwise only your crew sees it)</label>
+        <div class="row">
+          <label>Date <input name="caughtOn" type="date" max="${today()}" value="${c.caughtOn}"></label>
+          <label>Country <select name="country">${raw(options(state.meta.countries, c.country, 'Choose…'))}</select></label>
+        </div>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Save changes</button></div>
+      </form>`;
+    const form = view.querySelector('#f');
+    wireSpot(form);
+    if (c.lat != null) {
+      form.lat.value = c.lat;
+      form.lng.value = c.lng;
+      form.coords.value = `${c.lat}, ${c.lng}`;
+    }
+    const pm = wirePhotoManager(form);
+    bindForm(form, async () => {
+      const btn = form.querySelector('button[type=submit]');
+      btn.textContent = 'Saving…';
+      try {
+        const fd = new FormData(form);
+        for (const k of ['released', 'tagged', 'spotPublic']) fd.set(k, form[k].checked ? 'on' : '');
+        fd.delete('coords');
+        await api(`/catches/${c.id}`, { method: 'PATCH', form: await pm.addTo(fd) });
+        toast('Saved.');
+        location.hash = `#/catch/${c.id}`;
+      } finally {
+        btn.textContent = 'Save changes';
+      }
+    });
+  },
+
+  // Edit your own JHMMC feed post.
+  async 'club-edit'(id) {
+    if (!state.me?.jhmmc) return needLogin(view, 'edit a JHMMC feed post (JHMMC members)');
+    let item = null;
+    for (let before = null; !item; ) {
+      const q = before ? `?before=${encodeURIComponent(before)}` : '';
+      const pageOf = await api(`/club-feed${q}`);
+      item = pageOf.items.find((i) => i.kind === 'post' && String(i.id) === String(id));
+      if (!pageOf.nextBefore) break;
+      before = pageOf.nextBefore;
+    }
+    if (!item?.canEdit) {
+      view.innerHTML = '<div class="card pad empty">Only whoever posted it can edit this post.</div>';
+      return;
+    }
+    const speciesId = state.meta.species.find((x) => x.name === item.species)?.id;
+    view.innerHTML = html`<p class="back"><a href="#/?feed=club">‹ JHMMC feed</a></p>
+      <h1>Edit post</h1>
+      <form class="card pad stack" id="f">
+        <label>Your post <textarea name="body" rows="3" maxlength="2000">${item.body || ''}</textarea></label>
+        ${raw(photoManager(item))}
+        <label>Fish <select name="speciesId">${raw(speciesOptions(speciesId ? String(speciesId) : '', 'No fish'))}</select></label>
+        <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional" value="${item.weightKg ?? ''}"></label>
+          <label class="check"><input type="checkbox" name="released" ${item.released ? 'checked' : ''}> Released</label></div>
+        ${raw(spotFields())}
+        <p class="small muted">Changes here don't change a copy posted on the West Africa feed; edit that one there.</p>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Save changes</button></div>
+      </form>`;
+    const form = view.querySelector('#f');
+    wireSpot(form);
+    if (item.lat != null) {
+      form.lat.value = item.lat;
+      form.lng.value = item.lng;
+      form.coords.value = `${item.lat}, ${item.lng}`;
+    }
+    const pm = wirePhotoManager(form);
+    bindForm(form, async () => {
+      const btn = form.querySelector('button[type=submit]');
+      btn.textContent = 'Saving…';
+      try {
+        const fd = new FormData(form);
+        fd.set('released', form.released.checked ? 'true' : '');
+        fd.delete('coords');
+        await api(`/club-feed/${item.id}`, { method: 'PATCH', form: await pm.addTo(fd) });
+        toast('Saved.');
+        location.hash = '#/?feed=club';
+      } finally {
+        btn.textContent = 'Save changes';
+      }
+    });
+  },
+
   // My catch map: every fish you logged with a spot, on a map, by year.
   async spots() {
     if (!state.me) return needLogin(view, 'see your catch map');

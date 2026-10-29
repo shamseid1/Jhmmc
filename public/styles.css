@@ -694,3 +694,25 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .spot-head { font-weight: 600; }
 .club-spot { margin: 0 0 8px; }
 .club-spot .icon { width: 15px; height: 15px; vertical-align: -2px; }
+
+/* Several photos on a post: swipe sideways. */
+.gallery-wrap { position: relative; }
+.gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.gallery::-webkit-scrollbar { display: none; }
+.gallery > * { flex: 0 0 100%; scroll-snap-align: start; }
+.gallery-count { position: absolute; right: 10px; top: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px;
+  border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; font-weight: 700; pointer-events: none; }
+.gallery-count .icon { width: 14px; height: 14px; }
+/* Editing photos. */
+.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.pm-photo { position: relative; padding: 0; border: 2px solid transparent; border-radius: 12px; overflow: hidden; aspect-ratio: 1; background: var(--line); }
+.pm-photo img, .pm-added { width: 100%; height: 100%; object-fit: cover; aspect-ratio: 1; border-radius: 12px; }
+.pm-x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; font-size: 12px; line-height: 22px; }
+.pm-photo[aria-pressed="true"] { border-color: var(--danger); }
+.pm-photo[aria-pressed="true"] img { opacity: .35; }
+.pm-photo[aria-pressed="true"] .pm-x { background: var(--danger); }
+.pm-added { border: 2px solid var(--good); }
+.pm-new:empty { display: none; }
+.photo-manager .photo-menu .btn { gap: 6px; }
+.edit-link { margin-left: auto; }
+.club-who .edit-link + .link { margin-left: 8px; }

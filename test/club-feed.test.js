@@ -174,13 +174,40 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     assert.equal((await as()('GET', '/me/spots')).status, 401);
     await cap('DELETE', `/catches/${sp1.catchId}`);
 
+    // Editing, back on land: the weight and more photos on a West Africa post...
+    const quick = (await cap('POST', '/catches', form({ speciesId: wahoo }))).body.catch;
+    const more = form({ weightKg: '27.5', notes: 'Weighed at the dock', lat: '6.2', lng: '-11.1' });
+    more.append('photos', new Blob([PNG], { type: 'image/png' }), 'a.png');
+    more.append('photos', new Blob([PNG], { type: 'image/png' }), 'b.png');
+    let edited = (await cap('PATCH', `/catches/${quick.id}`, more)).body.catch;
+    assert.deepEqual([edited.weightKg, edited.notes, edited.photos.length, edited.lat, edited.species], [27.5, 'Weighed at the dock', 2, 6.2, 'Wahoo']);
+    assert.equal(edited.photos[0].id, 'cover');
+    assert.equal((await sec('PATCH', `/catches/${quick.id}`, form({ weightKg: '1' }))).status, 403, "not someone else's post");
+    assert.match((await cap('PATCH', `/catches/${quick.id}`, form({ weightKg: '-3' }))).body.error, /positive/);
+    // ...remove the first photo: the next moves up.
+    edited = (await cap('PATCH', `/catches/${quick.id}`, form({ removePhotos: JSON.stringify(['cover']) }))).body.catch;
+    assert.equal(edited.photos.length, 1);
+    assert.equal(edited.photos[0].id, 'cover');
+    assert.equal((await cap('PATCH', `/catches/${fish.id}`, form({ weightKg: '1' }))).status, 403, "registrations can't be edited");
+    await cap('DELETE', `/catches/${quick.id}`);
+    // ...and a JHMMC feed post: add the weight, the spot and photos to what was posted at sea.
+    const atSea = (await cap('POST', '/club-feed', form({ body: 'Fish on!' }))).body;
+    const update = form({ body: 'Fish on! 32 kg wahoo', speciesId: wahoo, weightKg: '32', lat: '6.3', lng: '-11.2' });
+    update.append('photos', new Blob([PNG], { type: 'image/png' }), 'c.png');
+    update.append('photos', new Blob([PNG], { type: 'image/png' }), 'd.png');
+    assert.equal((await cap('PATCH', `/club-feed/${atSea.id}`, update)).status, 200);
+    const after = (await cap('GET', '/club-feed')).body.items.find((i) => i.kind === 'post' && i.id === atSea.id);
+    assert.deepEqual([after.body, after.species, after.weightKg, after.lat, after.photos.length, after.canEdit], ['Fish on! 32 kg wahoo', 'Wahoo', 32, 6.3, 2, true]);
+    assert.equal((await sec('PATCH', `/club-feed/${atSea.id}`, form({ body: 'x' }))).status, 403);
+    assert.match((await cap('PATCH', `/club-feed/${atSea.id}`, form({ body: '', speciesId: '', removePhotos: JSON.stringify(after.photos.map((x) => x.id)) }))).body.error, /Write something/);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;
     const two = (await cap('GET', `/club-feed?before=${encodeURIComponent(one.nextBefore)}`)).body;
-    assert.equal(one.items.length + two.items.length, 32);
+    assert.equal(one.items.length + two.items.length, 33);
     assert.equal(two.nextBefore, null);
-    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 32);
+    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 33);
 
     // Whoever posted it, or the admin, removes a post; the club feed never reaches the public feed.
     assert.equal((await sec('DELETE', `/club-feed/${first.id}`)).status, 403);
