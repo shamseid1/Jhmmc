@@ -1949,8 +1949,9 @@ const pagesFor = (view) => ({
         <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
         <div class="role">
-          <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.id === state.me.id ? 'disabled' : ''}> JHMMC member</label>
-          <label class="role-pick" ${u.jhmmc ? '' : 'hidden'}>Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], u.role || ''))}</select></label>
+          <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
+          ${u.isAdmin ? raw('<span class="badge new">Admin</span>')
+            : raw(html`<label class="role-pick" ${u.jhmmc ? '' : 'hidden'}>Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], u.role || ''))}</select></label>`)}
         </div>
         <div class="reset-out" hidden></div>
         ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}

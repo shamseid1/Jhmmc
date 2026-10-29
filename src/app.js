@@ -367,7 +367,7 @@ function createApp({
     const users = db.prepare(`
       SELECT u.id, u.name, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
-    `).all().map((u) => ({ ...u, jhmmc: !!u.jhmmc || isAdminUser(u) }));
+    `).all().map((u) => ({ ...u, jhmmc: !!u.jhmmc || isAdminUser(u), isAdmin: isAdminUser(u) }));
     res.json({ users });
   });
 
