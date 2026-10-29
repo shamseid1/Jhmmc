@@ -1497,12 +1497,12 @@ const pagesFor = (view) => ({
       </div>
       <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       <div class="scale-pick">
-        <span class="scale-label">Photo on the scale</span>
+        <span class="scale-label">On the scale: a photo, and a video if you like</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
         <video class="scale-video-preview" controls playsinline preload="metadata" hidden></video>
         <div class="scale-buttons">
           <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
-          <label class="btn scale-video-button">${raw(icon('video'))} <span>Video (optional)</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
+          <label class="btn scale-video-button">${raw(icon('video'))} <span>Record video</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
         </div>
       </div>
     </fieldset>`;
