@@ -505,15 +505,11 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sp('Wahoo').pointsPerKg, 5);
     assert.equal(sp('Butter nose').pointsPerKg, 5);
 
-    // Crew posts are for the feed only, whatever the date: they never enter JHMMC scoring,
-    // and JHMMC crews can't put a weight on them.
-    let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '19' }));
-    assert.equal(r.status, 400);
-    assert.match(r.body.error, /weigh station/);
-    assert.equal((await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', lineClass: '50 lb' }))).status, 400);
-    r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', notes: 'Fish on!' }));
+    // Crew posts are for the West Africa feed only, whatever the date: JHMMC crews can show
+    // the weight and details, but posts never enter JHMMC scoring.
+    let r = await cap('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', notes: 'Fish on!', weightKg: '19', lineClass: '50 lb' }));
     const post = r.body.catch;
-    assert.equal(post.status, 'unofficial');
+    assert.deepEqual([post.status, post.weightKg, post.lineClass, post.points ?? null], ['unofficial', 19, '50 lb', null]);
     r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
     assert.equal(r.body.catch.status, 'unofficial');
     assert.equal((await sec('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,

@@ -862,10 +862,19 @@ const pagesFor = (view) => ({
     const { team } = await api(`/teams/${state.me.teamId}`);
     const jhmmc = isJhmmc(team.clubId);
     const crew = team.members;
+    const fishFields = html`<div class="row">
+          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
+          <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
+        </div>
+        <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
+        <div class="row">
+          <label class="check"><input type="checkbox" name="released"> Released alive</label>
+          <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
+        </div>`;
     view.innerHTML = html`<h1>Post a catch</h1>
       <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.
-        ${jhmmc ? 'A photo and the species are enough. JHMMC weights are registered by the captain at the weigh station, so posts from JHMMC boats have no weight.'
-          : 'A photo and the species are enough; add the weight and details if you want.'}</p>
+        This goes on the West Africa feed. A photo and the species are enough; add the weight and details to show it off.
+        ${jhmmc ? 'For JHMMC points the captain still registers the fish at the weigh station.' : ''}</p>
       <form class="card pad stack" id="f">
         <div class="photo-pick">
           <span class="photo-preview" hidden><img alt=""></span>
@@ -876,6 +885,7 @@ const pagesFor = (view) => ({
           </div>
         </div>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
+        ${raw(fishFields)}
         <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
         <div class="stack spot">
           <label>Where <input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
@@ -890,19 +900,10 @@ const pagesFor = (view) => ({
           <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
         </div>
         <details class="more-details">
-          <summary>${jhmmc ? 'Add details' : 'Add weight and details'}</summary>
+          <summary>Angler, date and country</summary>
           <div class="stack">
             <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
             <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
-            ${jhmmc ? '' : raw(`<div class="row">
-              <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
-              <label>Length (cm) <input name="lengthCm" type="number" step="1" min="0" inputmode="numeric" placeholder="optional"></label>
-            </div>`)}
-            <div class="row">
-              <label class="check"><input type="checkbox" name="released"> Released alive</label>
-              <label class="check"><input type="checkbox" name="tagged"> Tagged</label>
-            </div>
-            ${jhmmc ? '' : raw(html`<label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>`)}
             <div class="row">
               <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
               <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>

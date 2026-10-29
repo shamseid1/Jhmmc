@@ -886,10 +886,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     const lineClass = str(b.lineClass, 20);
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
-    // JHMMC weights come only from the registration at the weigh station.
-    if (!official && jhmmcBoat && (weightKg !== null || lengthCm !== null || lineClass)) {
-      return { error: "JHMMC boats can't add a weight to a post: the captain registers it at the weigh station with a scale photo." };
-    }
     const country = str(b.country, 60) || team.country || user.country;
     if (country && !COUNTRIES.includes(country)) return { error: 'Unknown country.' };
     const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
