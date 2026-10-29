@@ -1190,6 +1190,7 @@ const pagesFor = (view) => ({
           <label>Date <span class="muted small">(today if empty)</span><input name="caughtOn" type="date" max="${today()}"></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
         </div>
+        ${state.me.jhmmc ? raw('<label class="check share-wa"><input type="checkbox" name="shareClub" value="true"> Also post on the JHMMC feed</label>') : ''}
         <p class="error"></p>
         <div><button type="submit" class="primary">Post</button></div>
       </form>`;
@@ -1236,8 +1237,8 @@ const pagesFor = (view) => ({
       btn.textContent = 'Posting…';
       try {
         const fd = await media.addTo(new FormData(form));
-        const { catch: c } = await api('/catches', { method: 'POST', form: fd });
-        toast('Posted. Tight lines!');
+        const { catch: c, sharedClub } = await api('/catches', { method: 'POST', form: fd });
+        toast(sharedClub ? 'Posted here and on the JHMMC feed. Tight lines!' : 'Posted. Tight lines!');
         location.hash = `#/catch/${c.id}`;
       } finally {
         btn.textContent = 'Post';

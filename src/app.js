@@ -119,6 +119,15 @@ function createApp({
 
   const photoUrl = (file) => (file ? `/uploads/${file}` : null);
 
+  // A second copy of an uploaded file, for the same fish posted on both feeds
+  // (so removing one post leaves the other's photo).
+  function copyUpload(f) {
+    if (!f) return undefined;
+    const filename = crypto.randomBytes(12).toString('hex') + path.extname(f.filename);
+    fs.copyFileSync(path.join(uploadDir, f.filename), path.join(uploadDir, filename));
+    return { filename };
+  }
+
   function removeUpload(file) {
     if (file) fs.rm(path.join(uploadDir, path.basename(file)), { force: true }, () => {});
   }
@@ -977,7 +986,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
       notifyReviewers(opts.teamId, 1, req.user);
     }
-    res.status(201).json({ catch: getCatch(id, req.user) });
+    // Ticked "also post on the JHMMC feed" (members): the same fish there too,
+    // with its own copies of the photo and video and its spot (private there too).
+    let sharedClub = false;
+    if (!opts.official && bool(req.body.shareClub) && isClubMember(req.user)) {
+      const v = checked.values;
+      db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released, lat, lng)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, v[14], copyUpload(media.photo)?.filename ?? null,
+        copyUpload(media.video)?.filename ?? null, v[5], v[6], v[8], v[21], v[22]);
+      sharedClub = true;
+    }
+    res.status(201).json({ catch: getCatch(id, req.user), sharedClub });
   }
 
   // ---- the registration record ------------------------------------------
@@ -1878,18 +1897,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (bool(req.body.shareWa)) {
       if (!speciesId) return fail(400, 'Choose the species to post it on the West Africa feed.');
       if (!req.user.teamId) return fail(400, 'Join or register a boat to post catches on the West Africa feed.');
-      const copy = (f) => {
-        if (!f) return undefined;
-        const filename = crypto.randomBytes(12).toString('hex') + path.extname(f.filename);
-        fs.copyFileSync(path.join(uploadDir, f.filename), path.join(uploadDir, filename));
-        return { filename };
-      };
       // The spot goes across too, private to the boat as on any post.
       const fish = { speciesId, weightKg: req.body.weightKg, released: released ? 'on' : '', notes: body, lat: spot.lat ?? '', lng: spot.lng ?? '' };
       const opts = { teamId: req.user.teamId, official: false };
       const checked = checkCatch(req.user, fish, {}, opts);
       if (checked.error) return fail(400, checked.error);
-      shared = { id: insertCatchRow(checkCatch(req.user, fish, { photo: copy(photo), video: copy(video) }, opts).values) };
+      shared = { id: insertCatchRow(checkCatch(req.user, fish, { photo: copyUpload(photo), video: copyUpload(video) }, opts).values) };
     }
     const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released, lat, lng)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,

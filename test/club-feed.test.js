@@ -201,6 +201,18 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     assert.equal((await sec('PATCH', `/club-feed/${atSea.id}`, form({ body: 'x' }))).status, 403);
     assert.match((await cap('PATCH', `/club-feed/${atSea.id}`, form({ body: '', speciesId: '', removePhotos: JSON.stringify(after.photos.map((x) => x.id)) }))).body.error, /Write something/);
 
+    // From the Post tab: tick to also post the fish on the JHMMC feed (members only).
+    const both2 = form({ speciesId: wahoo, weightKg: '22', notes: 'Wahoo from the Post tab', shareClub: 'true', lat: '6.1', lng: '-10.9' });
+    both2.set('photo', new Blob([PNG], { type: 'image/png' }), 'w.png');
+    const posted = (await cap('POST', '/catches', both2)).body;
+    assert.equal(posted.sharedClub, true);
+    const clubSide = (await cap('GET', '/club-feed')).body.items.find((i) => i.kind === 'post' && i.body === 'Wahoo from the Post tab');
+    assert.deepEqual([clubSide.species, clubSide.weightKg, clubSide.lat], ['Wahoo', 22, 6.1]);
+    assert.notEqual(clubSide.photoUrl, posted.catch.photoUrl, 'separate copies');
+    await cap('DELETE', `/catches/${posted.catch.id}`);
+    assert.equal((await fetch(at.replace('/api', '') + clubSide.photoUrl)).status, 200, 'the JHMMC post keeps its photo');
+    await cap('DELETE', `/club-feed/${clubSide.id}`);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;
