@@ -2639,6 +2639,8 @@ const ICONS = {
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
@@ -2803,6 +2805,29 @@ async function route() {
     view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;
   }
 }
+
+// Dark (the default) or light, for bright sun; remembered on this phone.
+const THEME_COLORS = { dark: '#1d1e21', light: '#eef2f7' };
+function applyTheme(theme) {
+  if (theme === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', THEME_COLORS[theme]);
+  const btn = document.getElementById('theme-toggle');
+  btn.innerHTML = icon(theme === 'light' ? 'moon' : 'sun');
+  btn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+  btn.title = btn.getAttribute('aria-label');
+}
+const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+applyTheme(currentTheme());
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const next = currentTheme() === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+  try {
+    localStorage.setItem('theme', next);
+  } catch {
+    // Private browsing: the choice lasts until the page closes.
+  }
+});
 
 // Like Instagram's profile tab: a JHMMC member double-taps More to switch feeds.
 let lastMoreTap = 0;

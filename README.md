@@ -7,6 +7,8 @@ A shared catch log and social feed for big game fishing across West Africa. Club
 
 **Two feeds.** JHMMC members have two feeds, and switch between them with the switch button on their profile card at the top of **More**, or, like Instagram's profile tab, by double-tapping **More** (which shows your photo or initials); the app remembers the last one on that phone. While a member is on the JHMMC side, a small JHMMC tag (logo and name) sits in the header on every page. The feeds are **JHMMC**, the club's members-only feed, where members post through the day (a message, a photo, a fish, or any mix), like and reply, and where fish the secretary approves appear by themselves marked *Verified* with their points; and **West Africa**, the public feed for showing off a catch. Everyone else sees only the West Africa feed. A Filter button narrows the JHMMC feed to approved catches, all fish, photos or members' posts, and to one boat. Whoever posted something, or the admin, can remove it.
 
+**Dark or light.** The sun/moon button at the top right of every page switches between the dark theme and a light one that is easier to read in bright sun; the choice is remembered on that phone.
+
 ## Features
 
 - **Open to look at**: anyone with the link can browse the feed, leaderboards, boats, anglers, clubs and catches without an account.

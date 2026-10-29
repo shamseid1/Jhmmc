@@ -16,7 +16,29 @@
   --danger: #ff6b6b;
   --radius: 22px;
   --shadow: none;
+  --nav-bg: rgba(24, 35, 58, .94);
+  --field: #111a2c;
 }
+
+/* Light theme, for reading in bright sun: white cards, near-black text, deeper blue. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef2f7;
+  --surface: #ffffff;
+  --surface-2: #e3eaf4;
+  --text: #0d1726;
+  --muted: #475467;
+  --line: #ccd6e3;
+  --brand: #ffffff;
+  --accent: #0b5cc4;
+  --accent-ink: #ffffff;
+  --accent-soft: #d9e7fb;
+  --good: #11804f;
+  --danger: #c62828;
+  --nav-bg: rgba(255, 255, 255, .96);
+  --field: #f7f9fc;
+}
+:root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
 
 * { box-sizing: border-box; }
 
@@ -46,9 +68,9 @@ img { max-width: 100%; display: block; }
   /* Solid, not blurred: a blur here would pin the phone tab bar (inside it) to the header. */
   background: var(--surface);
   box-shadow: var(--shadow);
-  color: #fff;
+  color: var(--text);
 }
-.brand { color: #fff; text-decoration: none; font-weight: 700; white-space: nowrap; }
+.brand { color: var(--text); text-decoration: none; font-weight: 700; white-space: nowrap; }
 #nav { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 #nav a {
   color: var(--text);
@@ -142,7 +164,7 @@ input, select, textarea {
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: #111a2c;
+  background: var(--field);
   color: var(--text);
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
@@ -172,7 +194,7 @@ td.num, th.num { text-align: right; }
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  color: #fff;
+  color: var(--text);
   border-radius: var(--radius);
   padding: 24px 20px;
   margin-bottom: 16px;
@@ -197,7 +219,7 @@ td.num, th.num { text-align: right; }
   max-width: calc(100% - 32px);
 }
 
-.btn.ghost-light { background: transparent; border-color: rgba(255, 255, 255, .5); color: #fff; }
+.btn.ghost-light { background: transparent; border-color: var(--line); color: var(--text); }
 .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .how h3 { margin: 0 0 4px; font-size: 1rem; }
 .how p { margin: 0; }
@@ -236,7 +258,7 @@ button.more[hidden] { display: none; }
     position: fixed; z-index: 20; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px;
     padding: 8px;
-    background: rgba(24, 35, 58, .94); backdrop-filter: blur(12px);
+    background: var(--nav-bg); backdrop-filter: blur(12px);
     border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow);
   }
   #nav a { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: 11px; text-align: center; border-radius: 20px; }
@@ -399,10 +421,10 @@ button.link[hidden] { display: none; }
 .member-row .role label[hidden] { display: none; }
 .points-field { display: grid; gap: 4px; }
 .points-label { font-weight: 600; font-size: 14px; }
-.points-preview { margin: 0; font-size: 14px; padding: 10px 12px; border-radius: 14px; background: #111a2c; border: 1px solid var(--line); }
+.points-preview { margin: 0; font-size: 14px; padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1px solid var(--line); }
 .points-preview b { font-size: 1.05rem; }
 .sheet-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.sheet-totals div { background: #111a2c; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 2px; }
+.sheet-totals div { background: var(--field); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 2px; }
 .sheet-totals span { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
 .sheet-totals b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .points-preview.good { color: var(--good); }
@@ -520,7 +542,7 @@ button.link[hidden] { display: none; }
 /* ---- tournament entries & registration sheet ---- */
 .crew-pick, .guests { display: grid; gap: 8px; }
 .crew-row, .guest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-  padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: #111a2c; }
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--field); }
 .guest-row input[name=guestName] { flex: 1 1 160px; width: auto; }
 .crew-row label.check, .guest-row label.check { font-size: 14px; }
 .entry-anglers { margin: 8px 0; padding-left: 26px; display: grid; gap: 6px; font-size: 15px; }
@@ -609,3 +631,21 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .scale-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .scale-video-preview { display: block; width: 100%; max-height: 260px; background: #000; border-radius: 12px; margin-bottom: 8px; }
 .thumbs video { width: 120px; height: 90px; object-fit: cover; border-radius: 10px; background: #000; }
+
+/* Dark / light switch in the header. */
+.theme-toggle { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; flex: none; }
+.theme-toggle .icon { width: 19px; height: 19px; }
+@media (max-width: 640px) {
+  /* Room on both sides of the centred name for the switch on the right. */
+  .topbar { padding-left: 48px; padding-right: 48px; gap: 8px; }
+  .theme-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; }
+  .brand span { font-size: 16px; }
+}
+:root[data-theme="light"] .badge.status.wait { color: #8a4b00; }
+@media (max-width: 420px) {
+  /* Narrow phones: the JHMMC tag is just its logo (which reads JHMMC). */
+  .club-chip { padding: 3px; }
+  .club-chip span { display: none; }
+  .club-chip img { width: 26px; }
+}
+.composer-tools .photo-cta, .composer-tools button { white-space: nowrap; }
