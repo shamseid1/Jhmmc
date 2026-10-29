@@ -153,13 +153,34 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     await boss('PATCH', `/admin/users/${(await boss('GET', '/admin/users')).body.users.find((u) => u.email === 'ama@example.com').id}`, { jhmmc: true });
     assert.match((await noBoat('POST', '/club-feed', form({ speciesId: sail, shareWa: 'true' }))).body.error, /boat/);
 
+    // The spot: on a JHMMC post with a fish, private to the poster, carried to the
+    // West Africa copy (private there too), and all of them on My catch map.
+    const spotted = form({ body: 'Wahoo off the canyon', speciesId: wahoo, weightKg: '24', lat: '6.1234', lng: '-11.2345', shareWa: 'true' });
+    const sp1 = (await cap('POST', '/club-feed', spotted)).body;
+    assert.equal((await cap('POST', '/club-feed', form({ speciesId: wahoo, lat: '95', lng: '1' }))).status, 400);
+    await cap('POST', '/club-feed', form({ speciesId: sail, released: 'true', lat: '6.5', lng: '-11.0' }));
+    const asRay = (await cap('GET', '/club-feed')).body.items.find((i) => i.id === sp1.id && i.kind === 'post');
+    const asSec = (await sec('GET', '/club-feed')).body.items.find((i) => i.id === sp1.id && i.kind === 'post');
+    assert.deepEqual([asRay.lat, asRay.lng, asSec.lat, asSec.hasSpot], [6.1234, -11.2345, null, true], 'only the poster sees the spot');
+    const waCopy = (await as()('GET', `/catches/${sp1.catchId}`)).body.catch;
+    assert.deepEqual([waCopy.lat, waCopy.hasSpot, waCopy.spotPublic], [null, true, false], 'private on the public feed too');
+    const map = (await cap('GET', '/me/spots')).body;
+    const year = new Date().toISOString().slice(0, 4);
+    assert.deepEqual(map.years, [year]);
+    assert.deepEqual(map.spots.map((x) => [x.kind, x.species, x.lat]).sort(), [['catch', 'Wahoo', 6.1234], ['club', 'Atlantic sailfish', 6.5]],
+      'the shared fish counts once');
+    assert.equal((await cap('GET', '/me/spots?year=1999')).body.spots.length, 2, 'an unknown year shows all');
+    assert.equal((await sec('GET', '/me/spots')).body.spots.length, 0, "nobody else's spots");
+    assert.equal((await as()('GET', '/me/spots')).status, 401);
+    await cap('DELETE', `/catches/${sp1.catchId}`);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;
     const two = (await cap('GET', `/club-feed?before=${encodeURIComponent(one.nextBefore)}`)).body;
-    assert.equal(one.items.length + two.items.length, 30);
+    assert.equal(one.items.length + two.items.length, 32);
     assert.equal(two.nextBefore, null);
-    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 30);
+    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 32);
 
     // Whoever posted it, or the admin, removes a post; the club feed never reaches the public feed.
     assert.equal((await sec('DELETE', `/club-feed/${first.id}`)).status, 403);

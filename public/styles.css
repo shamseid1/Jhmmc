@@ -683,3 +683,14 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .install-card button { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .install-card .icon { width: 18px; height: 18px; }
 .share-wa { font-weight: 600; }
+
+/* My catch map. */
+.catch-map { height: 380px; margin-bottom: 8px; }
+.catch-map .leaflet-popup-content { font: 14px/1.4 system-ui, sans-serif; color: #1a242e; }
+.year-tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; }
+.year-tabs a { padding: 8px 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-weight: 700; }
+.year-tabs a[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.spot-list li { cursor: pointer; }
+.spot-head { font-weight: 600; }
+.club-spot { margin: 0 0 8px; }
+.club-spot .icon { width: 15px; height: 15px; vertical-align: -2px; }

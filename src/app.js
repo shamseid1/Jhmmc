@@ -875,6 +875,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Checks one catch for a boat and returns the values to save, or an error.
   // Crews post their own boat's catches; a JHMMC captain registers their own
   // boat's fish for points, and the secretary any JHMMC boat's.
+  // Where a fish was caught, from "lat"/"lng" (both or neither).
+  function readSpot(b) {
+    const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+    const lat = coord(b.lat);
+    const lng = coord(b.lng);
+    if ((lat === null) !== (lng === null) || (lat !== null && !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180))) {
+      return { error: 'The GPS location is not valid. Try "Use my location" again.' };
+    }
+    return { lat, lng };
+  }
+
   // media: { photo, video } (uploaded files, either may be missing).
   function checkCatch(user, b, { photo: file, video } = {}, { teamId, official }) {
     const team = db.prepare('SELECT club_id, country, captain_id, weigh_station FROM teams WHERE id = ?').get(teamId);
@@ -914,12 +925,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (lineClass && !LINE_CLASSES.includes(lineClass)) return { error: 'Choose a line class from the list.' };
     const country = str(b.country, 60) || team.country || user.country;
     if (country && !COUNTRIES.includes(country)) return { error: 'Unknown country.' };
-    const coord = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
-    const lat = coord(b.lat);
-    const lng = coord(b.lng);
-    if ((lat === null) !== (lng === null) || (lat !== null && !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180))) {
-      return { error: 'The GPS location is not valid. Try "Use my location" again.' };
-    }
+    const spot = readSpot(b);
+    if (spot.error) return spot;
+    const { lat, lng } = spot;
     const released = bool(b.released);
     let station = null;
     if (official) {
@@ -1625,6 +1633,38 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true });
   });
 
+  // ---- my catch map ---------------------------------------------------------
+
+  // Every fish you caught or logged with its spot (and, for a captain, the
+  // boat's), from your posts and your JHMMC feed posts, by year. Only yours.
+  api.get('/me/spots', auth.requireUser, (req, res) => {
+    const u = req.user;
+    const captainOf = db.prepare('SELECT id FROM teams WHERE captain_id = ?').get(u.id)?.id ?? null;
+    const posts = db.prepare(`
+      SELECT 'catch' AS kind, k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.caught_on AS date,
+        k.lat, k.lng, k.location, COALESCE(NULLIF(au.nickname, ''), au.name, k.angler_name) AS angler, t.name AS boat,
+        COALESCE(k.photo, k.scale_photo) AS photo
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users au ON au.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
+      WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))
+      UNION ALL
+      SELECT 'club', p.id, s.name, p.weight_kg, p.released, date(p.created_at), p.lat, p.lng, NULL,
+        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo
+      FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
+      WHERE p.lat IS NOT NULL AND p.user_id = :me
+      ORDER BY date DESC, kind`).all({ me: u.id, boat: captainOf });
+    // A fish shared from the JHMMC feed to West Africa is one fish: keep the public post.
+    const seen = new Set();
+    const spots = posts.filter((x) => {
+      const key = `${x.species}|${x.date}|${x.lat}|${x.lng}|${x.weightKg}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).map(({ photo, ...x }) => ({ ...x, released: !!x.released, photoUrl: photoUrl(photo) }));
+    const years = [...new Set(spots.map((x) => x.date.slice(0, 4)))].sort().reverse();
+    const year = years.includes(req.query.year) ? req.query.year : null;
+    res.json({ years, year, spots: year ? spots.filter((x) => x.date.startsWith(year)) : spots });
+  });
+
   // ---- the JHMMC feed (members only) -------------------------------------
 
   // Members post through the day: messages, photos and fish. Fish the
@@ -1657,7 +1697,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const more = rows.length > PAGE;
     const page = rows.slice(0, PAGE);
     const post = db.prepare(`
-      SELECT p.id, p.body, p.photo, p.video, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
+      SELECT p.id, p.body, p.photo, p.video, p.lat, p.lng, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
         s.name AS species, u.id AS userId, ${SHOWN} AS author, u.photo AS authorPhoto, t.name AS teamName,
         (SELECT COUNT(*) FROM club_post_likes l WHERE l.post_id = p.id) AS likes,
         EXISTS (SELECT 1 FROM club_post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
@@ -1678,8 +1718,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         const { photo, video, ...f } = fish.get(r.id);
         return { kind: 'verified', ...f, released: !!f.released, photoUrl: photoUrl(photo), videoUrl: photoUrl(video) };
       }
-      const { photo, video, authorPhoto, ...p } = post.get(req.user.id, r.id);
+      const { photo, video, authorPhoto, lat, lng, ...p } = post.get(req.user.id, r.id);
+      // The spot is the poster's own: others only see that there is one.
+      const mine = p.userId === req.user.id;
       return {
+        hasSpot: lat != null, lat: mine ? lat : null, lng: mine ? lng : null,
         kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), videoUrl: photoUrl(video),
         authorPhotoUrl: photoUrl(authorPhoto),
         canDelete: canRemoveClubPost(req.user, p.userId),
@@ -1704,6 +1747,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const weight = req.body.weightKg ? Number(req.body.weightKg) : null;
     if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
     if (!body && !photo && !video && !speciesId) return fail(400, 'Write something, add a photo, a video or a fish.');
+    const spot = speciesId ? readSpot(req.body) : { lat: null, lng: null };
+    if (spot.error) return fail(400, spot.error);
     // Ticked "also post on the West Africa feed": the same fish as a public catch.
     // It has its own copy of the photo and video, so removing one post leaves the other.
     let shared = null;
@@ -1716,15 +1761,16 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         fs.copyFileSync(path.join(uploadDir, f.filename), path.join(uploadDir, filename));
         return { filename };
       };
-      const fish = { speciesId, weightKg: req.body.weightKg, released: released ? 'on' : '', notes: body };
+      // The spot goes across too, private to the boat as on any post.
+      const fish = { speciesId, weightKg: req.body.weightKg, released: released ? 'on' : '', notes: body, lat: spot.lat ?? '', lng: spot.lng ?? '' };
       const opts = { teamId: req.user.teamId, official: false };
       const checked = checkCatch(req.user, fish, {}, opts);
       if (checked.error) return fail(400, checked.error);
       shared = { id: insertCatchRow(checkCatch(req.user, fish, { photo: copy(photo), video: copy(video) }, opts).values) };
     }
-    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,
-      speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0);
+    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released, lat, lng)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,
+      speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0, spot.lat, spot.lng);
     res.status(201).json({ id: Number(lastInsertRowid), catchId: shared?.id ?? null });
   });
 

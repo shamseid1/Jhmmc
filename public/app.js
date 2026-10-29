@@ -130,6 +130,73 @@ function wireMediaPick(root) {
   };
 }
 
+// The map library (Leaflet 1.9.4, kept in public/vendor), loaded the first time a map is shown.
+let leaflet = null;
+function loadLeaflet() {
+  leaflet ??= new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = '/vendor/leaflet/leaflet.css';
+    document.head.append(css);
+    const js = document.createElement('script');
+    js.src = '/vendor/leaflet/leaflet.js';
+    js.onload = () => resolve(window.L);
+    js.onerror = () => {
+      leaflet = null;
+      reject(new Error("The map couldn't load. Check your connection and try again."));
+    };
+    document.head.append(js);
+  });
+  return leaflet;
+}
+
+// Where a fish was caught, for the JHMMC feed's post box: the phone's GPS or typed
+// coordinates, into hidden lat/lng fields.
+const spotFields = () => `<div class="stack spot">
+  <span class="spot-head">Where you caught it <span class="muted small">(optional, only you see it)</span></span>
+  <div class="spot-row"><button type="button" data-act="locate">${icon('locate')} Use my location</button>
+    <span class="small muted">or type the coordinates</span></div>
+  <input name="coords" autocomplete="off" inputmode="text" aria-label="Coordinates" placeholder="e.g. 6°18.63'N 10°48.44'W or 6.3105, -10.8074">
+  <span class="small muted spot-status"></span>
+  <input type="hidden" name="lat"><input type="hidden" name="lng">
+</div>`;
+function wireSpot(root) {
+  const status = root.querySelector('.spot-status');
+  const [lat, lng, coords] = ['lat', 'lng', 'coords'].map((n) => root.querySelector(`[name=${n}]`));
+  root.querySelector('[data-act=locate]').addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      status.textContent = 'This phone or browser can\'t share its location.';
+      return;
+    }
+    status.textContent = 'Finding you…';
+    navigator.geolocation.getCurrentPosition((pos) => {
+      lat.value = pos.coords.latitude.toFixed(5);
+      lng.value = pos.coords.longitude.toFixed(5);
+      coords.value = `${lat.value}, ${lng.value}`;
+      status.textContent = `${fmtCoords(pos.coords.latitude, pos.coords.longitude)} (±${Math.round(pos.coords.accuracy)} m)`;
+    }, (err) => {
+      status.textContent = err.code === 1
+        ? 'Location is blocked. Allow it for this site in your phone settings, or type the coordinates.'
+        : 'Couldn\'t get a GPS fix. Try again in the open, or type the coordinates.';
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  });
+  coords.addEventListener('input', () => {
+    const text = coords.value.trim();
+    const spot = text ? parseCoords(text) : null;
+    lat.value = spot ? spot.lat : '';
+    lng.value = spot ? spot.lng : '';
+    status.textContent = !text ? '' : spot ? `Reads as ${fmtCoords(spot.lat, spot.lng)}` : "Can't read those coordinates yet. Use N/S and E/W, or a comma between the two.";
+  });
+  return {
+    reset() {
+      lat.value = '';
+      lng.value = '';
+      coords.value = '';
+      status.textContent = '';
+    },
+  };
+}
+
 // A post's media: its video (with the photo as the still before it plays) or its photo.
 function mediaHtml(item, alt = '') {
   if (item.videoUrl) {
@@ -594,6 +661,7 @@ function clubItem(i) {
     ${raw(photo)}
     <div class="pad">
       ${i.species ? raw(html`<p class="club-fish">${raw(icon('fish'))} <b>${i.species}</b>${i.weightKg ? ` · ${fmtWeight(i.weightKg)}` : ''}${i.released ? raw(' <span class="badge release">Released</span>') : ''}</p>`) : ''}
+      ${i.lat != null ? raw(html`<p class="small muted club-spot">${raw(icon('pin'))} <a href="#/spots">Spot saved on your catch map</a> (only you see it)</p>`) : ''}
       <div class="actions">
         <button type="button" data-act="like" class="${i.liked ? 'liked' : ''}" aria-pressed="${i.liked}" aria-label="Like">${raw(icon('heart'))} <span>${i.likes}</span></button>
       </div>
@@ -639,6 +707,7 @@ async function clubFeed(view, filters = {}) {
         <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Choose species…'))}</select></label>
         <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional"></label>
           <label class="check"><input type="checkbox" name="released" value="true"> Released</label></div>
+        ${raw(spotFields())}
       </div>
       <label class="check share-wa"><input type="checkbox" name="shareWa" value="true"> Also post on the West Africa feed</label>
       <p class="error"></p>
@@ -667,6 +736,7 @@ async function clubFeed(view, filters = {}) {
   let before = null;
 
   const media = wireMediaPick(form);
+  const spot = wireSpot(form);
   const fishBtn = form.querySelector('[data-act=add-fish]');
   const fishFields = form.querySelector('.fish-fields');
   // The West Africa feed is catches: ticking it brings up the fish.
@@ -700,7 +770,8 @@ async function clubFeed(view, filters = {}) {
 
   bindForm(form, async () => {
     const fd = new FormData(form);
-    if (fishFields.hidden) ['speciesId', 'weightKg', 'released'].forEach((k) => fd.delete(k));
+    if (fishFields.hidden) ['speciesId', 'weightKg', 'released', 'lat', 'lng'].forEach((k) => fd.delete(k));
+    fd.delete('coords');
     if (form.shareWa.checked && !fd.get('speciesId')) throw new Error('Choose the species to post it on the West Africa feed.');
     if (!fd.get('body')?.trim() && !media.picked.photo && !media.picked.video && !fd.get('speciesId')) {
       throw new Error('Write something, add a photo, a video or a fish.');
@@ -715,6 +786,7 @@ async function clubFeed(view, filters = {}) {
     }
     form.reset();
     media.reset();
+    spot.reset();
     fishFields.hidden = true;
     fishBtn.setAttribute('aria-expanded', 'false');
     await page(true);
@@ -1865,6 +1937,51 @@ const pagesFor = (view) => ({
   },
 
   // The menu behind the last tab: your dashboard, rules, clubs, account.
+  // My catch map: every fish you logged with a spot, on a map, by year.
+  async spots() {
+    if (!state.me) return needLogin(view, 'see your catch map');
+    const year = new URLSearchParams(location.hash.split('?')[1] || '').get('year') || '';
+    const [{ years, spots }, L] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null)]);
+    const chip = (y, label) => html`<a role="tab" href="#/spots${y ? `?year=${y}` : ''}" aria-selected="${y === year}">${label}</a>`;
+    const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : null);
+    const when = (x) => fmtDate(x.date);
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>My catch map</h1>
+      <p class="small muted">Every fish you logged with a spot${state.me.isCaptain ? ', and your boat\'s' : ''}: from your West Africa posts and your JHMMC feed posts. Only you see this.</p>
+      ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
+      ${spots.length ? raw(html`<div class="card catch-map" id="catch-map"></div>
+        <p class="small muted">${plural(spots.length, 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
+        <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
+          <b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
+          <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
+            ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
+        : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Add <b>Where you caught it</b> when you post a fish (Use my location), and it appears here.</div>`)}`;
+    if (!spots.length) return;
+    if (!L) {
+      view.querySelector('#catch-map').outerHTML = '<div class="card pad empty">The map couldn\'t load just now. Your catches are listed below.</div>';
+      return;
+    }
+    const map = L.map('catch-map', { zoomControl: true });
+    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' });
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 18, attribution: 'Imagery © Esri' });
+    satellite.addTo(map);
+    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], {
+      radius: 8, weight: 2, color: '#ffffff', fillColor: x.released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1,
+    }).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
+      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">Open the catch</a>`) : ''}`));
+    map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
+    view.querySelector('.spot-list').addEventListener('click', (e) => {
+      const li = e.target.closest('li[data-n]');
+      if (!li || e.target.closest('a')) return;
+      const x = spots[li.dataset.n];
+      map.setView([x.lat, x.lng], 12);
+      pins[li.dataset.n].openPopup();
+      view.querySelector('#catch-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  },
+
   // How to put the app on the home screen, for each kind of phone.
   async install() {
     const ua = navigator.userAgent;
@@ -1921,6 +2038,7 @@ const pagesFor = (view) => ({
       ${me ? raw(`<h2>You</h2><div class="card menu">
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
+        ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'JHMMC points'}</h2><div class="card menu">
@@ -2839,7 +2957,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', install: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', install: 'more', spots: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

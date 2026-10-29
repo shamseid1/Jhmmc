@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 25;
+const SCHEMA_VERSION = 26;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -296,6 +296,9 @@ CREATE TABLE IF NOT EXISTS club_posts (
   photo TEXT,
   video TEXT,
   species_id INTEGER REFERENCES species(id),
+  -- Where the fish was caught (phone GPS or typed): only the poster sees it.
+  lat REAL,
+  lng REAL,
   weight_kg REAL,
   released INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -461,6 +464,10 @@ function openDb(file) {
       const cols = db.prepare(`PRAGMA table_info(${table})`).all();
       if (cols.length && !cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
     }
+  }
+  if (hasTables && version < 26) {
+    const cols = db.prepare('PRAGMA table_info(club_posts)').all();
+    if (cols.length && !cols.some((c) => c.name === 'lat')) db.exec('ALTER TABLE club_posts ADD COLUMN lat REAL; ALTER TABLE club_posts ADD COLUMN lng REAL;');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
