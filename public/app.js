@@ -242,12 +242,12 @@ function loadLeaflet() {
   return leaflet;
 }
 
-// Satellite imagery (Esri World Imagery), with a street map to switch to.
-function baseLayers(L) {
-  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 18, attribution: 'Imagery © Esri' });
-  const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' });
-  return { satellite, streets };
+// The maps: satellite imagery (Esri World Imagery) with borders and place
+// names (country, city, town) on top.
+function addSatellite(L, map) {
+  const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
+  L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
+  L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
 }
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
@@ -264,9 +264,7 @@ async function drawSpotMaps(root) {
   for (const box of boxes) {
     const at = [Number(box.dataset.lat), Number(box.dataset.lng)];
     const map = L.map(box, { scrollWheelZoom: false }).setView(at, 11);
-    const { satellite, streets } = baseLayers(L);
-    satellite.addTo(map);
-    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    addSatellite(L, map);
     L.circleMarker(at, spotPin(L, box.dataset.released === 'true')).addTo(map);
   }
 }
@@ -2195,9 +2193,7 @@ const pagesFor = (view) => ({
       return;
     }
     const map = L.map('catch-map', { zoomControl: true });
-    const { satellite, streets } = baseLayers(L);
-    satellite.addTo(map);
-    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    addSatellite(L, map);
     const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
       ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">Open the catch</a>`) : ''}`));
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
