@@ -600,3 +600,12 @@ button.link[hidden] { display: none; }
 .club-chip[hidden] { display: none; }
 .club-chip img { width: 22px; height: auto; }
 .section-note { margin: -4px 4px 8px; }
+
+/* Photo and video previews on posts and the weigh sheet. */
+.video-preview { display: block; width: 100%; max-height: 420px; background: #000; border-radius: var(--radius); }
+.video-preview[hidden], .scale-video-preview[hidden] { display: none; }
+.photo-cta.has-media { border-style: solid; }
+video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #000; }
+.scale-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.scale-video-preview { display: block; width: 100%; max-height: 260px; background: #000; border-radius: 12px; margin-bottom: 8px; }
+.thumbs video { width: 120px; height: 90px; object-fit: cover; border-radius: 10px; background: #000; }

@@ -105,13 +105,44 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     assert.deepEqual(await kinds(`team=${boat.id}`), ['verified', 'Sail released!', 'Lines in at 7'], "the boat's fish and its crew's posts");
     assert.deepEqual(await kinds(`show=photos&team=${boat.id}`), []);
 
+    // Videos: on a JHMMC feed post, on a West Africa post, and of a fish on the scale.
+    const MP4 = new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' });
+    const clip = form({ body: 'Hook-up!' });
+    clip.set('video', MP4, 'clip.mp4');
+    assert.equal((await cap('POST', '/club-feed', clip)).status, 201);
+    const withClip = (await cap('GET', '/club-feed')).body.items.find((i) => i.body === 'Hook-up!');
+    assert.match(withClip.videoUrl, /^\/uploads\/.+\.mp4$/);
+    assert.equal((await fetch(at.replace('/api', '') + withClip.videoUrl)).status, 200);
+    const notVideo = form({ body: 'x' });
+    notVideo.set('video', new Blob([PNG], { type: 'image/png' }), 'a.png');
+    assert.match((await cap('POST', '/club-feed', notVideo)).body.error, /Video must be/);
+    const post = form({ speciesId: wahoo, caughtOn: new Date().toISOString().slice(0, 10), weightKg: '15' });
+    post.set('video', MP4, 'post.mp4');
+    const shown = (await cap('POST', '/catches', post)).body.catch;
+    assert.match(shown.videoUrl, /\.mp4$/);
+    const undated = (await cap('POST', '/catches', form({ speciesId: wahoo }))).body.catch;
+    assert.equal(undated.caughtOn, new Date().toISOString().slice(0, 10), "a post's date is optional: today");
+    await cap('DELETE', `/catches/${undated.id}`);
+    const reg2 = form({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', speciesId: wahoo, weightKg: '18', declared: 'yes',
+      deviceLat: '6.3', deviceLng: '-10.8', caughtOn: new Date().toISOString().slice(0, 10) });
+    reg2.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'scale.png');
+    reg2.set('scaleVideo', MP4, 'scale.mp4');
+    const fish2 = (await cap('POST', '/weigh', reg2)).body.catch;
+    assert.deepEqual([fish2.videoUrl, /\.mp4$/.test(fish2.scaleVideoUrl), /\.png$/.test(fish2.scalePhotoUrl)], [null, true, true]);
+    const onlyVideo = form({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', speciesId: wahoo, weightKg: '18', declared: 'yes',
+      deviceLat: '6.3', deviceLng: '-10.8', caughtOn: new Date().toISOString().slice(0, 10) });
+    onlyVideo.set('scaleVideo', MP4, 'scale.mp4');
+    assert.match((await cap('POST', '/weigh', onlyVideo)).body.error, /photo/, 'the scale photo is still required');
+    await cap('DELETE', `/catches/${fish2.id}`);
+    await cap('DELETE', `/catches/${shown.id}`);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;
     const two = (await cap('GET', `/club-feed?before=${encodeURIComponent(one.nextBefore)}`)).body;
-    assert.equal(one.items.length + two.items.length, 29);
+    assert.equal(one.items.length + two.items.length, 30);
     assert.equal(two.nextBefore, null);
-    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 29);
+    assert.equal(new Set([...one.items, ...two.items].map((i) => i.kind + i.id)).size, 30);
 
     // Whoever posted it, or the admin, removes a post; the club feed never reaches the public feed.
     assert.equal((await sec('DELETE', `/club-feed/${first.id}`)).status, 403);

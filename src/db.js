@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 24;
+const SCHEMA_VERSION = 25;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -82,6 +82,7 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   line_class TEXT,
   notes TEXT,
   photo TEXT,
+  video TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   -- Official scoring: registered at the weigh station by the captain, then approved by the secretary.
   status TEXT NOT NULL DEFAULT 'pending_review',
@@ -93,6 +94,8 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   weighed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   weighed_at TEXT,
   scale_photo TEXT,
+  -- Optional: a video of the fish on the scale, recorded there and then.
+  scale_video TEXT,
   reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at TEXT,
   points REAL,
@@ -291,6 +294,7 @@ CREATE TABLE IF NOT EXISTS club_posts (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body TEXT,
   photo TEXT,
+  video TEXT,
   species_id INTEGER REFERENCES species(id),
   weight_kg REAL,
   released INTEGER NOT NULL DEFAULT 0,
@@ -450,6 +454,13 @@ function openDb(file) {
     db.exec(`UPDATE users SET
       first_name = CASE WHEN instr(trim(name), ' ') > 0 THEN substr(trim(name), 1, instr(trim(name), ' ') - 1) ELSE trim(name) END,
       last_name = CASE WHEN instr(trim(name), ' ') > 0 THEN trim(substr(trim(name), instr(trim(name), ' ') + 1)) END`);
+  }
+  if (hasTables && version < 25) {
+    // Videos: on posts, on JHMMC feed posts, and of a fish on the scale.
+    for (const [table, column] of [['catches', 'video'], ['catches', 'scale_video'], ['club_posts', 'video']]) {
+      const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+      if (cols.length && !cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+    }
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

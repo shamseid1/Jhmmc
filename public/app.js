@@ -65,6 +65,76 @@ function options(items, selected, placeholder) {
 
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
+// Videos go up as recorded (photos are shrunk first): about a minute at most.
+const MAX_VIDEO_MB = 100;
+function videoTooBig(file) {
+  if (file.size <= MAX_VIDEO_MB * 1024 * 1024) return false;
+  toast(`That video is too long (${Math.round(file.size / 1048576)} MB). Keep it under about a minute (${MAX_VIDEO_MB} MB).`);
+  return true;
+}
+// Choosing a post's photo and/or video: taken now or picked from the phone (Chrome
+// on newer Android phones shows no camera unless asked, hence separate choices).
+const MEDIA_PREVIEWS = `<span class="photo-preview" hidden><img alt=""></span>
+  <video class="video-preview" controls playsinline preload="metadata" hidden></video>`;
+const MEDIA_CHOICES = `<label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
+  <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
+  <label class="btn">Record video<input type="file" accept="video/*" capture="environment" data-video></label>
+  <label class="btn">Video from phone<input type="file" accept="video/*" data-video></label>`;
+function wireMediaPick(root) {
+  const picked = { photo: null, video: null };
+  const cta = root.querySelector('[data-act=photo-menu]');
+  const menu = root.querySelector('.photo-menu');
+  const img = root.querySelector('.photo-preview');
+  const vid = root.querySelector('.video-preview');
+  const close = () => {
+    menu.hidden = true;
+    cta.setAttribute('aria-expanded', 'false');
+  };
+  cta.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    cta.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  menu.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    const isVideo = e.target.matches('[data-video]');
+    e.target.value = '';
+    if (!file || (isVideo && videoTooBig(file))) return;
+    // Show what's attached so it's clear.
+    const [box, el] = isVideo ? [vid, vid] : [img, img.querySelector('img')];
+    picked[isVideo ? 'video' : 'photo'] = file;
+    URL.revokeObjectURL(el.src);
+    el.src = URL.createObjectURL(file);
+    box.hidden = false;
+    cta.classList.add('has-media');
+    close();
+  });
+  return {
+    picked,
+    // Puts the shrunk photo and the video into the form data being sent.
+    async addTo(fd) {
+      if (picked.photo) fd.set('photo', picked.photo);
+      if (picked.video) fd.set('video', picked.video);
+      return preparePhoto(fd, 'photo');
+    },
+    reset() {
+      picked.photo = null;
+      picked.video = null;
+      img.hidden = true;
+      vid.hidden = true;
+      vid.removeAttribute('src');
+      cta.classList.remove('has-media');
+      close();
+    },
+  };
+}
+
+// A post's media: its video (with the photo as the still before it plays) or its photo.
+function mediaHtml(item, alt = '') {
+  if (item.videoUrl) {
+    return html`<video class="catch-photo" src="${item.videoUrl}" ${item.photoUrl ? raw(html`poster="${item.photoUrl}"`) : ''} controls playsinline preload="metadata"></video>`;
+  }
+  return item.photoUrl ? html`<img class="catch-photo" src="${item.photoUrl}" alt="${alt}" loading="lazy">` : '';
+}
 
 // Club roles and how they read.
 const ROLE_OPTIONS = [['', 'Member'], ['president', 'President'], ['vice_president', 'Vice President'], ['secretary', 'Secretary'], ['treasurer', 'Treasurer']];
@@ -88,7 +158,7 @@ function logItems(fish) {
       <span class="small"><b>${LOG_ACTIONS[e.action]}</b> by ${e.userName}, ${fmtWhen(e.createdAt)}${e.lat != null ? raw(html` · <a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=15/${e.lat}/${e.lng}" target="_blank" rel="noopener">where the phone was</a>`) : ''}</span>
       ${e.note ? raw(html`<div class="small log-note">${e.note}</div>`) : ''}
     </li>`))}</ol>
-    <div class="small">${f.scalePhotoUrl ? raw(html`<a href="${f.scalePhotoUrl}" target="_blank" rel="noopener">Scale photo</a>`) : ''}
+    <div class="small">${f.scalePhotoUrl ? raw(html`<a href="${f.scalePhotoUrl}" target="_blank" rel="noopener">Scale photo</a>`) : ''}${f.scaleVideoUrl ? raw(html` · <a href="${f.scaleVideoUrl}" target="_blank" rel="noopener">Scale video</a>`) : ''}
       ${!['withdrawn', 'deleted'].includes(f.status) ? raw(html`${f.scalePhotoUrl ? ' · ' : ''}<a href="#/catch/${f.catchId}">The fish</a>`) : ''}</div>
   </li>`).join('');
 }
@@ -367,7 +437,7 @@ function catchCard(c, { full = false } = {}) {
     : `<div class="catch-photo placeholder" aria-hidden="true">${MARLIN}</div>`;
   const details = [c.location, c.country].filter(Boolean).join(', ');
   return html`<article class="card" data-id="${c.id}">
-    ${full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
+    ${c.videoUrl ? raw(mediaHtml(c)) : full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
     <div class="pad">
       <div class="catch-head">
         <h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
@@ -389,10 +459,11 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
-      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl) ? raw(html`<div class="official">
+      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl || c.scaleVideoUrl) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
         ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img class="scale-photo" src="${c.scalePhotoUrl}" alt="Fish on the scale" loading="lazy"></a>`) : ''}
+        ${c.scaleVideoUrl ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
@@ -498,10 +569,10 @@ function clubComment(postId, m) {
 }
 
 function clubItem(i) {
-  const photo = i.photoUrl ? html`<img class="catch-photo" src="${i.photoUrl}" alt="" loading="lazy">` : '';
+  const photo = mediaHtml(i);
   if (i.kind === 'verified') {
     return html`<article class="card club-item verified">
-      ${i.photoUrl ? raw(html`<a href="#/catch/${i.id}">${raw(photo)}</a>`) : ''}
+      ${i.videoUrl ? raw(photo) : i.photoUrl ? raw(html`<a href="#/catch/${i.id}">${raw(photo)}</a>`) : ''}
       <div class="pad">
         <p class="club-who"><span class="badge status ok">${raw(icon('check', 'icon tiny'))} Verified</span> <span class="muted small">${fmtWhen(i.createdAt)}</span></p>
         <h3 class="catch-title"><a href="#/catch/${i.id}">${i.species}</a>${i.released ? ' released' : ''}
@@ -555,15 +626,12 @@ async function clubFeed(view, filters = {}) {
     <form class="card pad stack composer" id="club-post">
       <textarea name="body" rows="2" maxlength="2000" placeholder="What's happening on the water?"></textarea>
       <div class="photo-pick">
-        <span class="photo-preview" hidden><img alt=""></span>
+        ${raw(MEDIA_PREVIEWS)}
         <div class="composer-tools">
-          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Photo</span></button>
+          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Photo / video</span></button>
           <button type="button" data-act="add-fish" aria-expanded="false">${raw(icon('fish'))} Fish</button>
         </div>
-        <div class="photo-menu" hidden>
-          <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
-          <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
-        </div>
+        <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
       </div>
       <div class="stack fish-fields" hidden>
         <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Choose species…'))}</select></label>
@@ -595,26 +663,7 @@ async function clubFeed(view, filters = {}) {
   const items = new Map();
   let before = null;
 
-  // Photo: taken now or chosen from the phone.
-  let photo = null;
-  const cta = form.querySelector('[data-act=photo-menu]');
-  const menu = form.querySelector('.photo-menu');
-  const preview = form.querySelector('.photo-preview');
-  cta.addEventListener('click', () => {
-    menu.hidden = !menu.hidden;
-    cta.setAttribute('aria-expanded', String(!menu.hidden));
-  });
-  menu.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    photo = file;
-    URL.revokeObjectURL(preview.querySelector('img').src);
-    preview.querySelector('img').src = URL.createObjectURL(file);
-    preview.hidden = false;
-    menu.hidden = true;
-    cta.setAttribute('aria-expanded', 'false');
-  });
+  const media = wireMediaPick(form);
   const fishBtn = form.querySelector('[data-act=add-fish]');
   const fishFields = form.querySelector('.fish-fields');
   fishBtn.addEventListener('click', () => {
@@ -644,19 +693,19 @@ async function clubFeed(view, filters = {}) {
 
   bindForm(form, async () => {
     const fd = new FormData(form);
-    if (photo) fd.set('photo', photo);
     if (fishFields.hidden) ['speciesId', 'weightKg', 'released'].forEach((k) => fd.delete(k));
-    if (!fd.get('body')?.trim() && !photo && !fd.get('speciesId')) throw new Error('Write something, add a photo or a fish.');
+    if (!fd.get('body')?.trim() && !media.picked.photo && !media.picked.video && !fd.get('speciesId')) {
+      throw new Error('Write something, add a photo, a video or a fish.');
+    }
     const btn = form.querySelector('button[type=submit]');
     btn.textContent = 'Posting…';
     try {
-      await api('/club-feed', { method: 'POST', form: await preparePhoto(fd, 'photo') });
+      await api('/club-feed', { method: 'POST', form: await media.addTo(fd) });
     } finally {
       btn.textContent = 'Post';
     }
     form.reset();
-    photo = null;
-    preview.hidden = true;
+    media.reset();
     fishFields.hidden = true;
     fishBtn.setAttribute('aria-expanded', 'false');
     await page(true);
@@ -895,20 +944,22 @@ const pagesFor = (view) => ({
         </div>`;
     view.innerHTML = html`<h1>Post a catch</h1>
       <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.
-        This goes on the West Africa feed. A photo and the species are enough; add the weight and details to show it off.
+        This goes on the West Africa feed. A photo or video and the species are enough; add the weight and details to show it off.
         ${jhmmc ? 'For JHMMC points the captain still registers the fish at the weigh station.' : ''}</p>
       <form class="card pad stack" id="f">
         <div class="photo-pick">
-          <span class="photo-preview" hidden><img alt=""></span>
-          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Add a photo</span></button>
-          <div class="photo-menu" hidden>
-            <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
-            <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
-          </div>
+          ${raw(MEDIA_PREVIEWS)}
+          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Add a photo or video</span></button>
+          <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
         </div>
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
+        <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
+        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         ${raw(fishFields)}
         <label>Caption <textarea name="notes" maxlength="2000" rows="2" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
+        <details class="more-details">
+          <summary>Place, date and country (optional)</summary>
+          <div class="stack">
         <div class="stack spot">
           <label>Where <input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
           <div class="spot-row">
@@ -921,13 +972,8 @@ const pagesFor = (view) => ({
           <input type="hidden" name="lat"><input type="hidden" name="lng">
           <label class="check" id="spot-share" hidden><input type="checkbox" name="spotPublic"> Show the exact spot to everyone (otherwise only your crew sees it)</label>
         </div>
-        <details class="more-details">
-          <summary>Angler, date and country</summary>
-          <div class="stack">
-            <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
-            <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
             <div class="row">
-              <label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>
+              <label>Date <input name="caughtOn" type="date" max="${today()}" placeholder="Today"></label>
               <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
             </div>
           </div>
@@ -972,36 +1018,12 @@ const pagesFor = (view) => ({
       view.querySelector('#spot-share').hidden = !spot;
       status.textContent = !text ? '' : spot ? `Reads as ${fmtCoords(spot.lat, spot.lng)}` : "Can't read those coordinates yet. Use N/S and E/W, or a comma between the two.";
     });
-    // A photo taken there and then or picked from the phone's photos (Chrome
-    // on newer Android phones shows no camera unless asked, hence two choices).
-    let photo = null;
-    const cta = view.querySelector('[data-act=photo-menu]');
-    const menu = view.querySelector('.photo-menu');
-    cta.addEventListener('click', () => {
-      menu.hidden = !menu.hidden;
-      cta.setAttribute('aria-expanded', String(!menu.hidden));
-    });
-    menu.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-      photo = file;
-      // Show the chosen photo so it's clear it's attached.
-      const preview = view.querySelector('.photo-preview');
-      URL.revokeObjectURL(preview.querySelector('img').src);
-      preview.querySelector('img').src = URL.createObjectURL(file);
-      preview.hidden = false;
-      cta.querySelector('span').textContent = 'Change photo';
-      menu.hidden = true;
-      cta.setAttribute('aria-expanded', 'false');
-    });
+    const media = wireMediaPick(form);
     bindForm(form, async () => {
       const btn = form.querySelector('button[type=submit]');
       btn.textContent = 'Posting…';
       try {
-        const data = new FormData(form);
-        if (photo) data.set('photo', photo);
-        const fd = await preparePhoto(data, 'photo');
+        const fd = await media.addTo(new FormData(form));
         const { catch: c } = await api('/catches', { method: 'POST', form: fd });
         toast('Posted. Tight lines!');
         location.hash = `#/catch/${c.id}`;
@@ -1477,7 +1499,11 @@ const pagesFor = (view) => ({
       <div class="scale-pick">
         <span class="scale-label">Photo on the scale</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
-        <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
+        <video class="scale-video-preview" controls playsinline preload="metadata" hidden></video>
+        <div class="scale-buttons">
+          <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
+          <label class="btn scale-video-button">${raw(icon('video'))} <span>Video (optional)</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
+        </div>
       </div>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
@@ -1540,7 +1566,27 @@ const pagesFor = (view) => ({
     // some phones) open a file picker, so photos older than a few minutes are
     // refused too.
     const scalePhotos = new WeakMap();
+    // A video of the fish on the scale is optional, and also taken there and then.
+    const scaleVideos = new WeakMap();
     list.addEventListener('change', (e) => {
+      if (e.target.matches('[data-scale-video]')) {
+        const row = e.target.closest('.fish');
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        if (Date.now() - file.lastModified > SCALE_PHOTO_MAX_AGE) {
+          toast('Record the video now, with the fish on the scale. Older videos can\'t be used.');
+          return;
+        }
+        if (videoTooBig(file)) return;
+        scaleVideos.set(row, file);
+        const vid = row.querySelector('.scale-video-preview');
+        URL.revokeObjectURL(vid.src);
+        vid.src = URL.createObjectURL(file);
+        vid.hidden = false;
+        row.querySelector('.scale-video-button span').textContent = 'Record again';
+        return;
+      }
       if (e.target.matches('[data-scale]')) {
         const row = e.target.closest('.fish');
         const file = e.target.files[0];
@@ -1594,6 +1640,8 @@ const pagesFor = (view) => ({
         });
         const photo = scalePhotos.get(row);
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
+        const video = scaleVideos.get(row);
+        if (video) fd.set(`scalevideo_${i}`, video);
       }
       fd.set('fish', JSON.stringify(fish));
       const { catches } = await api('/weigh/sheet', { method: 'POST', form: fd });
@@ -1642,6 +1690,7 @@ const pagesFor = (view) => ({
           <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
           <div class="thumbs">
             ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
+            ${c.scaleVideoUrl ? raw(html`<video src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
             ${c.photoUrl ? raw(html`<a href="${c.photoUrl}" target="_blank" rel="noopener"><img src="${c.photoUrl}" alt="Catch photo"></a>`) : ''}
             ${!c.scalePhotoUrl && !c.photoUrl ? raw('<span class="small muted">No photo</span>') : ''}
           </div>
@@ -1916,7 +1965,7 @@ const pagesFor = (view) => ({
         <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
           <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
         <p class="meta"><a href="#/boat/${c.teamId}">${c.teamName}</a> · ${c.angler}${c.weighStation ? ` · ${c.weighStation}` : ''} · registered ${fmtWhen(c.createdAt)}</p>
-        ${c.scalePhotoUrl ? raw(html`<div class="thumbs"><a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a></div>`) : ''}
+        ${c.scalePhotoUrl || c.scaleVideoUrl ? raw(html`<div class="thumbs">${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}${c.scaleVideoUrl ? raw(html`<video src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}</div>`) : ''}
         <p class="small ${c.disputes ? 'dispute-note' : 'muted'}">${c.disputes ? raw(`${icon('flag')} `) : ''}${c.disputes ? `${plural(c.disputes, 'dispute')} so far.` : 'No disputes.'}
           ${c.disputedByMe ? ' You disputed this fish.' : ''}
           ${c.canDispute ? ` Open for disputes until ${until(c.disputeUntil)}.` : ''}</p>
@@ -2590,6 +2639,7 @@ const ICONS = {
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',

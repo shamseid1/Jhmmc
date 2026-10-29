@@ -12,6 +12,11 @@ const { createMailer } = require('./mail');
 const { createPusher } = require('./push');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const VIDEO_TYPES = { 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'video/3gpp': '.3gp' };
+// Photos are shrunk on the phone; videos can't be, so they get more room (about a minute).
+const MAX_VIDEO_MB = 100;
+// Upload fields that carry a video: "video", "scaleVideo", "scalevideo_<n>".
+const isVideoField = (name) => /video/i.test(name);
 // No 0/O or 1/I so codes survive being read out over the radio or WhatsApp.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -64,20 +69,33 @@ function createApp({
 
   const MAX_FISH_PER_SHEET = 30;
   const MAX_EVENT_DAYS = 14;
-  const photoUploads = (files) => multer({
+  // Photos and videos: a field named for a video takes a video, any other a photo.
+  const mediaUploads = (files) => multer({
     storage: multer.diskStorage({
       destination: uploadDir,
       filename: (_req, file, cb) =>
-        cb(null, crypto.randomBytes(12).toString('hex') + PHOTO_TYPES[file.mimetype]),
+        cb(null, crypto.randomBytes(12).toString('hex') + (isVideoField(file.fieldname) ? VIDEO_TYPES : PHOTO_TYPES)[file.mimetype]),
     }),
-    limits: { fileSize: 8 * 1024 * 1024, files },
+    limits: { fileSize: MAX_VIDEO_MB * 1024 * 1024, files },
     fileFilter: (_req, file, cb) => {
-      if (PHOTO_TYPES[file.mimetype]) cb(null, true);
-      else cb(Object.assign(new Error('Photo must be JPEG, PNG or WebP.'), { status: 400 }));
+      if (isVideoField(file.fieldname)) {
+        if (VIDEO_TYPES[file.mimetype]) return cb(null, true);
+        return cb(Object.assign(new Error('Video must be MP4, MOV, WebM or 3GP.'), { status: 400 }));
+      }
+      if (PHOTO_TYPES[file.mimetype]) return cb(null, true);
+      cb(Object.assign(new Error('Photo must be JPEG, PNG or WebP.'), { status: 400 }));
     },
   });
-  const upload = photoUploads(1);
-  const sheetUpload = photoUploads(MAX_FISH_PER_SHEET);
+  const upload = mediaUploads(1);
+  const sheetUpload = mediaUploads(MAX_FISH_PER_SHEET * 2);
+  // A photo plus an optional video, under the given field names.
+  const withVideo = (photo, video) => mediaUploads(2).fields([{ name: photo, maxCount: 1 }, { name: video, maxCount: 1 }]);
+  const filesOf = (req) => Object.values(req.files ?? {}).flat();
+  // Any photo or video in a failed request is thrown away.
+  const discardUploads = (req) => {
+    removeUpload(req.file?.filename);
+    for (const f of Array.isArray(req.files) ? req.files : filesOf(req)) removeUpload(f.filename);
+  };
 
   const app = express();
   app.disable('x-powered-by');
@@ -757,7 +775,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const CATCH_SELECT = `
     SELECT k.id, k.weight_kg AS weightKg, k.length_cm AS lengthCm, k.released, k.tagged,
       k.caught_on AS caughtOn, k.country, k.location, k.line_class AS lineClass,
-      k.notes, k.photo, k.created_at AS createdAt, k.logged_by AS loggedBy,
+      k.notes, k.photo, k.video, k.scale_video AS scaleVideo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       k.lat, k.lng, k.spot_public AS spotPublic,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
       t.division,
@@ -810,7 +828,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       tagged: !!row.tagged,
       liked: !!row.liked,
       photoUrl: photoUrl(row.photo),
+      videoUrl: photoUrl(row.video),
       scalePhotoUrl: photoUrl(row.scalePhoto),
+      scaleVideoUrl: photoUrl(row.scaleVideo),
       canDelete: canDelete(row, viewer),
       worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
     };
@@ -855,7 +875,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Checks one catch for a boat and returns the values to save, or an error.
   // Crews post their own boat's catches; a JHMMC captain registers their own
   // boat's fish for points, and the secretary any JHMMC boat's.
-  function checkCatch(user, b, file, { teamId, official }) {
+  // media: { photo, video } (uploaded files, either may be missing).
+  function checkCatch(user, b, { photo: file, video } = {}, { teamId, official }) {
     const team = db.prepare('SELECT club_id, country, captain_id, weigh_station FROM teams WHERE id = ?').get(teamId);
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
@@ -878,7 +899,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const lengthCm = num(b.lengthCm);
     if (Number.isNaN(weightKg) || Number.isNaN(lengthCm)) return { error: 'Weight and length must be positive numbers.' };
     if (weightKg !== null && weightKg > 1500) return { error: 'Weight looks too large — enter it in kilograms.' };
-    const caughtOn = str(b.caughtOn, 10);
+    // A post's date is optional: today unless said otherwise.
+    const caughtOn = str(b.caughtOn, 10) || (official ? null : new Date().toISOString().slice(0, 10));
     if (!caughtOn || !/^\d{4}-\d{2}-\d{2}$/.test(caughtOn) || Number.isNaN(Date.parse(caughtOn))) {
       return { error: 'Enter the date of the catch.' };
     }
@@ -916,7 +938,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
         official ? null : file?.filename ?? null, official ? 'pending_review' : 'unofficial', station,
         weighed ? user.id : null, weighed ? new Date().toISOString() : null, official ? file?.filename ?? null : null,
-        lat, lng, bool(b.spotPublic),
+        lat, lng, bool(b.spotPublic), official ? null : video?.filename ?? null, official ? video?.filename ?? null : null,
       ],
     };
   }
@@ -924,15 +946,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const insertCatchRow = (values) => Number(db.prepare(`
     INSERT INTO catches (user_id, angler_name, logged_by, team_id, club_id, species_id, weight_kg, length_cm, released, tagged,
       caught_on, country, location, line_class, notes, photo, status, weigh_station, weighed_by, weighed_at, scale_photo,
-      lat, lng, spot_public)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      lat, lng, spot_public, video, scale_video)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(...values).lastInsertRowid);
 
   function insertCatch(req, res, opts) {
     const problem = opts.official && sheetProblem(req.user, req.body);
-    const checked = problem ? { error: problem } : checkCatch(req.user, req.body, req.file, opts);
+    const [photoField, videoField] = opts.official ? ['scalePhoto', 'scaleVideo'] : ['photo', 'video'];
+    const media = { photo: req.files?.[photoField]?.[0], video: req.files?.[videoField]?.[0] };
+    const checked = problem ? { error: problem } : checkCatch(req.user, req.body, media, opts);
     if (checked.error) {
-      removeUpload(req.file?.filename);
+      discardUploads(req);
       return res.status(400).json({ error: checked.error });
     }
     const id = insertCatchRow(checked.values);
@@ -953,7 +977,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     return db.prepare(`
       SELECT k.team_id AS teamId, t.name AS boat, s.name AS species, COALESCE(u.name, k.angler_name) AS angler,
         k.weight_kg AS weightKg, k.released, k.line_class AS lineClass, k.caught_on AS caughtOn,
-        k.weigh_station AS station, k.points, k.status, k.scale_photo AS scalePhoto
+        k.weigh_station AS station, k.points, k.status, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id
       LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?
     `).get(id);
@@ -998,7 +1022,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.post('/catches', (req, res, next) => {
     if (!req.user.teamId) return res.status(403).json({ error: 'Join or register a boat to post catches.' });
     next();
-  }, upload.single('photo'), (req, res) => {
+  }, withVideo('photo', 'video'), (req, res) => {
     insertCatch(req, res, { teamId: req.user.teamId, official: false });
   });
 
@@ -1025,17 +1049,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   }
 
   // Captain (or secretary): register a fish for a JHMMC boat (the digital Fish Registration Form).
-  api.post('/weigh', requireWeigh, upload.single('scalePhoto'), (req, res) => {
+  api.post('/weigh', requireWeigh, withVideo('scalePhoto', 'scaleVideo'), (req, res) => {
     const teamId = intId(req.body.teamId);
     if (!teamId) {
-      removeUpload(req.file?.filename);
+      discardUploads(req);
       return res.status(400).json({ error: 'Choose the boat.' });
     }
     insertCatch(req, res, { teamId, official: true });
   });
 
   // Captain (or secretary): a whole boat's fish in one submission, like one paper form.
-  // Each fish's scale photo arrives as file field "scale_<n>". All or nothing:
+  // Each fish's scale photo arrives as file field "scale_<n>", and an optional
+  // video of it on the scale as "scalevideo_<n>". All or nothing:
   // if any fish is wrong, none are saved and the error names the fish.
   api.post('/weigh/sheet', requireWeigh, sheetUpload.any(), (req, res) => {
     const files = req.files ?? [];
@@ -1057,8 +1082,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (fish.length > MAX_FISH_PER_SHEET) return fail(`At most ${MAX_FISH_PER_SHEET} fish at a time.`);
     const rows = [];
     for (const [i, f] of fish.entries()) {
-      const file = files.find((x) => x.fieldname === `scale_${i}`);
-      const checked = checkCatch(req.user, { ...f, caughtOn: req.body.caughtOn, weighStation: req.body.weighStation }, file,
+      const media = { photo: files.find((x) => x.fieldname === `scale_${i}`), video: files.find((x) => x.fieldname === `scalevideo_${i}`) };
+      const checked = checkCatch(req.user, { ...f, caughtOn: req.body.caughtOn, weighStation: req.body.weighStation }, media,
         { teamId, official: true });
       if (checked.error) return fail(`Fish ${i + 1}: ${checked.error}`);
       rows.push(checked.values);
@@ -1150,9 +1175,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       fish: fish.map(({ catchId }) => {
         const steps = events.all(catchId).map(({ details, ...e }) => ({ ...e, ...JSON.parse(details) }));
         // The fish as it now stands comes from its latest event.
-        const { scalePhoto, note, ...now } = steps.at(-1);
+        const { scalePhoto, scaleVideo, note, ...now } = steps.at(-1);
         return {
-          catchId, ...now, status: now.action, scalePhotoUrl: photoUrl(scalePhoto),
+          catchId, ...now, status: now.action, scalePhotoUrl: photoUrl(scalePhoto), scaleVideoUrl: photoUrl(scaleVideo ?? null),
           steps: steps.map((e) => ({ action: e.action, userName: e.userName, createdAt: e.createdAt, lat: e.lat, lng: e.lng, note: e.note ?? null })),
         };
       }),
@@ -1554,8 +1579,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       logRegistration(id, item.loggedBy === req.user.id && !canReview(req.user) ? 'withdrawn' : 'deleted', req.user);
     }
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
-    // A registration's scale photo stays as evidence in the record.
+    // A registration's scale photo and video stay as evidence in the record.
     removeUpload(item.photo);
+    removeUpload(item.video);
     res.json({ ok: true });
   });
 
@@ -1604,7 +1630,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const isClubMember = (u) => !!u && (!!u.jhmmc || isAdminUser(u));
   const requireMember = (req, res, next) => (isClubMember(req.user) ? next()
     : res.status(req.user ? 403 : 401).json({ error: 'The JHMMC feed is for JHMMC members.' }));
-  const clubPostById = (id) => db.prepare('SELECT id, user_id AS userId, photo FROM club_posts WHERE id = ?').get(id ?? 0);
+  const clubPostById = (id) => db.prepare('SELECT id, user_id AS userId, photo, video FROM club_posts WHERE id = ?').get(id ?? 0);
   const canRemoveClubPost = (u, authorId) => authorId === u.id || isAdminUser(u);
 
   api.get('/club-feed', requireMember, (req, res) => {
@@ -1629,7 +1655,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const more = rows.length > PAGE;
     const page = rows.slice(0, PAGE);
     const post = db.prepare(`
-      SELECT p.id, p.body, p.photo, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
+      SELECT p.id, p.body, p.photo, p.video, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
         s.name AS species, u.id AS userId, ${SHOWN} AS author, u.photo AS authorPhoto, t.name AS teamName,
         (SELECT COUNT(*) FROM club_post_likes l WHERE l.post_id = p.id) AS likes,
         EXISTS (SELECT 1 FROM club_post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
@@ -1639,7 +1665,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       FROM club_post_comments c JOIN users u ON u.id = c.user_id WHERE c.post_id = ? ORDER BY c.id`);
     const fish = db.prepare(`
       SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.caught_on AS caughtOn,
-        datetime(k.reviewed_at) AS createdAt, COALESCE(k.photo, k.scale_photo) AS photo,
+        datetime(k.reviewed_at) AS createdAt, COALESCE(k.photo, k.scale_photo) AS photo, COALESCE(k.video, k.scale_video) AS video,
         u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
         (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
         (SELECT COUNT(*) FROM comments c WHERE c.catch_id = k.id) AS comments
@@ -1647,12 +1673,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       LEFT JOIN teams t ON t.id = k.team_id WHERE k.id = ?`);
     const items = page.map((r) => {
       if (r.kind === 'verified') {
-        const { photo, ...f } = fish.get(r.id);
-        return { kind: 'verified', ...f, released: !!f.released, photoUrl: photoUrl(photo) };
+        const { photo, video, ...f } = fish.get(r.id);
+        return { kind: 'verified', ...f, released: !!f.released, photoUrl: photoUrl(photo), videoUrl: photoUrl(video) };
       }
-      const { photo, authorPhoto, ...p } = post.get(req.user.id, r.id);
+      const { photo, video, authorPhoto, ...p } = post.get(req.user.id, r.id);
       return {
-        kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), authorPhotoUrl: photoUrl(authorPhoto),
+        kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), videoUrl: photoUrl(video),
+        authorPhotoUrl: photoUrl(authorPhoto),
         canDelete: canRemoveClubPost(req.user, p.userId),
         comments: comments.all(r.id).map((c) => ({ ...c, canDelete: canRemoveClubPost(req.user, c.userId) })),
       };
@@ -1661,9 +1688,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ items, nextBefore: more ? `${last.ts}|${last.key}` : null });
   });
 
-  api.post('/club-feed', requireMember, upload.single('photo'), (req, res) => {
+  api.post('/club-feed', requireMember, withVideo('photo', 'video'), (req, res) => {
+    const photo = req.files?.photo?.[0];
+    const video = req.files?.video?.[0];
     const fail = (status, error) => {
-      removeUpload(req.file?.filename);
+      discardUploads(req);
       res.status(status).json({ error });
     };
     const body = str(req.body.body, 2000);
@@ -1672,9 +1701,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const released = req.body.released === 'true' || req.body.released === 'on';
     const weight = req.body.weightKg ? Number(req.body.weightKg) : null;
     if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
-    if (!body && !req.file && !speciesId) return fail(400, 'Write something, add a photo or a fish.');
-    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, species_id, weight_kg, released)
-      VALUES (?, ?, ?, ?, ?, ?)`).run(req.user.id, body, req.file?.filename ?? null, speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0);
+    if (!body && !photo && !video && !speciesId) return fail(400, 'Write something, add a photo, a video or a fish.');
+    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,
+      speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0);
     res.status(201).json({ id: Number(lastInsertRowid) });
   });
 
@@ -1684,6 +1714,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!canRemoveClubPost(req.user, p.userId)) return res.status(403).json({ error: 'Only whoever posted it or the club admin can remove a post.' });
     db.prepare('DELETE FROM club_posts WHERE id = ?').run(p.id);
     removeUpload(p.photo);
+    removeUpload(p.video);
     res.json({ ok: true });
   });
 
@@ -1870,7 +1901,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   app.get('/{*path}', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
   app.use((err, req, res, _next) => {
-    removeUpload(req.file?.filename);
+    discardUploads(req);
     const status = err.status || (err instanceof multer.MulterError ? 400 : 500);
     if (status === 500) console.error(err);
     res.status(status).json({
