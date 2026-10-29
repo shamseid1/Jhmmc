@@ -465,6 +465,33 @@ async function renderFeed(container, query = {}) {
 
 // ---- the JHMMC feed (members only) -----------------------------------------
 
+// A tap anywhere else closes the feed picker.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.feed-pick')) return;
+  for (const menu of document.querySelectorAll('.feed-pick-menu:not([hidden])')) {
+    menu.hidden = true;
+    menu.parentElement.querySelector('.feed-pick-btn')?.setAttribute('aria-expanded', 'false');
+  }
+});
+
+// Which feed a JHMMC member last chose ('club' or 'wa'); kept on this phone only.
+const FEED_KEY = 'jhmmc-feed';
+const feedPref = () => {
+  try {
+    return localStorage.getItem(FEED_KEY) === 'wa' ? 'wa' : 'club';
+  } catch {
+    return 'club';
+  }
+};
+const setFeedPref = (which) => {
+  try {
+    localStorage.setItem(FEED_KEY, which);
+  } catch {
+    // Private browsing: the choice just isn't remembered.
+  }
+};
+const FEED_NAMES = { club: 'JHMMC', wa: 'West Africa' };
+
 // The club feed's filters, as they appear in the address (#/?show=verified&boat=3).
 const CLUB_FILTERS = ['show', 'boat'];
 const CLUB_SHOW = [['verified', 'Approved catches'], ['fish', 'All fish'], ['photos', 'Photos'], ['posts', "Members' posts"]];
@@ -753,12 +780,32 @@ const pagesFor = (view) => ({
     // JHMMC members have two feeds: the club's own (members only) and West Africa's.
     const member = !!state.me?.jhmmc;
     const { feed: which, ...rest } = filters;
-    const club = member && which !== 'wa' && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
-    const feedTabs = member ? `<div class="seg" role="tablist">
-      <a role="tab" href="#/" aria-selected="${club}">JHMMC</a>
-      <a role="tab" href="#/?feed=wa" aria-selected="${!club}">West Africa</a></div>` : '';
+    if (member && FEED_NAMES[which]) setFeedPref(which);
+    const club = member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')
+      && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
+    // One button names the feed you're on; it opens the choice of the two.
+    const feedTabs = member ? `<div class="feed-pick">
+      <button type="button" class="feed-pick-btn" aria-expanded="false" aria-haspopup="true">
+        <span class="feed-pick-label">${club ? 'JHMMC feed' : 'West Africa feed'}</span> ${icon('chevron', 'icon small')}</button>
+      <div class="card menu feed-pick-menu" hidden>
+        <a class="menu-item" href="#/?feed=club" aria-current="${club}"><span class="mi-text"><b>JHMMC</b><span>Members only: the club's day on the water</span></span>${club ? '<span class="mi-go">✓</span>' : ''}</a>
+        <a class="menu-item" href="#/?feed=wa" aria-current="${!club}"><span class="mi-text"><b>West Africa</b><span>Everyone's catches: show off a fish</span></span>${club ? '' : '<span class="mi-go">✓</span>'}</a>
+      </div></div>` : '';
+    const wirePick = () => {
+      const btn = view.querySelector('.feed-pick-btn');
+      if (!btn) return;
+      const menu = view.querySelector('.feed-pick-menu');
+      const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+        btn.setAttribute('aria-expanded', String(!menu.hidden));
+      });
+      menu.addEventListener('click', close);
+    };
     if (club) {
       view.innerHTML = feedTabs;
+      wirePick();
       return clubFeed(view, rest);
     }
     delete filters.feed;
@@ -796,6 +843,7 @@ const pagesFor = (view) => ({
       </form>
       ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
       <div id="feed"></div>`;
+    wirePick();
     // All the filters sit behind one Filter button; they apply together.
     const panel = view.querySelector('#filter-panel');
     const toggle = view.querySelector('.filter-toggle');
@@ -1787,6 +1835,8 @@ const pagesFor = (view) => ({
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
+        ${me.jhmmc ? item(`#/?feed=${feedPref() === 'club' ? 'wa' : 'club'}`, 'feed', `Switch to the ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']} feed`,
+          `You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.`) : ''}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
@@ -2562,6 +2612,7 @@ const ICONS = {
   eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
@@ -2697,9 +2748,13 @@ function renderNav(active = state.navActive) {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
     rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
+  // Signed in, More shows your photo (or initials), like a profile tab.
+  const me = state.me;
+  const avatar = me && (me.photoUrl ? `<img class="nav-avatar" src="${esc(me.photoUrl)}" alt="">`
+    : `<span class="nav-avatar initials">${esc(((me.firstName || me.name)[0] + (me.lastName?.[0] || '')).toUpperCase())}</span>`);
   document.getElementById('nav').innerHTML = links
-    .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
-      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>${key === 'more' && state.pending
+    .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}${key === 'more' ? ' data-nav="more"' : ''}>
+      <span class="nav-icon">${key === 'more' && avatar ? avatar : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
 }
@@ -2721,6 +2776,22 @@ async function route() {
     view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;
   }
 }
+
+// Like Instagram's profile tab: a JHMMC member double-taps More to switch feeds.
+let lastMoreTap = 0;
+document.getElementById('nav').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-nav=more]') || !state.me?.jhmmc) return;
+  const now = Date.now();
+  if (now - lastMoreTap < 400) {
+    e.preventDefault();
+    lastMoreTap = 0;
+    const next = feedPref() === 'club' ? 'wa' : 'club';
+    location.hash = `#/?feed=${next}`;
+    toast(`${FEED_NAMES[next]} feed`);
+    return;
+  }
+  lastMoreTap = now;
+});
 
 // "Sign in" links inside a page come back to that page afterwards.
 document.addEventListener('click', (e) => {

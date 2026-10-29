@@ -580,3 +580,17 @@ button.link[hidden] { display: none; }
 .club-reply input { flex: 1; min-width: 0; }
 .icon.tiny { width: 13px; height: 13px; vertical-align: -2px; }
 .club-item .pad + .pad { padding-top: 0; }
+
+/* Which feed: a button that opens the two choices. */
+.feed-pick { position: relative; margin-bottom: 12px; }
+.feed-pick-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 800; padding: 8px 16px; }
+.feed-pick-btn .icon { width: 18px; height: 18px; transition: transform .15s; }
+.feed-pick-btn[aria-expanded="true"] .icon { transform: rotate(180deg); }
+.feed-pick-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: min(340px, 100%); margin: 0; }
+.feed-pick-menu[hidden] { display: none; }
+.feed-pick-menu .menu-item[aria-current="true"] b { color: var(--accent); }
+.feed-pick-menu .mi-go { color: var(--accent); font-weight: 800; }
+
+/* More as a profile tab: your photo or initials. */
+.nav-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; box-shadow: 0 0 0 1.5px currentColor; }
+.nav-avatar.initials { display: grid; place-items: center; font-size: 10px; font-weight: 800; letter-spacing: .02em; background: var(--surface-2); }
