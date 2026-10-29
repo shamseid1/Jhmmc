@@ -248,7 +248,17 @@ function addSatellite(L, map) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
   L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
   L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
+  // Places the club wants on every map.
+  for (const p of MAP_PLACES) {
+    L.circleMarker([p.lat, p.lng], { radius: 5, weight: 2, color: '#ffffff', fillColor: '#f5a524', fillOpacity: 1 })
+      .bindTooltip(p.name, { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] })
+      .addTo(map);
+  }
 }
+// Each with its name and position.
+const MAP_PLACES = [
+  { name: 'Marshall', lat: 6.15, lng: -10.3833 },
+];
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
 async function drawSpotMaps(root) {
