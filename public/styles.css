@@ -593,7 +593,9 @@ button.link[hidden] { display: none; }
 
 /* JHMMC, a club inside the platform: its logo on its own pages. */
 .club-logo { display: block; width: 120px; height: auto; margin: 4px 0 8px; }
-.club-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--text); text-decoration: none; }
-.club-head img { width: 52px; height: auto; flex: none; }
-.club-head > span { display: flex; flex-direction: column; line-height: 1.25; }
-.club-head b { font-size: 18px; }
+
+/* On the JHMMC side: a small JHMMC tag in the header, on every page. */
+.club-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 4px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 800; text-decoration: none; flex: none; }
+.club-chip[hidden] { display: none; }
+.club-chip img { width: 22px; height: auto; }

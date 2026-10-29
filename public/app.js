@@ -482,6 +482,10 @@ const setFeedPref = (which) => {
   }
 };
 const FEED_NAMES = { club: 'JHMMC', wa: 'West Africa' };
+// On the JHMMC side, a small JHMMC tag sits in the header on every page.
+const syncClubChip = () => {
+  document.getElementById('club-chip').hidden = !(state.me?.jhmmc && feedPref() === 'club');
+};
 
 // The club feed's filters, as they appear in the address (#/?show=verified&boat=3).
 const CLUB_FILTERS = ['show', 'boat'];
@@ -538,10 +542,7 @@ async function clubFeed(view, filters = {}) {
     return `#/${p.size ? `?${p}` : ''}`;
   };
   const box = document.createElement('div');
-  box.innerHTML = html`<a class="club-head" href="#/club/${state.meta.homeClubId}">
-      <img src="/jhmmc-logo.png" alt="" width="345" height="294">
-      <span><b>JHMMC</b><span class="small muted">Members' feed</span></span></a>
-    <div class="filter-bar">
+  box.innerHTML = html`<div class="filter-bar">
       <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="club-filter">
         ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
       ${active.map((k) => raw(html`<span class="chip">${label[k](filters[k])} <a href="${without(k)}" aria-label="Remove ${label[k](filters[k])}">✕</a></span>`))}
@@ -774,7 +775,10 @@ const pagesFor = (view) => ({
     // JHMMC members have two feeds: the club's own (members only) and West Africa's.
     const member = !!state.me?.jhmmc;
     const { feed: which, ...rest } = filters;
-    if (member && FEED_NAMES[which]) setFeedPref(which);
+    if (member && FEED_NAMES[which]) {
+      setFeedPref(which);
+      syncClubChip();
+    }
     const club = member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')
       && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
     if (club) {
@@ -2709,6 +2713,7 @@ async function renderNotify(el) {
 
 function renderNav(active = state.navActive) {
   state.navActive = active;
+  syncClubChip();
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
