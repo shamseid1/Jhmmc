@@ -2808,7 +2808,7 @@ async function route() {
 }
 
 // Dark (the default) or light, for bright sun; remembered on this phone. Switched on More.
-const THEME_COLORS = { dark: '#1d1e21', light: '#f1f6fa' };
+const THEME_COLORS = { dark: '#1d1e21', light: '#f3f8fc' };
 const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';

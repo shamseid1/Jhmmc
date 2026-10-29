@@ -22,25 +22,33 @@
 
 /* Light theme, for reading in bright sun: white cards, near-black text, deeper blue. */
 :root[data-theme="light"] {
-  /* Light: a soft pale-blue page with tinted-white cards floating on it. */
+  /* Light: a pale aqua-blue page, see-through white cards floating on it,
+     deep navy text and bright blue icons. */
   color-scheme: light;
-  --bg: #f4f8fb;
-  --surface: #ffffff;
-  --surface-2: #edf3f9;
-  --text: #0e1626;
-  --muted: #4f5b6d;
-  --line: #e2e9f1;
-  --brand: #ffffff;
-  --accent: #2f6fd6;
+  --bg: #f3f8fc;
+  --surface: rgba(255, 255, 255, .62);
+  --surface-2: rgba(226, 238, 252, .9);
+  --text: #1a242e;
+  --muted: #4e5f73;
+  --line: #e3eaef;
+  --brand: #f3f8fc;
+  --accent: #2f7cf6;
   --accent-ink: #ffffff;
-  --accent-soft: #dfeafb;
+  --accent-soft: #e2eefc;
   --good: #11804f;
   --danger: #c62828;
-  --nav-bg: rgba(255, 255, 255, .97);
+  --nav-bg: rgba(246, 248, 250, .97);
   --field: #ffffff;
-  --shadow: 0 1px 2px rgba(25, 55, 95, .05), 0 4px 14px rgba(25, 55, 95, .07);
+  --shadow: 0 1px 2px rgba(30, 70, 110, .04), 0 6px 18px rgba(30, 70, 110, .06);
 }
-:root[data-theme="light"] body { background: linear-gradient(180deg, #f1f6fa 0%, #fafcfe 60%, #f5f8fb 100%) fixed; }
+:root[data-theme="light"] body {
+  background: linear-gradient(180deg, #f3f8fc 0%, #eaf5f9 45%, #e5f2f8 100%) fixed;
+  font-family: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-theme="light"] .mi-icon { color: #4e99ff; }
+:root[data-theme="light"] h1, :root[data-theme="light"] .menu-item b { font-weight: 700; }
+/* Menus that open over the page stay solid. */
+:root[data-theme="light"] .theme-menu, :root[data-theme="light"] .filter-panel { background: #ffffff; }
 :root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
 
 * { box-sizing: border-box; }
