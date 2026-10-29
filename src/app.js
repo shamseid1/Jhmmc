@@ -109,6 +109,16 @@ function createApp({
   });
   app.use(auth.sessionMiddleware(db));
   app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
+  // Samsung Internet packages installed sites as an old-style Android app that
+  // Google Play Protect now blocks. Told the site isn't a standalone app, it adds
+  // a plain home-screen icon instead (which opens in Samsung Internet).
+  const manifestFile = path.join(__dirname, '..', 'public', 'manifest.webmanifest');
+  app.get('/manifest.webmanifest', (req, res) => {
+    res.set({ 'Cache-Control': 'no-cache', Vary: 'User-Agent', 'Content-Type': 'application/manifest+json' });
+    const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    if (/SamsungBrowser/.test(req.get('user-agent') || '')) manifest.display = 'browser';
+    res.send(JSON.stringify(manifest));
+  });
   // The app's own files: browsers check for a newer version each time (a quick
   // "not modified" when nothing changed), so an update shows up straight away.
   const fresh = { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') };

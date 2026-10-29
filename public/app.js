@@ -1868,19 +1868,17 @@ const pagesFor = (view) => ({
         'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.',
         'Open <b>Big Game</b> from your home screen (notifications only work there).']
       : samsung
-        ? ['Tap <b>Open in Chrome</b> above (Samsung Internet\'s own install is blocked by Google Play Protect on newer phones).',
-          'In Chrome, tap the <b>menu</b> (⋮) at the top right, then <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.']
+        ? ['Tap the <b>menu</b> (☰) at the bottom right.', 'Tap <b>Add page to</b>, then <b>Home screen</b>.',
+          'Tap <b>Add</b>. The Big Game icon appears on your home screen and opens the app in Samsung Internet.']
         : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="install-head"><img src="/icon-192.png" alt="" width="72" height="72"><div><h1>Install the app</h1>
         <p class="muted">West Africa Big Game on your home screen: it opens full screen like any other app, even without signal (catches and points load when there's a connection).</p></div></div>
       ${isInstalled() ? raw('<div class="card pad"><p style="margin:0">It\'s installed: you\'re using the app now.</p></div>') : raw(html`
-      ${samsung ? raw(html`<div class="card pad stack">
-        <a class="btn primary install-chrome" href="intent://${location.host}/#Intent;scheme=https;package=com.android.chrome;end">${raw(icon('download'))} Open in Chrome</a>
-      </div>`) : raw(html`<div class="card pad stack" data-install-ready ${installPrompt ? '' : raw('hidden')}>
+      ${samsung ? '' : raw(html`<div class="card pad stack" data-install-ready ${installPrompt ? '' : raw('hidden')}>
         <button type="button" class="primary" id="install-now">${raw(icon('download'))} Install now</button>
       </div>`)}
-      <h2>${installPrompt || samsung ? 'Or, step by step' : 'Step by step'}</h2>
+      <h2>${installPrompt && !samsung ? 'Or, step by step' : 'Step by step'}</h2>
       <ol class="card pad install-steps">${steps.map((t) => raw(`<li>${t}</li>`))}</ol>`)}`;
     view.querySelector('#install-now')?.addEventListener('click', async () => {
       if (!installPrompt) return;
@@ -2949,7 +2947,8 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // The Install button on More: the browser's own install where it offers one,
 // otherwise the steps for this phone.
 // Samsung Internet's own install is blocked by Google Play Protect on newer
-// Android ("built for an older version of Android"), so it's sent to Chrome.
+// Android ("built for an older version of Android"); there the app is added as a
+// home-screen icon instead (see the manifest route on the server).
 const isSamsungBrowser = () => /SamsungBrowser/.test(navigator.userAgent);
 async function installApp() {
   if (!installPrompt || isSamsungBrowser()) {
