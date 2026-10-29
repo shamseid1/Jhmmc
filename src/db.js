@@ -285,6 +285,32 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- The JHMMC feed: members only. A post is a message, a photo, a fish, or any mix.
+CREATE TABLE IF NOT EXISTS club_posts (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT,
+  photo TEXT,
+  species_id INTEGER REFERENCES species(id),
+  weight_kg REAL,
+  released INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS club_posts_created ON club_posts(created_at DESC, id DESC);
+CREATE TABLE IF NOT EXISTS club_post_likes (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id INTEGER NOT NULL REFERENCES club_posts(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, post_id)
+);
+CREATE TABLE IF NOT EXISTS club_post_comments (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES club_posts(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS club_post_comments_post ON club_post_comments(post_id, id);
+
 CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY,
   catch_id INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,

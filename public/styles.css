@@ -559,3 +559,24 @@ button.link[hidden] { display: none; }
 
 /* A person's full name under their nickname, on their profile. */
 .full-name { margin: -0.5rem 0 0.25rem; font-weight: 600; }
+
+/* ---- the JHMMC feed ---- */
+.composer textarea { min-height: 64px; }
+.composer-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.composer-tools .photo-cta { padding: 10px; border: 1px solid var(--line); border-radius: 999px; }
+.composer-tools button[data-act=add-fish] { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.composer-tools button[aria-expanded="true"], .composer-tools .photo-cta[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.fish-fields[hidden] { display: none; }
+.fish-fields .check { align-self: end; padding-bottom: 12px; }
+.club-item .pad + .catch-photo, .club-item > .catch-photo { display: block; }
+.club-who { margin: 0 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.club-who .link { margin-left: auto; }
+.club-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.club-fish { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.club-item .pad:empty { display: none; }
+.club-comments .comment { padding: 6px 0; font-size: 14px; }
+.club-comments .comment .link { margin-left: 6px; }
+.club-reply { display: flex; gap: 8px; margin-top: 8px; }
+.club-reply input { flex: 1; min-width: 0; }
+.icon.tiny { width: 13px; height: 13px; vertical-align: -2px; }
+.club-item .pad + .pad { padding-top: 0; }

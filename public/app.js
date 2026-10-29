@@ -463,6 +463,181 @@ async function renderFeed(container, query = {}) {
   await page();
 }
 
+// ---- the JHMMC feed (members only) -----------------------------------------
+
+function clubComment(postId, m) {
+  return html`<div class="comment" data-cid="${m.id}">
+    <a href="#/user/${m.userId}"><b>${m.author}</b></a> ${m.body}
+    ${m.canDelete ? raw('<button type="button" data-act="del-comment" class="link danger small">Remove</button>') : ''}</div>`;
+}
+
+function clubItem(i) {
+  const photo = i.photoUrl ? html`<img class="catch-photo" src="${i.photoUrl}" alt="" loading="lazy">` : '';
+  if (i.kind === 'verified') {
+    return html`<article class="card club-item verified">
+      ${i.photoUrl ? raw(html`<a href="#/catch/${i.id}">${raw(photo)}</a>`) : ''}
+      <div class="pad">
+        <p class="club-who"><span class="badge status ok">${raw(icon('check', 'icon tiny'))} Verified</span> <span class="muted small">${fmtWhen(i.createdAt)}</span></p>
+        <h3 class="catch-title"><a href="#/catch/${i.id}">${i.species}</a>${i.released ? ' released' : ''}
+          ${i.weightKg ? raw(html` <span class="weight">${fmtWeight(i.weightKg)}</span>`) : ''}</h3>
+        <p class="meta"><a href="${anglerHref(i.userId, i.angler)}">${i.angler}</a>${i.teamName ? raw(html` · <a href="#/boat/${i.teamId}">${i.teamName}</a>`) : ''}
+          · <b>${fmtPoints(i.points)}</b></p>
+        <div class="actions"><a class="btn" href="#/catch/${i.id}">${raw(icon('heart'))} ${i.likes} · ${raw(icon('comment'))} ${i.comments}</a></div>
+      </div></article>`;
+  }
+  return html`<article class="card club-item" data-post="${i.id}">
+    <div class="pad">
+      <p class="club-who"><a href="#/user/${i.userId}"><b>${i.author}</b></a>${i.teamName ? raw(html` <span class="muted small">· ${i.teamName}</span>`) : ''}
+        <span class="muted small">· ${fmtWhen(i.createdAt)}</span>
+        ${i.canDelete ? raw('<button type="button" data-act="del-post" class="link danger small">Remove</button>') : ''}</p>
+      ${i.body ? raw(html`<p class="club-body">${i.body}</p>`) : ''}
+    </div>
+    ${raw(photo)}
+    <div class="pad">
+      ${i.species ? raw(html`<p class="club-fish">${raw(icon('fish'))} <b>${i.species}</b>${i.weightKg ? ` · ${fmtWeight(i.weightKg)}` : ''}${i.released ? raw(' <span class="badge release">Released</span>') : ''}</p>`) : ''}
+      <div class="actions">
+        <button type="button" data-act="like" class="${i.liked ? 'liked' : ''}" aria-pressed="${i.liked}" aria-label="Like">${raw(icon('heart'))} <span>${i.likes}</span></button>
+      </div>
+      <div class="club-comments">${raw(i.comments.map((m) => clubComment(i.id, m)).join(''))}</div>
+      <form class="club-reply"><input name="body" maxlength="1000" placeholder="Reply…" autocomplete="off" required><button type="submit">Send</button></form>
+    </div></article>`;
+}
+
+async function clubFeed(view) {
+  const box = document.createElement('div');
+  box.innerHTML = html`<form class="card pad stack composer" id="club-post">
+      <textarea name="body" rows="2" maxlength="2000" placeholder="What's happening on the water?"></textarea>
+      <div class="photo-pick">
+        <span class="photo-preview" hidden><img alt=""></span>
+        <div class="composer-tools">
+          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Photo</span></button>
+          <button type="button" data-act="add-fish" aria-expanded="false">${raw(icon('fish'))} Fish</button>
+        </div>
+        <div class="photo-menu" hidden>
+          <label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
+          <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
+        </div>
+      </div>
+      <div class="stack fish-fields" hidden>
+        <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Choose species…'))}</select></label>
+        <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional"></label>
+          <label class="check"><input type="checkbox" name="released" value="true"> Released</label></div>
+      </div>
+      <p class="error"></p>
+      <div><button type="submit" class="primary">Post</button></div>
+    </form>
+    <p class="small muted center">Only JHMMC members see this feed. Fish the secretary approves appear here too.</p>
+    <div class="feed" id="club-items"></div>
+    <button class="more" hidden>Load more</button>`;
+  view.append(...box.childNodes);
+  const form = view.querySelector('#club-post');
+  const list = view.querySelector('#club-items');
+  const moreBtn = view.querySelector('button.more');
+  const items = new Map();
+  let before = null;
+
+  // Photo: taken now or chosen from the phone.
+  let photo = null;
+  const cta = form.querySelector('[data-act=photo-menu]');
+  const menu = form.querySelector('.photo-menu');
+  const preview = form.querySelector('.photo-preview');
+  cta.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    cta.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  menu.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    photo = file;
+    URL.revokeObjectURL(preview.querySelector('img').src);
+    preview.querySelector('img').src = URL.createObjectURL(file);
+    preview.hidden = false;
+    menu.hidden = true;
+    cta.setAttribute('aria-expanded', 'false');
+  });
+  const fishBtn = form.querySelector('[data-act=add-fish]');
+  const fishFields = form.querySelector('.fish-fields');
+  fishBtn.addEventListener('click', () => {
+    fishFields.hidden = !fishFields.hidden;
+    fishBtn.setAttribute('aria-expanded', String(!fishFields.hidden));
+    if (fishFields.hidden) fishFields.querySelectorAll('select, input[type=number]').forEach((el) => { el.value = ''; });
+  });
+
+  async function page(reset) {
+    if (reset) {
+      before = null;
+      items.clear();
+      list.innerHTML = '';
+    }
+    const q = before ? `?before=${encodeURIComponent(before)}` : '';
+    const { items: got, nextBefore } = await api('/club-feed' + q);
+    for (const i of got) if (i.kind === 'post') items.set(String(i.id), i);
+    list.insertAdjacentHTML('beforeend', got.map(clubItem).join(''));
+    before = nextBefore;
+    moreBtn.hidden = !nextBefore;
+    if (!list.children.length) list.innerHTML = '<div class="card pad empty">Nothing yet today. Say hello to the club!</div>';
+  }
+  moreBtn.addEventListener('click', () => page());
+
+  bindForm(form, async () => {
+    const fd = new FormData(form);
+    if (photo) fd.set('photo', photo);
+    if (fishFields.hidden) ['speciesId', 'weightKg', 'released'].forEach((k) => fd.delete(k));
+    if (!fd.get('body')?.trim() && !photo && !fd.get('speciesId')) throw new Error('Write something, add a photo or a fish.');
+    const btn = form.querySelector('button[type=submit]');
+    btn.textContent = 'Posting…';
+    try {
+      await api('/club-feed', { method: 'POST', form: await preparePhoto(fd, 'photo') });
+    } finally {
+      btn.textContent = 'Post';
+    }
+    form.reset();
+    photo = null;
+    preview.hidden = true;
+    fishFields.hidden = true;
+    fishBtn.setAttribute('aria-expanded', 'false');
+    await page(true);
+  });
+
+  list.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    const card = btn?.closest('[data-post]');
+    if (!card) return;
+    const id = card.dataset.post;
+    try {
+      if (btn.dataset.act === 'like') {
+        const r = await api(`/club-feed/${id}/like`, { method: 'POST' });
+        btn.classList.toggle('liked', r.liked);
+        btn.setAttribute('aria-pressed', r.liked);
+        btn.querySelector('span').textContent = r.likes;
+      } else if (btn.dataset.act === 'del-post' && confirm('Remove this post?')) {
+        await api(`/club-feed/${id}`, { method: 'DELETE' });
+        card.remove();
+      } else if (btn.dataset.act === 'del-comment' && confirm('Remove this comment?')) {
+        const row = btn.closest('[data-cid]');
+        await api(`/club-feed/${id}/comments/${row.dataset.cid}`, { method: 'DELETE' });
+        row.remove();
+      }
+    } catch (ex) {
+      toast(ex.message);
+    }
+  });
+  list.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const reply = e.target;
+    const card = reply.closest('[data-post]');
+    try {
+      const { comment } = await api(`/club-feed/${card.dataset.post}/comments`, { method: 'POST', body: formData(reply) });
+      card.querySelector('.club-comments').insertAdjacentHTML('beforeend', clubComment(card.dataset.post, comment));
+      reply.reset();
+    } catch (ex) {
+      toast(ex.message);
+    }
+  });
+  await page(true);
+}
+
 // Sends a visitor to sign in, then back to where they were.
 function askToSignIn(msg = 'Sign in to do that.') {
   state.afterLogin = location.hash;
@@ -535,6 +710,18 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
+    // JHMMC members have two feeds: the club's own (members only) and West Africa's.
+    const member = !!state.me?.jhmmc;
+    const { feed: which, ...rest } = filters;
+    const club = member && which !== 'wa' && !Object.keys(rest).length;
+    const feedTabs = member ? `<div class="seg" role="tablist">
+      <a role="tab" href="#/" aria-selected="${club}">JHMMC</a>
+      <a role="tab" href="#/?feed=wa" aria-selected="${!club}">West Africa</a></div>` : '';
+    if (club) {
+      view.innerHTML = feedTabs;
+      return clubFeed(view);
+    }
+    delete filters.feed;
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
     // The filters in use, as chips that each remove one.
     const nameOf = {
@@ -548,9 +735,11 @@ const pagesFor = (view) => ({
     const without = (key) => {
       const p = new URLSearchParams(filters);
       p.delete(key);
+      if (member) p.set('feed', 'wa');
       return `#/${p.size ? `?${p}` : ''}`;
     };
     view.innerHTML = html`
+      ${raw(feedTabs)}
       ${raw(noBoatBanner())}
       <div class="filter-bar">
         <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="filter-panel">
@@ -577,11 +766,12 @@ const pagesFor = (view) => ({
     panel.addEventListener('submit', (e) => {
       e.preventDefault();
       const p = new URLSearchParams(filters.angler ? { angler: filters.angler } : {});
+      if (member) p.set('feed', 'wa');
       for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
       location.hash = '#/?' + p;
     });
     panel.querySelector('[data-act=clear-filters]').addEventListener('click', () => {
-      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : '#/';
+      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : member ? '#/?feed=wa' : '#/';
     });
     await renderFeed(view.querySelector('#feed'), filters);
   },
@@ -2327,6 +2517,7 @@ const ICONS = {
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
   calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  fish: '<path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z"/><path d="M18 12v.5"/><path d="M16 17.93a9.77 9.77 0 0 1 0-11.86"/><path d="M7 10.67C7 8 5.58 5.97 2.73 5.5c-1 1.5-1 5 .23 6.5-1.24 1.5-1.24 5-.23 6.5C5.58 18.03 7 16 7 13.33"/>',
   eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',

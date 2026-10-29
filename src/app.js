@@ -1597,6 +1597,116 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true });
   });
 
+  // ---- the JHMMC feed (members only) -------------------------------------
+
+  // Members post through the day: messages, photos and fish. Fish the
+  // secretary approves join the feed by themselves, marked verified.
+  const isClubMember = (u) => !!u && (!!u.jhmmc || isAdminUser(u));
+  const requireMember = (req, res, next) => (isClubMember(req.user) ? next()
+    : res.status(req.user ? 403 : 401).json({ error: 'The JHMMC feed is for JHMMC members.' }));
+  const clubPostById = (id) => db.prepare('SELECT id, user_id AS userId, photo FROM club_posts WHERE id = ?').get(id ?? 0);
+  const canRemoveClubPost = (u, authorId) => authorId === u.id || isAdminUser(u);
+
+  api.get('/club-feed', requireMember, (req, res) => {
+    const PAGE = 20;
+    // Posts and verified fish in one timeline; the cursor is "time|key".
+    const [bt, bk] = typeof req.query.before === 'string' ? req.query.before.split('|') : [];
+    const rows = db.prepare(`
+      SELECT * FROM (
+        SELECT 'post' AS kind, p.id, p.created_at AS ts, printf('p%010d', p.id) AS key FROM club_posts p
+        UNION ALL
+        SELECT 'verified', k.id, datetime(k.reviewed_at), printf('v%010d', k.id) FROM catches k
+        WHERE k.status = 'approved' AND k.reviewed_at IS NOT NULL
+      ) WHERE :bt IS NULL OR ts < :bt OR (ts = :bt AND key < :bk)
+      ORDER BY ts DESC, key DESC LIMIT ${PAGE + 1}`).all({ bt: bt || null, bk: bk || '' });
+    const more = rows.length > PAGE;
+    const page = rows.slice(0, PAGE);
+    const post = db.prepare(`
+      SELECT p.id, p.body, p.photo, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
+        s.name AS species, u.id AS userId, ${SHOWN} AS author, u.photo AS authorPhoto, t.name AS teamName,
+        (SELECT COUNT(*) FROM club_post_likes l WHERE l.post_id = p.id) AS likes,
+        EXISTS (SELECT 1 FROM club_post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
+      FROM club_posts p JOIN users u ON u.id = p.user_id LEFT JOIN teams t ON t.id = u.team_id
+      LEFT JOIN species s ON s.id = p.species_id WHERE p.id = ?`);
+    const comments = db.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author
+      FROM club_post_comments c JOIN users u ON u.id = c.user_id WHERE c.post_id = ? ORDER BY c.id`);
+    const fish = db.prepare(`
+      SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.caught_on AS caughtOn,
+        datetime(k.reviewed_at) AS createdAt, COALESCE(k.photo, k.scale_photo) AS photo,
+        u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
+        (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
+        (SELECT COUNT(*) FROM comments c WHERE c.catch_id = k.id) AS comments
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
+      LEFT JOIN teams t ON t.id = k.team_id WHERE k.id = ?`);
+    const items = page.map((r) => {
+      if (r.kind === 'verified') {
+        const { photo, ...f } = fish.get(r.id);
+        return { kind: 'verified', ...f, released: !!f.released, photoUrl: photoUrl(photo) };
+      }
+      const { photo, authorPhoto, ...p } = post.get(req.user.id, r.id);
+      return {
+        kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), authorPhotoUrl: photoUrl(authorPhoto),
+        canDelete: canRemoveClubPost(req.user, p.userId),
+        comments: comments.all(r.id).map((c) => ({ ...c, canDelete: canRemoveClubPost(req.user, c.userId) })),
+      };
+    });
+    const last = page.at(-1);
+    res.json({ items, nextBefore: more ? `${last.ts}|${last.key}` : null });
+  });
+
+  api.post('/club-feed', requireMember, upload.single('photo'), (req, res) => {
+    const fail = (status, error) => {
+      removeUpload(req.file?.filename);
+      res.status(status).json({ error });
+    };
+    const body = str(req.body.body, 2000);
+    const speciesId = intId(req.body.speciesId);
+    if (speciesId && !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return fail(400, 'Unknown species.');
+    const released = req.body.released === 'true' || req.body.released === 'on';
+    const weight = req.body.weightKg ? Number(req.body.weightKg) : null;
+    if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
+    if (!body && !req.file && !speciesId) return fail(400, 'Write something, add a photo or a fish.');
+    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, species_id, weight_kg, released)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(req.user.id, body, req.file?.filename ?? null, speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0);
+    res.status(201).json({ id: Number(lastInsertRowid) });
+  });
+
+  api.delete('/club-feed/:id', requireMember, (req, res) => {
+    const p = clubPostById(intId(req.params.id));
+    if (!p) return res.status(404).json({ error: 'Post not found.' });
+    if (!canRemoveClubPost(req.user, p.userId)) return res.status(403).json({ error: 'Only whoever posted it or the club admin can remove a post.' });
+    db.prepare('DELETE FROM club_posts WHERE id = ?').run(p.id);
+    removeUpload(p.photo);
+    res.json({ ok: true });
+  });
+
+  api.post('/club-feed/:id/like', requireMember, (req, res) => {
+    const p = clubPostById(intId(req.params.id));
+    if (!p) return res.status(404).json({ error: 'Post not found.' });
+    const removed = db.prepare('DELETE FROM club_post_likes WHERE user_id = ? AND post_id = ?').run(req.user.id, p.id);
+    if (!removed.changes) db.prepare('INSERT INTO club_post_likes (user_id, post_id) VALUES (?, ?)').run(req.user.id, p.id);
+    const { likes } = db.prepare('SELECT COUNT(*) AS likes FROM club_post_likes WHERE post_id = ?').get(p.id);
+    res.json({ liked: !removed.changes, likes });
+  });
+
+  api.post('/club-feed/:id/comments', requireMember, (req, res) => {
+    const p = clubPostById(intId(req.params.id));
+    if (!p) return res.status(404).json({ error: 'Post not found.' });
+    const body = str(req.body.body, 1000);
+    if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
+    const { lastInsertRowid } = db.prepare('INSERT INTO club_post_comments (post_id, user_id, body) VALUES (?, ?, ?)').run(p.id, req.user.id, body);
+    res.status(201).json({ comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.nickname || req.user.name, canDelete: true } });
+  });
+
+  api.delete('/club-feed/:id/comments/:commentId', requireMember, (req, res) => {
+    const c = db.prepare('SELECT id, user_id AS userId FROM club_post_comments WHERE id = ? AND post_id = ?')
+      .get(intId(req.params.commentId) ?? 0, intId(req.params.id) ?? 0);
+    if (!c) return res.status(404).json({ error: 'Comment not found.' });
+    if (!canRemoveClubPost(req.user, c.userId)) return res.status(403).json({ error: 'Only whoever wrote it or the club admin can remove a comment.' });
+    db.prepare('DELETE FROM club_post_comments WHERE id = ?').run(c.id);
+    res.json({ ok: true });
+  });
+
   // ---- records -----------------------------------------------------------
 
   // IGFA all-tackle world records beside the heaviest fish logged here, plus
