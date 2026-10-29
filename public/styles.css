@@ -61,7 +61,6 @@ img { max-width: 100%; display: block; }
 #nav a.cta { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
 @media (max-width: 640px) {
-  .brand span { display: none; }
   #nav a { padding: 6px 8px; font-size: 14px; }
 }
 
@@ -230,7 +229,7 @@ button.more[hidden] { display: none; }
     position: sticky; top: 0; z-index: 15; justify-content: center; margin: 0; padding: 10px 0 8px;
     background: var(--bg); border: 0; border-radius: 0; box-shadow: none;
   }
-  .brand .logo { height: 44px; margin: 0; }
+  .brand .mark { width: 30px; height: 30px; }
 
   /* The tab bar floats above the page, clear of the screen edges. */
   #nav {
@@ -325,7 +324,8 @@ label[hidden] { display: none; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
-.brand .logo { width: auto; height: 54px; margin: -6px 0; flex: none; }
+.brand .mark { width: 34px; height: 34px; fill: currentColor; flex: none; }
+.brand span { font-size: 17px; letter-spacing: .01em; }
 .catch-photo.placeholder .marlin { width: 48%; max-width: 240px; height: auto; fill: rgba(255, 255, 255, .85); }
 .pcard .ph .icon { width: 56px; height: 56px; color: rgba(255, 255, 255, .8); stroke-width: 1.5; }
 .me-ph .icon { width: 30px; height: 30px; color: var(--muted); }
@@ -590,3 +590,10 @@ button.link[hidden] { display: none; }
 .feed-switch { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; font-size: 13px; white-space: nowrap; flex: none; }
 .feed-switch .icon { width: 15px; height: 15px; }
 .feed-now { margin: 8px 4px 0; }
+
+/* JHMMC, a club inside the platform: its logo on its own pages. */
+.club-logo { display: block; width: 120px; height: auto; margin: 4px 0 8px; }
+.club-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--text); text-decoration: none; }
+.club-head img { width: 52px; height: auto; flex: none; }
+.club-head > span { display: flex; flex-direction: column; line-height: 1.25; }
+.club-head b { font-size: 18px; }

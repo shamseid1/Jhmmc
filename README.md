@@ -1,6 +1,6 @@
-# JHMMC
+# West Africa Big Game
 
-A shared catch log and social feed for big game fishing clubs across West Africa.
+A shared catch log and social feed for big game fishing across West Africa. Clubs live inside the platform; the first, **JHMMC** (Jim Holder Memorial Marine Club, Monrovia), runs its points, tournaments, records and members-only feed here.
 
 
 **Names.** Everyone signs up with a first name and a last name (both required; together they are the full name) and may add a nickname. Others see the nickname (on the feed, Participants, leaderboards, records and comments), or the full name if there is none; a person's profile shows both. The full name is for the club's records: the Members and Club members pages (which show both), tournament sheets, registration history and the secretary's notifications. Accounts from before had their name split at the first space; anyone without a last name is asked for one the next time they save their profile.

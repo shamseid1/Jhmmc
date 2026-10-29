@@ -1,7 +1,7 @@
 {
-  "name": "JHMMC",
-  "short_name": "JHMMC",
-  "description": "JHMMC, Monrovia, Liberia: catches, points and records.",
+  "name": "West Africa Big Game",
+  "short_name": "Big Game",
+  "description": "Log and share big game catches across West Africa.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

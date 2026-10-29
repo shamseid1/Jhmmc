@@ -250,7 +250,7 @@ async function shareCatch(c) {
   const text = shareText(c);
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'JHMMC', text, url });
+      await navigator.share({ title: 'West Africa Big Game', text, url });
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -538,7 +538,10 @@ async function clubFeed(view, filters = {}) {
     return `#/${p.size ? `?${p}` : ''}`;
   };
   const box = document.createElement('div');
-  box.innerHTML = html`<div class="filter-bar">
+  box.innerHTML = html`<a class="club-head" href="#/club/${state.meta.homeClubId}">
+      <img src="/jhmmc-logo.png" alt="" width="345" height="294">
+      <span><b>JHMMC</b><span class="small muted">Members' feed</span></span></a>
+    <div class="filter-bar">
       <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="club-filter">
         ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
       ${active.map((k) => raw(html`<span class="chip">${label[k](filters[k])} <a href="${without(k)}" aria-label="Remove ${label[k](filters[k])}">✕</a></span>`))}
@@ -718,8 +721,8 @@ function needLogin(view, what) {
 }
 
 const HERO = `<section class="hero">
-  <h1>Every big fish at JHMMC, in one place</h1>
-  <p>Follow the club's boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
+  <h1>Every big fish in West Africa, in one place</h1>
+  <p>Follow the boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
   <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
 </section>`;
 
@@ -1104,7 +1107,7 @@ const pagesFor = (view) => ({
 
   async boat(id) {
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
-    const inviteMsg = `Join our boat ${team.name} on the JHMMC app: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
+    const inviteMsg = `Join our boat ${team.name} on the West Africa Big Game app: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
@@ -1269,7 +1272,8 @@ const pagesFor = (view) => ({
   async club(id) {
     const [{ club, teams, stats }, records] = await Promise.all([api(`/clubs/${id}`), api(`/records?club=${id}`)]);
     const clubRecords = records.species.filter((s) => s.best);
-    view.innerHTML = html`<h1>${club.name}</h1>
+    view.innerHTML = html`${isJhmmc(club.id) ? raw('<img class="club-logo" src="/jhmmc-logo.png" alt="JHMMC logo" width="345" height="294">') : ''}
+      <h1>${club.name}</h1>
       <p class="muted">${[club.city, club.country].filter(Boolean).join(', ')}</p>
       ${club.description ? raw(html`<p>${club.description}</p>`) : ''}
       <div class="stats">
@@ -2281,7 +2285,7 @@ const pagesFor = (view) => ({
         out.innerHTML = html`<p class="small muted">New link for ${name}, valid for ${hours} hours. Any older link stops working.</p>
           <input readonly value="${link}" aria-label="Reset link">
           <div class="actions"><button data-act="copy-link">Copy link</button>
-          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the JHMMC app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
+          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the West Africa Big Game app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
         out.hidden = false;
         out.querySelector('input').select();
       } catch (ex) {
@@ -2487,7 +2491,7 @@ const pagesFor = (view) => ({
     if (!state.meta.emailEnabled) {
       // No email sending yet: the admin makes reset links by hand.
       const admin = state.meta.adminEmail;
-      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - JHMMC app')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
+      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - West Africa Big Game')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
       view.innerHTML = html`<h1>Forgot your password?</h1>
         <div class="card pad stack">
           ${admin ? raw(html`<p style="margin:0">Email the club admin from the address you signed up with, and they'll send you a link to choose a new password.</p>
@@ -2634,7 +2638,7 @@ async function refreshPending() {
   } catch {
     return;
   }
-  document.title = `${state.pending ? `(${state.pending}) ` : ''}JHMMC`;
+  document.title = `${state.pending ? `(${state.pending}) ` : ''}West Africa Big Game`;
   if (state.pending !== before) renderNav();
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);
