@@ -23,20 +23,20 @@
 /* Light theme, for reading in bright sun: white cards, near-black text, deeper blue. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eef2f7;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #e3eaf4;
-  --text: #0d1726;
-  --muted: #475467;
-  --line: #ccd6e3;
+  --surface-2: #eef2f7;
+  --text: #0a1220;
+  --muted: #4b5565;
+  --line: #d6dde7;
   --brand: #ffffff;
   --accent: #0b5cc4;
   --accent-ink: #ffffff;
-  --accent-soft: #d9e7fb;
+  --accent-soft: #e2edfc;
   --good: #11804f;
   --danger: #c62828;
-  --nav-bg: rgba(255, 255, 255, .96);
-  --field: #f7f9fc;
+  --nav-bg: rgba(255, 255, 255, .97);
+  --field: #ffffff;
 }
 :root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
 
