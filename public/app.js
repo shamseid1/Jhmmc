@@ -1814,7 +1814,7 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
-      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
+      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
         ${item('#/tournaments', 'trophy', me.canReview ? 'Tournaments' : 'Tournament entry', me.canReview ? "Who's in, anglers, members and guests" : 'Enter your boat and anglers')}
         ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
@@ -1824,11 +1824,11 @@ const pagesFor = (view) => ({
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
-      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>Treasurer</h2><div class="card menu">
+      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>JHMMC treasurer</h2><div class="card menu">
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
         ${item('#/tournaments', 'trophy', 'Tournaments', 'Temporary memberships to collect')}
       </div>`) : ''}
-      ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
+      ${me?.isAdmin ? raw(`<h2>Platform admin</h2><p class="small muted section-note">West Africa Big Game: every club, boat and member.</p><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}

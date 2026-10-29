@@ -777,7 +777,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   function canDelete(row, user) {
     if (!user) return false;
-    if (canApprove(user)) return true;
+    // The platform admin can remove anything; the JHMMC secretary only the club's registrations.
+    if (isAdminUser(user)) return true;
+    if (row.status !== 'unofficial' && canApprove(user)) return true;
     // JHMMC registrations belong to the officials: the captain who made one
     // can withdraw it until the secretary decides.
     if (row.status !== 'unofficial') return row.status === 'pending_review' && row.loggedBy === user.id;
@@ -787,11 +789,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   }
 
   // The exact GPS spot is shown to everyone only if the poster chose to;
-  // otherwise just to the boat's crew, whoever posted it and the officials.
+  // otherwise just to the boat's crew, whoever posted it, and (for JHMMC
+  // registrations only) the club's officers.
   function canSeeSpot(row, viewer) {
     if (row.spotPublic) return true;
     if (!viewer) return false;
-    return viewer.teamId === row.teamId || row.loggedBy === viewer.id || row.userId === viewer.id || canReview(viewer);
+    return viewer.teamId === row.teamId || row.loggedBy === viewer.id || row.userId === viewer.id
+      || (row.status !== 'unofficial' && canReview(viewer));
   }
 
   function present(row, viewer) {

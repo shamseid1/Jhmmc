@@ -599,3 +599,4 @@ button.link[hidden] { display: none; }
   background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 800; text-decoration: none; flex: none; }
 .club-chip[hidden] { display: none; }
 .club-chip img { width: 22px; height: auto; }
+.section-note { margin: -4px 4px 8px; }

@@ -576,7 +576,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const seen = (await as()('GET', `/catches/${secret.id}`)).body.catch;
     assert.deepEqual([seen.lat, seen.lng, seen.hasSpot, seen.location], [null, null, true, 'Banana Islands'], 'hidden from the public');
     assert.equal((await other('GET', `/catches/${secret.id}`)).body.catch.lat, null, 'hidden from other boats');
-    assert.equal((await sec('GET', `/catches/${secret.id}`)).body.catch.lat, 6.31, 'officials see it');
+    // JHMMC officers' powers stop at the club: a post's private spot isn't theirs to see,
+    // nor the post theirs to delete.
+    const asSec = (await sec('GET', `/catches/${secret.id}`)).body.catch;
+    assert.deepEqual([asSec.lat, asSec.canDelete], [null, false], 'officers are limited to JHMMC registrations');
+    assert.equal((await sec('DELETE', `/catches/${secret.id}`)).status, 403);
+    assert.equal((await boss('GET', `/catches/${secret.id}`)).body.catch.canDelete, true, 'the platform admin can');
     const shared = (await cap('POST', '/catches', spotPost({ spotPublic: 'on' }))).body.catch;
     assert.equal((await as()('GET', `/catches/${shared.id}`)).body.catch.lng, -10.81, 'shared spots are public');
     await cap('DELETE', `/catches/${secret.id}`);
