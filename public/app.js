@@ -242,6 +242,35 @@ function loadLeaflet() {
   return leaflet;
 }
 
+// Satellite imagery (Esri World Imagery), with a street map to switch to.
+function baseLayers(L) {
+  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18, attribution: 'Imagery © Esri' });
+  const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' });
+  return { satellite, streets };
+}
+const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
+// The small map on a catch's page, on satellite imagery.
+async function drawSpotMaps(root) {
+  const boxes = [...root.querySelectorAll('.spot-map-view:not(.leaflet-container)')];
+  if (!boxes.length) return;
+  let L;
+  try {
+    L = await loadLeaflet();
+  } catch {
+    for (const box of boxes) box.outerHTML = '<p class="small muted">The map couldn\'t load just now.</p>';
+    return;
+  }
+  for (const box of boxes) {
+    const at = [Number(box.dataset.lat), Number(box.dataset.lng)];
+    const map = L.map(box, { scrollWheelZoom: false }).setView(at, 11);
+    const { satellite, streets } = baseLayers(L);
+    satellite.addTo(map);
+    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    L.circleMarker(at, spotPin(L, box.dataset.released === 'true')).addTo(map);
+  }
+}
+
 // Where a fish was caught, for the JHMMC feed's post box: the phone's GPS or typed
 // coordinates, into hidden lat/lng fields.
 const spotFields = (hint = 'optional, only you see it') => `<div class="stack spot">
@@ -576,10 +605,9 @@ function parseCoords(text) {
 
 function spotMap(c) {
   if (c.lat == null) return '';
-  const d = 0.08;
-  const bbox = [c.lng - d, c.lat - d, c.lng + d, c.lat + d].join(',');
+  // Drawn on satellite imagery by drawSpotMaps once the page is showing.
   return html`<div class="spot-map">
-    <iframe title="Where it was caught" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}"></iframe>
+    <div class="spot-map-view" data-lat="${c.lat}" data-lng="${c.lng}" data-released="${c.released}" role="img" aria-label="Where it was caught"></div>
     <p class="small">${raw(icon('pin'))} ${fmtCoords(c.lat, c.lng)} · <a href="https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}" target="_blank" rel="noopener">Open in maps</a>
       ${c.spotPublic ? '' : raw('<span class="muted"> · Only your crew can see this spot</span>')}</p>
   </div>`;
@@ -1087,6 +1115,7 @@ const pagesFor = (view) => ({
         </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to comment.</p>')}
       </div>`;
     wireCards(view.querySelector('.feed'), new Map([[String(c.id), c]]));
+    drawSpotMaps(view);
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act=delete-comment]');
       if (!btn || !confirm('Remove this comment?')) return;
@@ -2166,14 +2195,10 @@ const pagesFor = (view) => ({
       return;
     }
     const map = L.map('catch-map', { zoomControl: true });
-    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' });
-    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 18, attribution: 'Imagery © Esri' });
+    const { satellite, streets } = baseLayers(L);
     satellite.addTo(map);
     L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
-    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], {
-      radius: 8, weight: 2, color: '#ffffff', fillColor: x.released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1,
-    }).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
+    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
       ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">Open the catch</a>`) : ''}`));
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
     view.querySelector('.spot-list').addEventListener('click', (e) => {

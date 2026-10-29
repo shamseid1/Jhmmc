@@ -423,7 +423,7 @@ button.liked .icon { fill: currentColor; }
 .spot-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .spot-row button { font-weight: 600; }
 .spot-map { margin: 10px 0; }
-.spot-map iframe { width: 100%; height: 220px; border: 1px solid var(--line); border-radius: var(--radius); display: block; }
+.spot-map-view { width: 100%; height: 240px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; z-index: 0; }
 .spot-map p { margin: 6px 0 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .spot-map .icon { width: 16px; height: 16px; vertical-align: -3px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
