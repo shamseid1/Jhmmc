@@ -2639,6 +2639,7 @@ const ICONS = {
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  brush: '<path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
@@ -2807,7 +2808,7 @@ async function route() {
 }
 
 // Dark (the default) or light, for bright sun; remembered on this phone. Switched on More.
-const THEME_COLORS = { dark: '#1d1e21', light: '#e9f1f8' };
+const THEME_COLORS = { dark: '#1d1e21', light: '#f1f6fa' };
 const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
@@ -2816,19 +2817,35 @@ function applyTheme(theme) {
 }
 applyTheme(currentTheme());
 const themeButton = () => {
-  const light = currentTheme() === 'light';
-  return `<button type="button" class="theme-toggle" id="theme-toggle" aria-label="${light ? 'Switch to dark mode' : 'Switch to light mode'}"
-    title="${light ? 'Dark mode' : 'Light mode'}">${icon(light ? 'moon' : 'sun')}</button>`;
+  const now = currentTheme();
+  const choice = (theme, iconName, label) => `<button type="button" role="menuitemradio" data-theme-choice="${theme}" aria-checked="${now === theme}">
+    ${icon(iconName)} ${label}${now === theme ? `<span class="tick">${icon('check')}</span>` : ''}</button>`;
+  return `<div class="theme-pick">
+    <button type="button" class="theme-btn" aria-label="Appearance: light or dark" aria-haspopup="true" aria-expanded="false">${icon('brush')}</button>
+    <div class="theme-menu" role="menu" hidden>${choice('light', 'sun', 'Light')}${choice('dark', 'moon', 'Dark')}</div></div>`;
 };
-// The button on More (its page is redrawn, so listen at the document).
+// The brush on More opens the choice; a tap anywhere else closes it.
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('#theme-toggle');
-  if (!btn) return;
-  const next = currentTheme() === 'light' ? 'dark' : 'light';
-  applyTheme(next);
-  btn.outerHTML = themeButton();
+  const pick = e.target.closest('.theme-pick');
+  for (const open of document.querySelectorAll('.theme-pick')) {
+    if (open !== pick) {
+      open.querySelector('.theme-menu').hidden = true;
+      open.querySelector('.theme-btn').setAttribute('aria-expanded', 'false');
+    }
+  }
+  if (!pick) return;
+  const choice = e.target.closest('[data-theme-choice]');
+  if (!choice) {
+    const menu = pick.querySelector('.theme-menu');
+    menu.hidden = !menu.hidden;
+    pick.querySelector('.theme-btn').setAttribute('aria-expanded', String(!menu.hidden));
+    return;
+  }
+  const theme = choice.dataset.themeChoice;
+  applyTheme(theme);
+  pick.outerHTML = themeButton();
   try {
-    localStorage.setItem('theme', next);
+    localStorage.setItem('theme', theme);
   } catch {
     // Private browsing: the choice lasts until the page closes.
   }

@@ -24,23 +24,23 @@
 :root[data-theme="light"] {
   /* Light: a soft pale-blue page with tinted-white cards floating on it. */
   color-scheme: light;
-  --bg: #e9f1f8;
-  --surface: #f6f9fc;
-  --surface-2: #e6eef7;
+  --bg: #f4f8fb;
+  --surface: #ffffff;
+  --surface-2: #edf3f9;
   --text: #0e1626;
   --muted: #4f5b6d;
-  --line: #dbe5ef;
-  --brand: #f6f9fc;
+  --line: #e2e9f1;
+  --brand: #ffffff;
   --accent: #2f6fd6;
   --accent-ink: #ffffff;
   --accent-soft: #dfeafb;
   --good: #11804f;
   --danger: #c62828;
-  --nav-bg: rgba(248, 251, 253, .97);
+  --nav-bg: rgba(255, 255, 255, .97);
   --field: #ffffff;
   --shadow: 0 1px 2px rgba(25, 55, 95, .05), 0 4px 14px rgba(25, 55, 95, .07);
 }
-:root[data-theme="light"] body { background: linear-gradient(180deg, #e9f1f8 0%, #f3f7fb 55%, #edf3f9 100%) fixed; }
+:root[data-theme="light"] body { background: linear-gradient(180deg, #f1f6fa 0%, #fafcfe 60%, #f5f8fb 100%) fixed; }
 :root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
 
 * { box-sizing: border-box; }
@@ -637,10 +637,18 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .scale-video-preview { display: block; width: 100%; max-height: 260px; background: #000; border-radius: 12px; margin-bottom: 8px; }
 .thumbs video { width: 120px; height: 90px; object-fit: cover; border-radius: 10px; background: #000; }
 
-/* Dark / light switch, at the top right of More. */
+/* The brush at the top right of More: opens the choice of light or dark. */
 .page-head { position: relative; }
-.theme-toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: grid; place-items: center;
-  width: 46px; height: 46px; padding: 0; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--text); }
-.theme-toggle .icon { width: 21px; height: 21px; }
+.theme-pick { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 5; }
+.theme-btn { display: grid; place-items: center; width: 46px; height: 46px; padding: 0; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--text); }
+.theme-btn .icon { width: 21px; height: 21px; }
+.theme-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 190px; display: grid; gap: 6px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
+.theme-menu[hidden] { display: none; }
+.theme-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; border-radius: 12px;
+  background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; }
+.theme-menu button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); }
+.theme-menu .tick { margin-left: auto; }
 :root[data-theme="light"] .badge.status.wait { color: #8a4b00; }
 .composer-tools .photo-cta, .composer-tools button { white-space: nowrap; }
