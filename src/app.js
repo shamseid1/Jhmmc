@@ -117,7 +117,14 @@ function createApp({
   // points. Captains of JHMMC boats register their own boat's fish at the
   // weigh station; the secretary and admin can register any boat's.
   const isAdminUser = (u) => !!adminEmail && u?.email?.toLowerCase() === adminEmail;
-  const canReview = (u) => isAdminUser(u) || u?.role === 'secretary';
+  // Club roles: the president, vice president and secretary run the club's
+  // tournaments, members and calendar; only the secretary (and the admin)
+  // reviews and approves fish; the treasurer handles membership money.
+  const ROLES = ['president', 'vice_president', 'secretary', 'treasurer'];
+  const OFFICERS = ['president', 'vice_president', 'secretary'];
+  const canReview = (u) => isAdminUser(u) || OFFICERS.includes(u?.role);
+  const canApprove = (u) => isAdminUser(u) || u?.role === 'secretary';
+  const canHandleMoney = (u) => canReview(u) || u?.role === 'treasurer';
   // The admin always belongs to JHMMC.
   const markAdminMember = () => adminEmail && db.prepare('UPDATE users SET jhmmc = 1 WHERE lower(email) = ?').run(adminEmail);
   markAdminMember();
@@ -127,6 +134,8 @@ function createApp({
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
   const requireWeigh = requireOfficial(canWeigh, 'the captain of a JHMMC boat or the secretary');
   const requireReview = requireOfficial(canReview, 'the JHMMC secretary');
+  const requireMoney = requireOfficial(canHandleMoney, 'the JHMMC treasurer or secretary');
+  const requireApprove = requireOfficial(canApprove, 'the JHMMC secretary');
 
   // ---- reference data (public, needed by the sign-up form) ---------------
 
@@ -271,7 +280,7 @@ function createApp({
     const { photo, ...rest } = me;
     return {
       ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
-      isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me),
+      isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }
 
@@ -378,7 +387,7 @@ function createApp({
     // The admin decides who belongs to JHMMC; only JHMMC members hold a club role.
     const jhmmc = isAdminUser(cur) || ('jhmmc' in req.body ? !!req.body.jhmmc : !!cur.jhmmc);
     let role = 'role' in req.body ? req.body.role || null : cur.role;
-    if (role && role !== 'secretary') return res.status(400).json({ error: 'Unknown role.' });
+    if (role && !ROLES.includes(role)) return res.status(400).json({ error: 'Unknown role.' });
     if (role && !jhmmc) {
       if ('role' in req.body) return res.status(400).json({ error: 'Only JHMMC members can have a club role. Add them to JHMMC first.' });
       role = null;
@@ -750,7 +759,7 @@ function createApp({
 
   function canDelete(row, user) {
     if (!user) return false;
-    if (canReview(user)) return true;
+    if (canApprove(user)) return true;
     // JHMMC registrations belong to the officials: the captain who made one
     // can withdraw it until the secretary decides.
     if (row.status !== 'unofficial') return row.status === 'pending_review' && row.loggedBy === user.id;
@@ -1060,7 +1069,7 @@ function createApp({
       .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn),
         disputes: disputesFor.all(r.id), disputeUntil: disputeUntil(r.createdAt) }));
     // Captains see what they registered that the secretary hasn't decided yet.
-    res.json({ toReview: canReview(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
+    res.json({ toReview: canApprove(req.user) ? toReview : toReview.filter((c) => c.loggedBy === req.user.id) });
   });
 
   // Every boat's registrations waiting for the secretary, open to all JHMMC
@@ -1134,12 +1143,12 @@ function createApp({
   });
 
   // How many registrations wait for the secretary: the badge in the menu.
-  api.get('/officials/pending', requireReview, (_req, res) => {
+  api.get('/officials/pending', requireApprove, (_req, res) => {
     res.json({ count: db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status = 'pending_review'").get().n });
   });
 
   // Secretary: approve (with the rules' points or a corrected figure) or reject.
-  api.post('/catches/:id/review', requireReview, (req, res) => {
+  api.post('/catches/:id/review', requireApprove, (req, res) => {
     const id = intId(req.params.id);
     const row = id && db.prepare('SELECT status FROM catches WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Catch not found.' });
@@ -1293,7 +1302,7 @@ function createApp({
   const peopleOfBoat = (teamId) => db.prepare('SELECT id, name FROM club_people WHERE team_id = ? ORDER BY name COLLATE NOCASE')
     .all(teamId).map((p) => ({ ...p, member: isPaidPerson(p.id) }));
 
-  api.get('/club-members', requireReview, (_req, res) => {
+  api.get('/club-members', requireMoney, (_req, res) => {
     const season = { start: setting('season_start'), end: setting('season_end') };
     const people = db.prepare(`SELECT u.id, u.name, u.email, u.role, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
@@ -1307,7 +1316,7 @@ function createApp({
   });
 
   // Add a member who has no account (a child, say), optionally with their boat.
-  api.post('/club-members/named', requireReview, (req, res) => {
+  api.post('/club-members/named', requireMoney, (req, res) => {
     const name = str(req.body.name, 80);
     if (!name) return res.status(400).json({ error: 'Type the name.' });
     const teamId = intId(req.body.teamId);
@@ -1320,7 +1329,7 @@ function createApp({
     res.status(201).json({ ok: true, id });
   });
 
-  api.put('/club-members/named/:id', requireReview, (req, res) => {
+  api.put('/club-members/named/:id', requireMoney, (req, res) => {
     const person = db.prepare('SELECT id FROM club_people WHERE id = ?').get(intId(req.params.id) ?? 0);
     if (!person) return res.status(404).json({ error: 'Member not found.' });
     if (req.body.paid) db.prepare('INSERT OR IGNORE INTO club_people_paid (person_id, season) VALUES (?, ?)').run(person.id, memberSeason());
@@ -1330,12 +1339,12 @@ function createApp({
     res.json({ ok: true, paid: !!req.body.paid });
   });
 
-  api.delete('/club-members/named/:id', requireReview, (req, res) => {
+  api.delete('/club-members/named/:id', requireMoney, (req, res) => {
     db.prepare('DELETE FROM club_people WHERE id = ?').run(intId(req.params.id) ?? 0);
     res.json({ ok: true });
   });
 
-  api.put('/club-members/:userId', requireReview, (req, res) => {
+  api.put('/club-members/:userId', requireMoney, (req, res) => {
     const user = db.prepare('SELECT id, name, jhmmc FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
     if (!user) return res.status(404).json({ error: 'Member not found.' });
     if (req.body.paid && !user.jhmmc) return res.status(400).json({ error: `${user.name} isn't a JHMMC member: the admin adds people to JHMMC on the Members page.` });
@@ -1372,7 +1381,7 @@ function createApp({
   // anglers and money owed, captains whether their boat is in.
   api.get('/tournaments', (req, res) => {
     const myTeam = req.user && canWeigh(req.user) ? req.user.teamId : null;
-    const official = canReview(req.user);
+    const official = canHandleMoney(req.user);
     const rows = db.prepare(`SELECT e.id, e.name, e.date, COALESCE(e.end_date, e.date) AS endDate,
         (SELECT COUNT(*) FROM tournament_entries te WHERE te.event_id = e.id) AS boats,
         (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
@@ -1393,7 +1402,7 @@ function createApp({
   });
 
   // The secretary's registration sheet: every JHMMC boat, entered ones first.
-  api.get('/tournaments/:id/sheet', requireReview, (req, res) => {
+  api.get('/tournaments/:id/sheet', requireMoney, (req, res) => {
     const event = tournamentById(req.params.id);
     if (!event) return res.status(404).json({ error: 'Tournament not found.' });
     const boats = db.prepare(`SELECT id AS teamId, name AS teamName, division, weigh_station AS station FROM teams
@@ -1485,12 +1494,13 @@ function createApp({
   });
 
   // The secretary ticks off a temporary membership as paid, or corrects member status.
-  api.patch('/tournaments/:id/anglers/:anglerId', requireReview, (req, res) => {
+  api.patch('/tournaments/:id/anglers/:anglerId', requireMoney, (req, res) => {
     const row = db.prepare('SELECT id, user_id AS userId, person_id AS personId, member, paid FROM tournament_anglers WHERE id = ? AND event_id = ?')
       .get(intId(req.params.anglerId) ?? 0, intId(req.params.id) ?? 0);
     if (!row) return res.status(404).json({ error: 'Angler not found.' });
     // Members with an account come from the club membership list, not this sheet.
-    const member = row.userId || row.personId ? memberNow(row) : 'member' in req.body ? !!req.body.member : !!row.member;
+    const member = row.userId || row.personId ? memberNow(row)
+      : 'member' in req.body && canReview(req.user) ? !!req.body.member : !!row.member;
     const paid = !member && ('paid' in req.body ? !!req.body.paid : !!row.paid);
     db.prepare('UPDATE tournament_anglers SET member = ?, paid = ? WHERE id = ?').run(member ? 1 : 0, paid ? 1 : 0, row.id);
     res.json({ ok: true, member, paid });

@@ -118,6 +118,29 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
     await sec('DELETE', `/club-members/named/${lea}`);
     assert.deepEqual((await sec('GET', '/club-members')).body.named.map((p) => p.name), ['Sami']);
 
+    // Club roles: the president and vice president act like the secretary; the treasurer only handles money.
+    const pres = await person('Paul President', 'p@example.com');
+    const treas = await person('Tina Treasurer', 't@example.com');
+    const idsByEmail = Object.fromEntries((await sec('GET', '/admin/users')).body.users.map((u) => [u.email, u.id]));
+    assert.equal((await sec('PATCH', `/admin/users/${idsByEmail['p@example.com']}`, { jhmmc: true, role: 'chairman' })).status, 400);
+    await sec('PATCH', `/admin/users/${idsByEmail['p@example.com']}`, { jhmmc: true, role: 'president' });
+    await sec('PATCH', `/admin/users/${idsByEmail['t@example.com']}`, { jhmmc: true, role: 'treasurer' });
+    const presMe = (await pres('GET', '/me')).body.user;
+    const treasMe = (await treas('GET', '/me')).body.user;
+    assert.deepEqual([presMe.canReview, presMe.canApprove, treasMe.canReview, treasMe.canHandleMoney], [true, false, false, true]);
+    assert.equal((await pres('GET', `/tournaments/${memorial.id}/sheet`)).status, 200);
+    await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: true, anglers: [{ userId: rayanId }, { name: 'Visitor Vic' }] });
+    const tSheet = (await treas('GET', `/tournaments/${memorial.id}/sheet`)).body;
+    const guest = tSheet.boats.find((b) => b.teamId === girl.id).anglers.find((a) => !a.member);
+    assert.deepEqual((await treas('PATCH', `/tournaments/${memorial.id}/anglers/${guest.id}`, { paid: true, member: true })).body,
+      { ok: true, member: false, paid: true }, 'the treasurer ticks paid but cannot make a guest a member');
+    assert.equal((await treas('PUT', `/club-members/${mateId}`, { paid: true })).status, 200);
+    assert.equal((await treas('PUT', `/tournaments/${memorial.id}/entries/${reel.id}`, { entered: true })).status, 403, 'not entries');
+    assert.equal((await treas('GET', '/officials/pending')).status, 403, 'nor reviewing fish');
+    assert.equal((await pres('GET', '/officials/pending')).status, 403, 'only the secretary reviews fish');
+    assert.equal((await sec('GET', '/officials/pending')).status, 200);
+    assert.ok((await treas('GET', '/tournaments')).body.tournaments.find((t) => t.id === memorial.id).anglers >= 1, 'sees the counts');
+
     // A captain withdrawing removes the anglers too.
     await cap('PUT', `/tournaments/${memorial.id}/entries/${girl.id}`, { entered: false });
     sheet = (await sec('GET', `/tournaments/${memorial.id}/sheet`)).body;

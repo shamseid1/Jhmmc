@@ -66,6 +66,10 @@ function options(items, selected, placeholder) {
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
 
+// Club roles and how they read.
+const ROLE_OPTIONS = [['', 'Member'], ['president', 'President'], ['vice_president', 'Vice President'], ['secretary', 'Secretary'], ['treasurer', 'Treasurer']];
+const roleLabel = (role) => ROLE_OPTIONS.find(([k]) => k === role)?.[1] || role;
+
 // A row in a menu card: icon, label, a line under it, and an optional count.
 const menuItem = (href, iconName, label, sub = '', count = 0) => `<a class="menu-item" href="${href}">
   <span class="mi-icon">${icon(iconName)}</span>
@@ -474,6 +478,12 @@ function askToSignIn(msg = 'Sign in to do that.') {
 }
 
 function needLogin(view, what) {
+  // Signed in already: it's a matter of role, not of signing in.
+  if (state.me) {
+    const [, action, who] = what.match(/^(.*) \((.*)\)$/) || [];
+    view.innerHTML = html`<div class="card pad empty"><p>${who ? `Only ${who} can ${action}.` : `You can't ${what}.`}</p></div>`;
+    return;
+  }
   state.afterLogin = location.hash;
   view.innerHTML = html`<div class="card pad empty">
     <p>Sign in to ${what}.</p>
@@ -1104,7 +1114,7 @@ const pagesFor = (view) => ({
       </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
       <h2>${side} boats entered (${entries.length})</h2>
       <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
-      ${state.me?.canReview ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
+      ${state.me?.canHandleMoney ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
       ${raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
           : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}`;
   },
@@ -1349,7 +1359,7 @@ const pagesFor = (view) => ({
 
   // Secretary: check each weighed or released catch and approve its points.
   async review() {
-    if (!state.me?.canReview) return needLogin(view, 'review catches (the secretary only)');
+    if (!state.me?.canApprove) return needLogin(view, 'review catches (the secretary)');
     const { toReview } = await api('/officials/queue');
     // Split by weigh station, then grouped by day and boat like the paper forms.
     const NONE = 'No station';
@@ -1670,7 +1680,7 @@ const pagesFor = (view) => ({
 
   // The registration record for the secretary and admin, newest first.
   async history() {
-    if (!state.me?.canReview) return needLogin(view, 'see the registration record (the secretary and admin)');
+    if (!state.me?.canReview) return needLogin(view, 'see the registration record (the club officers)');
     const team = new URLSearchParams(location.hash.split('?')[1] || '').get('team') || '';
     const [{ teams }, { fish, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
     view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
@@ -1693,7 +1703,7 @@ const pagesFor = (view) => ({
   // Tournaments for captains (enter your boat) and officials (the registration sheet).
   async tournaments() {
     const me = state.me;
-    const official = !!me?.canReview;
+    const official = !!me?.canHandleMoney;
     const captain = !!me?.canWeigh && !official;
     const { tournaments, fee } = await api('/tournaments');
     view.innerHTML = html`<h1>Tournaments</h1>
@@ -1748,8 +1758,10 @@ const pagesFor = (view) => ({
 
   // The secretary's registration sheet, like the club's "Teams registered" list.
   async sheet(id) {
-    if (!state.me?.canReview) return needLogin(view, 'see the registration sheet (the secretary and admin)');
+    if (!state.me?.canHandleMoney) return needLogin(view, 'see the registration sheet (club officers and the treasurer)');
     const { tournament, boats, fee } = await api(`/tournaments/${id}/sheet`);
+    // The treasurer ticks payments; entries and anglers are for the officers.
+    const manage = !!state.me.canReview;
     const inBoats = boats.filter((b) => b.entered);
     const outBoats = boats.filter((b) => !b.entered);
     const all = inBoats.flatMap((b) => b.anglers);
@@ -1776,21 +1788,21 @@ const pagesFor = (view) => ({
       <h2>Boats in (${inBoats.length})</h2>
       ${inBoats.length ? raw(html`<div class="stack">${inBoats.map((b) => raw(html`<article class="card pad sheet-boat" data-team="${b.teamId}">
         <div class="catch-head"><h3 class="catch-title"><a href="#/boat/${b.teamId}">${b.teamName}</a></h3>
-          <label class="check"><input type="checkbox" data-act="in" checked> In</label></div>
+          ${manage ? raw('<label class="check"><input type="checkbox" data-act="in" checked> In</label>') : ''}</div>
         <p class="meta">${b.division === 'river' ? 'River' : 'Ocean'} · ${b.station || 'no weigh station'}</p>
         ${b.anglers.length ? raw(html`<ol class="entry-anglers">${b.anglers.map((a) => raw(html`<li data-angler="${a.id}" value="${++n}">
           <span>${a.name}</span>
           <span class="badge ${a.member ? 'new' : 'guest'}">${a.member ? 'Member' : 'Non-member'}</span>
           ${a.member ? '' : raw(html`<label class="check paid"><input type="checkbox" data-act="paid" ${a.paid ? 'checked' : ''}> Paid</label>`)}
         </li>`))}</ol>`) : raw('<p class="small muted">No anglers listed yet.</p>')}
-        <button type="button" data-act="edit" class="link">Edit anglers</button>
+        ${manage ? raw(html`<button type="button" data-act="edit" class="link">Edit anglers</button>
         <form class="stack angler-edit" hidden>${raw(anglerEditor(b.crew, b.anglers, true, b.named))}
-          <p class="error"></p><div class="actions"><button type="submit" class="primary">Save anglers</button></div></form>
+          <p class="error"></p><div class="actions"><button type="submit" class="primary">Save anglers</button></div></form>`) : ''}
       </article>`))}</div>`) : raw('<div class="card pad empty">No boats in yet.</div>')}
       <h2>Not in (${outBoats.length})</h2>
       <div class="card"><ul class="list">${outBoats.length ? outBoats.map((b) => raw(html`<li class="member" data-team="${b.teamId}">
         <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
-        <button type="button" data-act="put-in">Put in</button></li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>`;
+        ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>`;
     const put = (teamId, body) => api(`/tournaments/${id}/entries/${teamId}`, { method: 'PUT', body });
     view.addEventListener('change', async (e) => {
       const box = e.target.closest('input[data-act]');
@@ -1842,7 +1854,7 @@ const pagesFor = (view) => ({
 
   // The secretary's list of who has paid their JHMMC membership this season.
   async 'club-members'() {
-    if (!state.me?.canReview) return needLogin(view, 'keep the membership list (the secretary and admin)');
+    if (!state.me?.canHandleMoney) return needLogin(view, 'keep the membership list (club officers and the treasurer)');
     const [{ season, people, named }, { teams }] = await Promise.all([api('/club-members'), api('/teams')]);
     const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
     const paid = people.filter((p) => p.paid).length;
@@ -1858,8 +1870,8 @@ const pagesFor = (view) => ({
       <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
         <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div>
           ${p.isAdmin ? raw('<span class="badge new">Admin</span>')
-            : state.me.isAdmin ? raw(html`<label class="role-pick">Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], p.role || ''))}</select></label>`)
-              : p.role ? raw(html`<span class="badge">${p.role === 'secretary' ? 'Secretary' : p.role}</span>`) : ''}</span>
+            : state.me.isAdmin ? raw(html`<label class="role-pick">Role <select data-act="role">${raw(options(ROLE_OPTIONS, p.role || ''))}</select></label>`)
+              : p.role ? raw(html`<span class="badge">${roleLabel(p.role)}</span>`) : ''}</span>
         <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
       </li>`))}</ul></div>
       <h2>Members without an account</h2>
@@ -1956,13 +1968,17 @@ const pagesFor = (view) => ({
         ${item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
       </div>`) : ''}
       ${me?.canReview ? raw(`<h2>Club officials</h2><div class="card menu">
-        ${item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending)}
+        ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${item('#/tournaments', 'trophy', 'Tournaments', "Who's in, anglers, members and guests")}
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
         ${item('#/weigh', 'weight', 'Register fish', 'For any JHMMC boat, any day')}
         ${item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision')}
         ${item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments')}
         ${item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species')}
+      </div>`) : ''}
+      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>Treasurer</h2><div class="card menu">
+        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
+        ${item('#/tournaments', 'trophy', 'Tournaments', 'Temporary memberships to collect')}
       </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
@@ -1994,7 +2010,7 @@ const pagesFor = (view) => ({
         <button data-act="reset-link">Create reset link</button>
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
-          ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${u.role === 'secretary' ? 'Secretary' : u.role}</span>`) : ''}
+          ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${roleLabel(u.role)}</span>`) : ''}
         </div>
         <div class="reset-out" hidden></div>
         ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
@@ -2382,7 +2398,7 @@ function pointsBars(boats) {
 async function refreshPending() {
   const before = state.pending;
   try {
-    state.pending = state.me?.canReview ? (await api('/officials/pending')).count : 0;
+    state.pending = state.me?.canApprove ? (await api('/officials/pending')).count : 0;
   } catch {
     return;
   }
