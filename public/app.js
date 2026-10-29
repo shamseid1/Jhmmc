@@ -242,31 +242,12 @@ function loadLeaflet() {
   return leaflet;
 }
 
-// The maps: satellite imagery (Esri World Imagery) with the borders between
-// countries and their names on top (no cities). Borders and names come from
-// Natural Earth, kept in public/vendor/borders.json.
-let borders = null;
+// The maps: satellite imagery (Esri World Imagery) with borders and place
+// names (country, city, town) on top.
 function addSatellite(L, map) {
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 18, attribution: 'Imagery © Esri · Borders © Natural Earth' }).addTo(map);
-  borders ??= fetch('/vendor/borders.json').then((res) => res.json()).catch(() => {
-    borders = null;
-    return null;
-  });
-  borders.then((data) => {
-    if (!data || !map.getContainer().isConnected) return;
-    L.polyline(data.borders, { color: '#ffffff', weight: 1.5, opacity: 0.85, dashArray: '5 4', interactive: false }).addTo(map);
-    const names = L.layerGroup(data.labels.map((c) => L.marker([c.lat, c.lng], {
-      interactive: false, icon: L.divIcon({ className: 'country-label', html: `<span>${esc(c.name)}</span>`, iconSize: null }),
-    }))).addTo(map);
-    // Small countries' names only once zoomed in enough to fit.
-    const fit = () => names.eachLayer((m) => {
-      const c = data.labels[names.getLayers().indexOf(m)];
-      m.getElement()?.classList.toggle('hidden', c.size * 4 ** (map.getZoom() - 4) < 4);
-    });
-    map.on('zoomend', fit);
-    fit();
-  });
+  const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
+  L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
+  L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
 }
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
