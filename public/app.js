@@ -1858,6 +1858,35 @@ const pagesFor = (view) => ({
   },
 
   // The menu behind the last tab: your dashboard, rules, clubs, account.
+  // How to put the app on the home screen, for each kind of phone.
+  async install() {
+    const ua = navigator.userAgent;
+    const iphone = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const samsung = /SamsungBrowser/.test(ua);
+    const steps = iphone
+      ? ['Open this page in <b>Safari</b> (other iPhone browsers can\'t install apps).', 'Tap the <b>Share</b> button (the square with an arrow, at the bottom).',
+        'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.']
+      : samsung
+        ? ['Tap the <b>menu</b> (☰) at the bottom right.', 'Tap <b>Add page to</b>, then <b>Home screen</b>.', 'Tap <b>Add</b>.']
+        : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <div class="install-head"><img src="/icon-192.png" alt="" width="72" height="72"><div><h1>Install the app</h1>
+        <p class="muted">West Africa Big Game on your home screen: it opens full screen like any other app, even without signal (catches and points load when there's a connection).</p></div></div>
+      ${isInstalled() ? raw('<div class="card pad"><p style="margin:0">It\'s installed: you\'re using the app now.</p></div>') : raw(html`
+      <div class="card pad stack" data-install-ready ${installPrompt ? '' : raw('hidden')}>
+        <button type="button" class="primary" id="install-now">${raw(icon('download'))} Install now</button>
+      </div>
+      <h2>${installPrompt ? 'Or, step by step' : 'Step by step'}</h2>
+      <ol class="card pad install-steps">${steps.map((t) => raw(`<li>${t}</li>`))}</ol>`)}`;
+    view.querySelector('#install-now')?.addEventListener('click', async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      installPrompt = null;
+      if (outcome === 'accepted') view.querySelector('[data-install-ready]').hidden = true;
+    });
+  },
+
   async more() {
     const me = state.me;
     if (me?.canReview) await refreshPending();
@@ -1876,6 +1905,7 @@ const pagesFor = (view) => ({
         ${me.jhmmc ? raw(html`<p class="small muted feed-now">You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.</p>`) : ''}`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
+      ${isInstalled() ? '' : raw(`<div class="card menu">${item('#/install', 'download', 'Install the app', 'On your home screen, opens like any other app')}</div>`)}
       ${me ? raw(`<h2>You</h2><div class="card menu">
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
@@ -2660,6 +2690,7 @@ const ICONS = {
   brush: '<path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>',
   settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
@@ -2796,7 +2827,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
-    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', install: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;
@@ -2894,6 +2925,24 @@ document.addEventListener('click', (e) => {
   applyTheme(value);
   pick.outerHTML = themeButton();
 });
+
+// ---- installing the app (a PWA) ----------------------------------------------
+
+// The service worker makes the app installable and lets it open without signal.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Chrome, Edge and Samsung Internet offer their own install prompt; it's kept
+// for the Install button on More. iPhones are shown how instead.
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  document.querySelector('[data-install-ready]')?.removeAttribute('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  toast('Installed. Open West Africa Big Game from your home screen.');
+});
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 // Like Instagram's profile tab: a JHMMC member double-taps More to switch feeds.
 let lastMoreTap = 0;

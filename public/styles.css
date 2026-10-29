@@ -668,3 +668,12 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .composer-tools .photo-cta, .composer-tools button { white-space: nowrap; }
 /* Kept fish: photo (and optional video). Released: record or choose the release video. */
 .fish:not(.is-released) .roll-video-button, .fish.is-released .scale-button, .fish.is-released .scale-preview { display: none; }
+
+/* Install the app. */
+.install-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.install-head img { width: 72px; height: 72px; border-radius: 18px; flex: none; }
+.install-head h1 { margin: 0 0 4px; }
+.install-head p { margin: 0; }
+.install-steps { margin: 0; padding-left: 40px; display: grid; gap: 10px; }
+#install-now { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+[data-install-ready][hidden] { display: none; }
