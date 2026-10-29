@@ -39,13 +39,15 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
     const memorial = (await sec('POST', '/events', { date: day(5), endDate: day(6), kind: 'tournament', name: 'Memorial Tournament' })).body.event;
     const past = (await sec('POST', '/events', { date: day(-10), kind: 'tournament', name: 'Old Cup' })).body.event;
 
-    // The secretary keeps the season's paid members: Rayan has paid, Faris hasn't.
+    // The admin adds people to JHMMC; the secretary keeps the season's paid members.
     const rayanId = (await cap('GET', '/me')).body.user.id;
+    assert.match((await sec('PUT', `/club-members/${rayanId}`, { paid: true })).body.error, /isn't a JHMMC member/);
+    for (const id of [rayanId, mateId]) await sec('PATCH', `/admin/users/${id}`, { jhmmc: true });
     assert.equal((await cap('GET', '/club-members')).status, 403);
     assert.equal((await cap('PUT', `/club-members/${rayanId}`, { paid: true })).status, 403);
     assert.equal((await sec('PUT', `/club-members/${rayanId}`, { paid: true })).status, 200);
     const register = (await sec('GET', '/club-members')).body;
-    assert.deepEqual(register.people.map((p) => [p.name, p.paid]), [['Faris', false], ['Kofi', false], ['Rayan Eid', true], ['Robert', false]]);
+    assert.deepEqual(register.people.map((p) => [p.name, p.paid]), [['Faris', false], ['Rayan Eid', true], ['Robert', false]], 'only JHMMC members (and the admin) are listed');
 
     // The captain sees the tournament and their crew, and enters with members and guests.
     const list = (await cap('GET', '/tournaments')).body;

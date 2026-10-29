@@ -118,6 +118,9 @@ function createApp({
   // weigh station; the secretary and admin can register any boat's.
   const isAdminUser = (u) => !!adminEmail && u?.email?.toLowerCase() === adminEmail;
   const canReview = (u) => isAdminUser(u) || u?.role === 'secretary';
+  // The admin always belongs to JHMMC.
+  const markAdminMember = () => adminEmail && db.prepare('UPDATE users SET jhmmc = 1 WHERE lower(email) = ?').run(adminEmail);
+  markAdminMember();
   const captainsJhmmcBoat = (u) => !!u && !!db.prepare('SELECT 1 FROM teams WHERE captain_id = ? AND club_id = ?').get(u.id, homeClubId());
   const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u);
   const requireOfficial = (check, who) => (req, res, next) =>
@@ -171,6 +174,7 @@ function createApp({
     const { lastInsertRowid } = db
       .prepare('INSERT INTO users (name, email, password_hash, country) VALUES (?, ?, ?, ?)')
       .run(name, email, auth.hashPassword(password), country);
+    markAdminMember();
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
   });
@@ -361,20 +365,26 @@ function createApp({
 
   api.get('/admin/users', requireAdmin, (_req, res) => {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.role, u.created_at AS joinedAt, t.name AS teamName
+      SELECT u.id, u.name, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
-    `).all();
+    `).all().map((u) => ({ ...u, jhmmc: !!u.jhmmc || isAdminUser(u) }));
     res.json({ users });
   });
 
   api.patch('/admin/users/:id', requireAdmin, (req, res) => {
     const id = intId(req.params.id);
-    const cur = id && db.prepare('SELECT role FROM users WHERE id = ?').get(id);
+    const cur = id && db.prepare('SELECT role, jhmmc, email FROM users WHERE id = ?').get(id);
     if (!cur) return res.status(404).json({ error: 'Member not found.' });
-    const role = 'role' in req.body ? req.body.role || null : cur.role;
+    // The admin decides who belongs to JHMMC; only JHMMC members hold a club role.
+    const jhmmc = isAdminUser(cur) || ('jhmmc' in req.body ? !!req.body.jhmmc : !!cur.jhmmc);
+    let role = 'role' in req.body ? req.body.role || null : cur.role;
     if (role && role !== 'secretary') return res.status(400).json({ error: 'Unknown role.' });
-    db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
-    res.json({ ok: true, role });
+    if (role && !jhmmc) {
+      if ('role' in req.body) return res.status(400).json({ error: 'Only JHMMC members can have a club role. Add them to JHMMC first.' });
+      role = null;
+    }
+    db.prepare('UPDATE users SET role = ?, jhmmc = ? WHERE id = ?').run(role, jhmmc ? 1 : 0, id);
+    res.json({ ok: true, role, jhmmc });
   });
 
   // The admin's Boats page: a JHMMC boat's weigh station (its home port) and Ocean or River.
@@ -1274,7 +1284,8 @@ function createApp({
   // ---- club membership ------------------------------------------------------
   // The secretary keeps the list of paid JHMMC members for the current season.
   const memberSeason = () => setting('season_start');
-  const isPaidMember = (userId) => !!db.prepare('SELECT 1 FROM club_members WHERE user_id = ? AND season = ?').get(userId, memberSeason());
+  const isPaidMember = (userId) => !!db.prepare(`SELECT 1 FROM club_members m JOIN users u ON u.id = m.user_id
+    WHERE m.user_id = ? AND m.season = ? AND u.jhmmc = 1`).get(userId, memberSeason());
   const crewWithMembership = (teamId) => db.prepare('SELECT id, name FROM users WHERE team_id = ? ORDER BY name COLLATE NOCASE')
     .all(teamId).map((u) => ({ ...u, member: isPaidMember(u.id) }));
   // Members without an account (children, for example), listed by name.
@@ -1286,7 +1297,7 @@ function createApp({
     const season = { start: setting('season_start'), end: setting('season_end') };
     const people = db.prepare(`SELECT u.id, u.name, u.email, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
-      FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE`).all(season.start)
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 ORDER BY u.name COLLATE NOCASE`).all(season.start)
       .map((p) => ({ ...p, paid: !!p.paid }));
     const named = db.prepare(`SELECT p.id, p.name, p.team_id AS teamId, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_people_paid c WHERE c.person_id = p.id AND c.season = ?) AS paid
@@ -1325,8 +1336,9 @@ function createApp({
   });
 
   api.put('/club-members/:userId', requireReview, (req, res) => {
-    const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
+    const user = db.prepare('SELECT id, name, jhmmc FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
     if (!user) return res.status(404).json({ error: 'Member not found.' });
+    if (req.body.paid && !user.jhmmc) return res.status(400).json({ error: `${user.name} isn't a JHMMC member: the admin adds people to JHMMC on the Members page.` });
     if (req.body.paid) {
       db.prepare('INSERT OR IGNORE INTO club_members (user_id, season, marked_by) VALUES (?, ?, ?)').run(user.id, memberSeason(), req.user.id);
     } else {

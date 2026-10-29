@@ -143,7 +143,7 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 | POST   | `/api/weigh`                  | Captain (own boat) or secretary: register a fish for a JHMMC boat (weight, line, scale photo; station from the boat) |
 | POST   | `/api/weigh/sheet`            | Captain (own boat) or secretary: a boat's fish in one go: `teamId`, `caughtOn`, `fish` (JSON list), scale photos as `scale_<n>`; all or nothing |
 | POST   | `/api/catches/:id/review`     | Secretary: `{decision: approve|reject, points?, note?}` |
-| PATCH  | `/api/admin/users/:id`        | Admin: `{role: secretary|null}` |
+| PATCH  | `/api/admin/users/:id`        | Admin: `{jhmmc, role: secretary|null}`: who belongs to JHMMC; roles are for JHMMC members only (taking someone out removes their role) |
 | PATCH  | `/api/admin/teams/:id`        | Admin: `{weighStation, division}` for a JHMMC boat (its weigh station is also its home port) |
 | DELETE | `/api/catches/:id/comments/:commentId` | Remove a comment (its author, or the admin) |
 | GET    | `/api/records`                | IGFA all-tackle records, best catch per species, line-class records; `club` limits to one club. For JHMMC, `book` is the club record book (`src/jhmmc-records.js`, from the club's PDF as at 3 May 2026) with approved registrations ranked in |

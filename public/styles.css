@@ -551,3 +551,5 @@ button.link[hidden] { display: none; }
 .badge.log-registered { background: var(--surface-2); color: var(--text); }
 .list .log-steps li { padding: 0 0 0 2px; border: 0; }
 .log-steps li::before { left: -21px; }
+.member-row .role-pick[hidden] { display: none; }
+.member-row .role-pick { display: flex; align-items: center; gap: 6px; font-weight: 500; }

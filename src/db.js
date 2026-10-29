@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 21;
+const SCHEMA_VERSION = 22;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS users (
   photo TEXT,
   role TEXT,
   weigh_station TEXT,
+  -- Belongs to JHMMC (set by the admin); only members can hold a club role.
+  jhmmc INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -393,6 +395,18 @@ function openDb(file) {
     const cols = db.prepare('PRAGMA table_info(tournament_anglers)').all();
     if (cols.length && !cols.some((c) => c.name === 'person_id')) {
       db.exec('ALTER TABLE tournament_anglers ADD COLUMN person_id INTEGER REFERENCES club_people(id) ON DELETE SET NULL');
+    }
+  }
+  if (hasTables && version < 22) {
+    if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'jhmmc')) {
+      db.exec('ALTER TABLE users ADD COLUMN jhmmc INTEGER NOT NULL DEFAULT 0');
+    }
+    // Start with the people who are clearly JHMMC: on a JHMMC boat, holding a
+    // role, or already marked as a paid member.
+    db.prepare(`UPDATE users SET jhmmc = 1 WHERE role IS NOT NULL
+      OR team_id IN (SELECT t.id FROM teams t JOIN clubs c ON c.id = t.club_id WHERE c.name = ?)`).run(HOME_CLUB.name);
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'club_members'").get()) {
+      db.exec('UPDATE users SET jhmmc = 1 WHERE id IN (SELECT user_id FROM club_members)');
     }
   }
   db.exec(SCHEMA);

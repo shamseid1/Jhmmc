@@ -47,7 +47,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     const crewB = await person('Deck Hand', 'crew@example.com');
     const outsider = await person('Tema Captain', 't@example.com');
     const users = (await boss('GET', '/admin/users')).body.users;
-    await boss('PATCH', `/admin/users/${users.find((u) => u.email === 'sec@example.com').id}`, { role: 'secretary' });
+    await boss('PATCH', `/admin/users/${users.find((u) => u.email === 'sec@example.com').id}`, { jhmmc: true, role: 'secretary' });
     const jhmmc = (await capA('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
     const seaHunter = (await capA('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
     const reelDeal = (await capB('POST', '/teams', { name: 'Reel Deal', clubId: jhmmc, weighStation: 'Beerville' })).body.team;

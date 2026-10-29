@@ -455,7 +455,16 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
     assert.equal((await sec('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'secretary' })).status, 403, 'only the admin sets roles');
-    await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' });
+    // Roles are for JHMMC members only: the admin adds the secretary to JHMMC first.
+    assert.match((await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' })).body.error, /JHMMC/);
+    assert.equal((await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { jhmmc: true, role: 'secretary' })).status, 200);
+    const adminList = (await boss('GET', '/admin/users')).body.users;
+    assert.deepEqual(adminList.map((u) => [u.email, u.jhmmc, u.role]),
+      [['boss@example.com', true, null], ['sec@example.com', true, 'secretary'], ['wm@example.com', false, null]], 'the admin always counts as JHMMC');
+    // Taking someone out of JHMMC removes their role; putting them back doesn't restore it.
+    await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { jhmmc: true, role: 'secretary' });
+    assert.deepEqual((await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { jhmmc: false })).body, { ok: true, role: null, jhmmc: false });
+    assert.equal((await wm('GET', '/me')).body.user.canReview, false);
     assert.equal((await boss('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'weighmaster' })).status, 400, 'there are no weighmasters');
     // Members who aren't JHMMC captains can't register fish.
     assert.deepEqual([(await wm('GET', '/me')).body.user.canWeigh, (await wm('GET', '/me')).body.user.canReview], [false, false]);

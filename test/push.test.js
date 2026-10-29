@@ -53,7 +53,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     await cap('POST', '/auth/register', { name: 'Moses', email: 'cap@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
-    await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { role: 'secretary' });
+    await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { jhmmc: true, role: 'secretary' });
     const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
     const boat = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
     await crew('POST', '/teams/join', { code: boat.joinCode });
