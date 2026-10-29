@@ -20,7 +20,7 @@
     // chosen on this phone, else the phone's own setting (light if it has none).
     (function () {
       var chosen = null;
-      try { chosen = localStorage.getItem('theme'); } catch (e) {}
+      try { chosen = localStorage.getItem('appearance'); } catch (e) {}
       var dark = chosen ? chosen === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
       if (!dark) {
         document.documentElement.dataset.theme = 'light';

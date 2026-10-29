@@ -2811,10 +2811,17 @@ async function route() {
 // Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
 // setting (light if it has none) and is where everyone starts.
 const THEME_COLORS = { dark: '#1d1e21', light: '#f3f8fc' };
+// A new key: choices saved before Auto existed (under 'theme') no longer count.
+const THEME_KEY = 'appearance';
+try {
+  localStorage.removeItem('theme');
+} catch {
+  // Nothing saved, nothing to clear.
+}
 const phoneDark = matchMedia('(prefers-color-scheme: dark)');
 const themeChoice = () => {
   try {
-    const t = localStorage.getItem('theme');
+    const t = localStorage.getItem(THEME_KEY);
     return t === 'light' || t === 'dark' ? t : 'auto';
   } catch {
     return 'auto';
@@ -2860,8 +2867,8 @@ document.addEventListener('click', (e) => {
   }
   const value = choice.dataset.themeChoice;
   try {
-    if (value === 'auto') localStorage.removeItem('theme');
-    else localStorage.setItem('theme', value);
+    if (value === 'auto') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, value);
   } catch {
     // Private browsing: the choice lasts until the page closes.
   }
