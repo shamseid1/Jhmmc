@@ -2204,8 +2204,11 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Your profile</h1>
       <p>${me.teamId ? raw(html`Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
       <form class="card pad stack" id="f">
-        <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name" value="${me.name}">
-          <span class="small muted">First and last name. Shown on your profile.</span></label>
+        <div class="row">
+          <label>First name <input name="firstName" required maxlength="40" autocomplete="given-name" value="${me.firstName || ''}"></label>
+          <label>Last name <input name="lastName" required maxlength="40" autocomplete="family-name" value="${me.lastName || ''}"></label>
+        </div>
+        <p class="small muted">Your full name is shown on your profile.</p>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo" value="${me.nickname || ''}">
           <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
@@ -2315,8 +2318,11 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Create your account</h1>
       <p class="muted">Every angler signs in with their own account. After this you can join your boat's crew, register a boat, or just follow the feed.</p>
       <form class="card pad stack" id="f">
-        <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name">
-          <span class="small muted">First and last name. Shown on your profile.</span></label>
+        <div class="row">
+          <label>First name <input name="firstName" required maxlength="40" autocomplete="given-name"></label>
+          <label>Last name <input name="lastName" required maxlength="40" autocomplete="family-name"></label>
+        </div>
+        <p class="small muted">Your full name is shown on your profile.</p>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo">
           <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Email <input name="email" type="email" required autocomplete="email"></label>

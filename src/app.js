@@ -167,21 +167,27 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     message: 'Too many new accounts from this connection. Try again later.',
   });
 
-  // A full name is at least a first and a last name.
-  const FULL_NAME = 'Write your full name: first and last name.';
-  const isFullName = (name) => /\S+\s+\S+/.test(name || '');
+  // Everyone gives a first and a last name; `name` (the full name) is the two together.
+  // A single `name` is still taken and split at the first space.
+  const NAMES_NEEDED = 'Write your first name and your last name.';
+  function namesFrom(body) {
+    if ('firstName' in body || 'lastName' in body) return { first: str(body.firstName, 40), last: str(body.lastName, 40) };
+    const [first, ...rest] = (str(body.name, 80) || '').split(/\s+/);
+    return { first: first || null, last: rest.join(' ') || null };
+  }
+  const namesGiven = (body) => ['firstName', 'lastName', 'name'].some((k) => k in body);
 
   api.post('/auth/register', registerLimit, (req, res) => {
-    const name = str(req.body.name, 80);
+    const { first, last } = namesFrom(req.body);
     const nickname = str(req.body.nickname, 40);
     const email = str(req.body.email, 120)?.toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const country = str(req.body.country, 60);
 
-    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Full name and a valid email are required.' });
+    if (!first || !last) return res.status(400).json({ error: NAMES_NEEDED });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'A valid email is required.' });
     }
-    if (!isFullName(name)) return res.status(400).json({ error: FULL_NAME });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
@@ -189,8 +195,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
 
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (name, nickname, email, password_hash, country) VALUES (?, ?, ?, ?, ?)')
-      .run(name, nickname, email, auth.hashPassword(password), country);
+      .prepare('INSERT INTO users (name, first_name, last_name, nickname, email, password_hash, country) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(`${first} ${last}`, first, last, nickname, email, auth.hashPassword(password), country);
     markAdminMember();
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
@@ -280,7 +286,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   function getMe(id) {
     const me = db.prepare(`
-      SELECT u.id, u.name, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
+      SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
         t.weigh_station AS weighStation
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
@@ -346,15 +352,16 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   api.patch('/me', (req, res) => {
     const u = req.user;
-    const name = 'name' in req.body ? str(req.body.name, 80) : u.name;
+    const { first, last } = namesGiven(req.body) ? namesFrom(req.body) : { first: u.firstName, last: u.lastName };
     const nickname = 'nickname' in req.body ? str(req.body.nickname, 40) : u.nickname;
     const country = 'country' in req.body ? str(req.body.country, 60) : u.country;
     const bio = 'bio' in req.body ? str(req.body.bio, 500) : u.bio;
-    if (!name) return res.status(400).json({ error: 'Full name is required.' });
-    // Accounts from before full names were asked for may keep theirs until they change it.
-    if (name !== u.name && !isFullName(name)) return res.status(400).json({ error: FULL_NAME });
+    // Accounts from before last names were asked for keep theirs until they change their name.
+    if (namesGiven(req.body) && (!first || !last)) return res.status(400).json({ error: NAMES_NEEDED });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
-    db.prepare('UPDATE users SET name = ?, nickname = ?, country = ?, bio = ? WHERE id = ?').run(name, nickname, country, bio, u.id);
+    const name = namesGiven(req.body) ? `${first} ${last}` : u.name;
+    db.prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, nickname = ?, country = ?, bio = ? WHERE id = ?')
+      .run(name, first, last, nickname, country, bio, u.id);
     res.json({ user: getMe(u.id) });
   });
 

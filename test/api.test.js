@@ -209,18 +209,21 @@ test('participants: boats and anglers with photos and tallies', async () => {
   assert.notEqual(musa.photoUrl, boat.photoUrl);
 
   const crew = client();
-  assert.match((await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' })).body.error, /full name/,
+  assert.match((await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/,
     'first and last name');
-  r = await crew('POST', '/auth/register', { name: 'Fatu Kollie', nickname: 'Fatu', email: 'fatu@example.com', password: 'password1' });
-  assert.deepEqual([r.body.user.name, r.body.user.nickname, r.body.user.displayName], ['Fatu Kollie', 'Fatu', 'Fatu']);
+  assert.match((await crew('POST', '/auth/register', { firstName: 'Fatu', lastName: ' ', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/);
+  r = await crew('POST', '/auth/register', { firstName: 'Fatu', lastName: 'Kollie', nickname: 'Fatu', email: 'fatu@example.com', password: 'password1' });
+  assert.deepEqual([r.body.user.name, r.body.user.firstName, r.body.user.lastName, r.body.user.nickname, r.body.user.displayName],
+    ['Fatu Kollie', 'Fatu', 'Kollie', 'Fatu', 'Fatu']);
   await crew('POST', '/teams/join', { code: team.joinCode });
   // Others see the nickname; the full name stays with the account.
   const fatu = (await anon('GET', '/anglers')).body.anglers.find((a) => a.id === r.body.user.id);
   assert.equal(fatu.name, 'Fatu');
   const page = (await anon('GET', `/users/${fatu.id}`)).body.user;
   assert.deepEqual([page.name, page.fullName], ['Fatu', 'Fatu Kollie'], 'the profile shows both');
-  assert.match((await crew('PATCH', '/me', { name: 'Fatu' })).body.error, /full name/);
-  assert.equal((await crew('PATCH', '/me', { nickname: '' })).body.user.displayName, 'Fatu Kollie', 'no nickname: the full name shows');
+  assert.match((await crew('PATCH', '/me', { firstName: 'Fatu', lastName: '' })).body.error, /last name/);
+  assert.equal((await crew('PATCH', '/me', { firstName: 'Fatu Mary', lastName: 'Kollie' })).body.user.name, 'Fatu Mary Kollie');
+  assert.equal((await crew('PATCH', '/me', { nickname: '' })).body.user.displayName, 'Fatu Mary Kollie', 'no nickname: the full name shows');
   const pic = new FormData();
   pic.set('photo', new Blob([PNG], { type: 'image/png' }), 'boat.png');
   assert.equal((await crew('POST', `/teams/${team.id}/photo`, pic)).status, 403, 'captain only');

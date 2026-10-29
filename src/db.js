@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 23;
+const SCHEMA_VERSION = 24;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -116,8 +116,11 @@ CREATE TABLE IF NOT EXISTS clubs (
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
-  -- Full name, for the club's records; the nickname (if any) is what others see.
+  -- Full name (first_name last_name), for the club's records; the nickname
+  -- (if any) is what others see.
   name TEXT NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
   nickname TEXT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
@@ -413,6 +416,14 @@ function openDb(file) {
   }
   if (hasTables && version < 23 && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'nickname')) {
     db.exec('ALTER TABLE users ADD COLUMN nickname TEXT');
+  }
+  if (hasTables && version < 24 && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'first_name')) {
+    db.exec('ALTER TABLE users ADD COLUMN first_name TEXT');
+    db.exec('ALTER TABLE users ADD COLUMN last_name TEXT');
+    // Split the names people already gave at the first space; one word is a first name only.
+    db.exec(`UPDATE users SET
+      first_name = CASE WHEN instr(trim(name), ' ') > 0 THEN substr(trim(name), 1, instr(trim(name), ' ') - 1) ELSE trim(name) END,
+      last_name = CASE WHEN instr(trim(name), ' ') > 0 THEN trim(substr(trim(name), instr(trim(name), ' ') + 1)) END`);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
