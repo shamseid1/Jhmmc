@@ -596,9 +596,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual(regs.sort(), [wahoo.id, marlin.id].sort());
     assert.equal((await rcap('DELETE', `/catches/${wahoo.id}`)).status, 403, 'other crews cannot remove registrations');
 
-    // The secretary, who has no station, registers a river fish at Lofa River for a guest.
-    r = await sec('POST', '/weigh', weighed({ teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
-      caughtOn: TODAY, weightKg: '1.5', weighStation: 'Lofa River' }));
+    // The secretary, who has no station, registers a river fish at Lofa River for a guest:
+    // like everyone, only with the phone's location.
+    const snapperFish = { teamId: river.id, anglerId: 'other', anglerName: 'Guest Kollie', speciesId: sp('Snapper').id,
+      caughtOn: TODAY, weightKg: '1.5', weighStation: 'Lofa River' };
+    assert.match((await sec('POST', '/weigh', weighed(snapperFish))).body.error, /location/, 'officials need the location too');
+    r = await sec('POST', '/weigh', weighed({ ...snapperFish, deviceLat: '6.5', deviceLng: '-10.3' }));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const snapper = r.body.catch;
     // Every day scores now: a barracuda the secretary will reject.
@@ -679,7 +682,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual([weekend.date, weekend.endDate], [day(-1), TODAY]);
     await sec('PUT', `/tournaments/${weekend.id}/entries/${ocean.id}`, { entered: true });
     r = await sec('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Wahoo').id,
-      caughtOn: day(-1), weightKg: '10', weighStation: 'Extreme' }));
+      caughtOn: day(-1), weightKg: '10', weighStation: 'Extreme', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
     const weekendResults = (await as()('GET', `/tournaments/${weekend.id}`)).body;
     assert.equal(weekendResults.tournament.endDate, TODAY);
@@ -687,7 +690,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await as()('GET', `/tournaments/${cup.id}`)).body.results[0].points, 725, 'the one-day cup only has today');
     // An approved fish on a day with no tournament counts overall, not for the tournament trophy.
     r = await sec('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Wahoo').id,
-      caughtOn: day(-2), weightKg: '10', weighStation: 'Extreme' }));
+      caughtOn: day(-2), weightKg: '10', weighStation: 'Extreme', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
     assert.equal((await as()('GET', '/points?division=ocean')).body.boats[0].points, 825, 'overall: every day');
     assert.equal((await as()('GET', '/points?division=ocean&scope=tournaments')).body.boats[0].points, 775, 'tournaments only');
@@ -701,7 +704,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await cap2('POST', '/auth/register', { name: 'Reel Captain', email: 'reel@example.com', password: 'password1' });
     const reel = (await cap2('POST', '/teams', { name: 'Reel Deal', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
     r = await sec('POST', '/weigh', weighed({ teamId: reel.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Little tunny').id,
-      caughtOn: TODAY, weightKg: '5', weighStation: 'Extreme' }));
+      caughtOn: TODAY, weightKg: '5', weighStation: 'Extreme', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
     assert.ok((await as()('GET', '/points?division=ocean')).body.boats.some((b) => b.teamName === 'Reel Deal'), 'counts overall');
     assert.ok(!(await as()('GET', '/points?division=ocean&scope=tournaments')).body.boats.some((b) => b.teamName === 'Reel Deal'), 'not for the tournament trophy');

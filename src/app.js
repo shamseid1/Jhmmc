@@ -957,9 +957,9 @@ function createApp({
   // Captains declare their sheet is true; the secretary and admin don't need to.
   const DECLARATION = 'Tick the declaration that these fish are true before sending.';
   const declared = (user, b) => canReview(user) || b.declared === 'yes';
-  // Captains register from the weigh station: their phone's location is required.
+  // Every registration takes the phone's location, officials' included.
   const LOCATION_NEEDED = "The phone's location is needed to register fish. Turn on location for this site and send again.";
-  const located = (user, b) => canReview(user) || !!deviceSpot(b);
+  const located = (user, b) => !!deviceSpot(b);
   // What stops an official registration before the fish are checked, if anything.
   const sheetProblem = (user, b) => (!declared(user, b) ? DECLARATION : !located(user, b) ? LOCATION_NEEDED : null);
   // When disputes close: 24 hours after the fish was registered.
