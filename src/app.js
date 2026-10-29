@@ -10,6 +10,7 @@ const igfa = require('./igfa-records');
 const jhmmcBook = require('./jhmmc-records');
 const { createMailer } = require('./mail');
 const { createPusher } = require('./push');
+const { createDepth } = require('./depth');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const VIDEO_TYPES = { 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'video/3gpp': '.3gp' };
@@ -61,6 +62,8 @@ function createApp({
   adminEmail = process.env.ADMIN_EMAIL,
   // Sends phone notifications; made from the database's keys unless given (tests).
   pusher,
+  // Where sea depths come from (NOAA ETOPO unless given, e.g. in tests).
+  depthSource,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
@@ -1754,6 +1757,21 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     db.prepare('DELETE FROM comments WHERE id = ?').run(comment.id);
     res.json({ ok: true });
+  });
+
+  // ---- sea depths for the maps --------------------------------------------
+
+  const depth = createDepth(depthSource ? { source: depthSource } : {});
+  api.get('/depth', async (req, res) => {
+    try {
+      const grid = await depth(req.query);
+      if (grid.error) return res.status(400).json(grid);
+      res.set('Cache-Control', 'public, max-age=604800');
+      res.json(grid);
+    } catch (err) {
+      console.error('Depths:', err.message);
+      res.status(500).json({ error: "Depths couldn't be loaded just now." });
+    }
   });
 
   // ---- my catch map ---------------------------------------------------------

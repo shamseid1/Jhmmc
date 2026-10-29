@@ -242,12 +242,132 @@ function loadLeaflet() {
   return leaflet;
 }
 
-// Satellite imagery (Esri World Imagery), with a street map to switch to.
+// ---- depths in feet -------------------------------------------------------
+
+// Depth lines drawn from the sea-floor grid the server sends (NOAA ETOPO, in
+// metres), labelled in feet. Not for navigation.
+const FT_PER_M = 3.28084;
+const DEPTH_LINES_FT = [100, 300, 600, 1000, 2000, 3000, 6000, 10000];
+// Marching squares: which cell edges a line crosses, for each pattern of corners
+// deeper than the line (bits: south-west 1, south-east 2, north-east 4, north-west 8;
+// edges: south 0, east 1, north 2, west 3).
+const CROSSINGS = {
+  1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]],
+  8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[3, 0]],
+};
+// The grid as depths in feet (positive at sea, negative on land).
+const depthFeet = (grid) => grid.alt.map((m) => (m == null ? null : -m * FT_PER_M));
+function depthLines(grid, feet, level) {
+  const { lats, lons } = grid;
+  const w = lons.length;
+  const segments = [];
+  for (let i = 0; i < lats.length - 1; i++) {
+    for (let j = 0; j < w - 1; j++) {
+      const v = [feet[i * w + j], feet[i * w + j + 1], feet[(i + 1) * w + j + 1], feet[(i + 1) * w + j]];
+      if (v.some((x) => x == null)) continue;
+      const pattern = v.reduce((bits, x, k) => bits | (x > level ? 1 << k : 0), 0);
+      if (!CROSSINGS[pattern]) continue;
+      const along = (a, b) => (level - a) / (b - a);
+      const point = (edge) => {
+        if (edge === 0) return [lats[i], lons[j] + along(v[0], v[1]) * (lons[j + 1] - lons[j])];
+        if (edge === 1) return [lats[i] + along(v[1], v[2]) * (lats[i + 1] - lats[i]), lons[j + 1]];
+        if (edge === 2) return [lats[i + 1], lons[j] + along(v[3], v[2]) * (lons[j + 1] - lons[j])];
+        return [lats[i] + along(v[0], v[3]) * (lats[i + 1] - lats[i]), lons[j]];
+      };
+      for (const [a, b] of CROSSINGS[pattern]) segments.push([point(a), point(b)]);
+    }
+  }
+  return segments;
+}
+// The depth at a point, from the four grid values around it.
+function depthAt(grid, feet, lat, lng) {
+  const { lats, lons } = grid;
+  const i = lats.findIndex((x, k) => k < lats.length - 1 && lat >= x && lat <= lats[k + 1]);
+  const j = lons.findIndex((x, k) => k < lons.length - 1 && lng >= x && lng <= lons[k + 1]);
+  if (i < 0 || j < 0) return null;
+  const w = lons.length;
+  const v = [feet[i * w + j], feet[i * w + j + 1], feet[(i + 1) * w + j + 1], feet[(i + 1) * w + j]];
+  if (v.some((x) => x == null)) return null;
+  const ty = (lat - lats[i]) / (lats[i + 1] - lats[i]);
+  const tx = (lng - lons[j]) / (lons[j + 1] - lons[j]);
+  return (v[0] * (1 - tx) + v[1] * tx) * (1 - ty) + (v[3] * (1 - tx) + v[2] * tx) * ty;
+}
+const fmtFeet = (ft) => `${Math.round(ft).toLocaleString()} ft`;
+
+// The Depth map: Esri's ocean shading with the depth lines in feet on top; tap
+// anywhere for the depth there. Loads the area in view, again as you move away.
+function depthLayer(L) {
+  const ocean = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 13, maxNativeZoom: 13, attribution: '© Esri · depths NOAA' });
+  const lines = L.layerGroup();
+  let grid = null;
+  let feet = null;
+  let loaded = null;
+  let note = null;
+  const layer = L.layerGroup([ocean, lines]);
+  const say = (map, text) => {
+    note ??= L.control({ position: 'bottomleft' });
+    note.onAdd = () => Object.assign(L.DomUtil.create('div', 'depth-note'), { textContent: text });
+    note.remove();
+    if (text) note.addTo(map);
+  };
+  async function load(map) {
+    const view = map.getBounds();
+    if (loaded?.contains(view)) return;
+    const want = view.pad(0.5);
+    const q = new URLSearchParams({ south: want.getSouth(), west: want.getWest(), north: want.getNorth(), east: want.getEast() });
+    say(map, 'Loading depths…');
+    try {
+      grid = await api(`/depth?${q}`);
+    } catch (ex) {
+      say(map, ex.message);
+      return;
+    }
+    if (!map.hasLayer(layer)) return;
+    feet = depthFeet(grid);
+    loaded = L.latLngBounds([grid.south, grid.west], [grid.north, grid.east]);
+    lines.clearLayers();
+    for (const level of DEPTH_LINES_FT) {
+      const segments = depthLines(grid, feet, level);
+      if (!segments.length) continue;
+      L.polyline(segments, { color: '#0b3d5c', weight: level >= 1000 ? 1.4 : 1, opacity: 0.75, interactive: false }).addTo(lines);
+      // A few labels spread along each line.
+      const step = Math.max(1, Math.floor(segments.length / 6));
+      for (let k = Math.floor(step / 2); k < segments.length; k += step) {
+        const [[a1, o1], [a2, o2]] = segments[k];
+        L.marker([(a1 + a2) / 2, (o1 + o2) / 2], {
+          interactive: false, icon: L.divIcon({ className: 'depth-label', html: `<span>${fmtFeet(level)}</span>`, iconSize: null }),
+        }).addTo(lines);
+      }
+    }
+    say(map, 'Feet · tap for depth · not for navigation');
+  }
+  const moved = (e) => load(e.target);
+  const tapped = (e) => {
+    if (!grid) return;
+    const ft = depthAt(grid, feet, e.latlng.lat, e.latlng.lng);
+    if (ft == null) return;
+    L.popup().setLatLng(e.latlng).setContent(ft > 0 ? `Depth here: about <b>${fmtFeet(ft)}</b>` : 'Land').openOn(e.target);
+  };
+  layer.on('add', (e) => {
+    const map = e.target._map;
+    map.on('moveend', moved).on('click', tapped);
+    load(map);
+  });
+  layer.on('remove', (e) => {
+    const map = e.target._map;
+    map?.off('moveend', moved).off('click', tapped);
+    if (map) say(map, '');
+  });
+  return layer;
+}
+
+// The maps: satellite imagery (Esri World Imagery), a street map, and depths in feet.
 function baseLayers(L) {
   const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 18, attribution: 'Imagery © Esri' });
   const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' });
-  return { satellite, streets };
+  return { satellite, streets, depth: depthLayer(L) };
 }
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
@@ -264,9 +384,9 @@ async function drawSpotMaps(root) {
   for (const box of boxes) {
     const at = [Number(box.dataset.lat), Number(box.dataset.lng)];
     const map = L.map(box, { scrollWheelZoom: false }).setView(at, 11);
-    const { satellite, streets } = baseLayers(L);
+    const { satellite, streets, depth } = baseLayers(L);
     satellite.addTo(map);
-    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    L.control.layers({ Satellite: satellite, Depth: depth, Map: streets }).addTo(map);
     L.circleMarker(at, spotPin(L, box.dataset.released === 'true')).addTo(map);
   }
 }
@@ -2195,9 +2315,9 @@ const pagesFor = (view) => ({
       return;
     }
     const map = L.map('catch-map', { zoomControl: true });
-    const { satellite, streets } = baseLayers(L);
+    const { satellite, streets, depth } = baseLayers(L);
     satellite.addTo(map);
-    L.control.layers({ Satellite: satellite, Map: streets }).addTo(map);
+    L.control.layers({ Satellite: satellite, Depth: depth, Map: streets }).addTo(map);
     const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
       ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">Open the catch</a>`) : ''}`));
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
