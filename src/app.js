@@ -1099,20 +1099,27 @@ function createApp({
   });
 
   // The record, newest first: for one fish, one boat, or everything.
+  // One entry per fish, newest activity first, each with everything that
+  // happened to it in order. Paged by fish (`before` = the last fish's latest event id).
+  const LOG_PAGE = 40;
   api.get('/registrations/log', requireReview, (req, res) => {
-    const catchId = intId(req.query.catch);
-    const teamId = intId(req.query.team);
-    const before = intId(req.query.before);
-    const rows = db.prepare(`SELECT id, catch_id AS catchId, team_id AS teamId, action, user_id AS userId, user_name AS userName,
-        details, lat, lng, created_at AS createdAt FROM registration_log
-      WHERE (:catchId IS NULL OR catch_id = :catchId) AND (:teamId IS NULL OR team_id = :teamId) AND (:before IS NULL OR id < :before)
-      ORDER BY id DESC LIMIT 100`).all({ catchId: catchId ?? null, teamId: teamId ?? null, before: before ?? null });
+    const filter = { catchId: intId(req.query.catch) ?? null, teamId: intId(req.query.team) ?? null, before: intId(req.query.before) ?? null };
+    const fish = db.prepare(`SELECT catch_id AS catchId, MAX(id) AS latest FROM registration_log
+      WHERE (:catchId IS NULL OR catch_id = :catchId) AND (:teamId IS NULL OR team_id = :teamId)
+      GROUP BY catch_id HAVING (:before IS NULL OR MAX(id) < :before) ORDER BY latest DESC LIMIT ${LOG_PAGE}`).all(filter);
+    const events = db.prepare(`SELECT id, action, user_id AS userId, user_name AS userName, details, lat, lng, created_at AS createdAt
+      FROM registration_log WHERE catch_id = ? ORDER BY id`);
     res.json({
-      entries: rows.map(({ details, ...r }) => {
-        const { scalePhoto, ...d } = JSON.parse(details);
-        return { ...r, ...d, scalePhotoUrl: photoUrl(scalePhoto) };
+      fish: fish.map(({ catchId }) => {
+        const steps = events.all(catchId).map(({ details, ...e }) => ({ ...e, ...JSON.parse(details) }));
+        // The fish as it now stands comes from its latest event.
+        const { scalePhoto, note, ...now } = steps.at(-1);
+        return {
+          catchId, ...now, status: now.action, scalePhotoUrl: photoUrl(scalePhoto),
+          steps: steps.map((e) => ({ action: e.action, userName: e.userName, createdAt: e.createdAt, lat: e.lat, lng: e.lng, note: e.note ?? null })),
+        };
       }),
-      nextBefore: rows.length === 100 ? rows.at(-1).id : null,
+      nextBefore: fish.length === LOG_PAGE ? fish.at(-1).latest : null,
     });
   });
 

@@ -106,22 +106,24 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     // Captain A withdraws the wahoo; the record keeps it all.
     assert.equal((await capA('DELETE', `/catches/${wahoo.id}`)).status, 200);
     assert.equal((await capA('GET', '/registrations/log')).status, 403, 'the record is for the secretary and admin');
-    const log = (await sec('GET', '/registrations/log')).body.entries;
-    const of = (id) => log.filter((e) => e.catchId === id).reverse().map((e) => [e.action, e.userName, e.note ?? null]);
-    assert.deepEqual(of(marlin.id), [
+    // One entry per fish, newest activity first, with its steps in order.
+    const log = (await sec('GET', '/registrations/log')).body.fish;
+    assert.deepEqual(log.map((f) => [f.species, f.status]), [['Wahoo', 'withdrawn'], ['Atlantic blue marlin', 'approved']],
+      'a fish is one entry whose status changes, not one entry per step');
+    const steps = (id) => log.find((f) => f.catchId === id).steps.map((e) => [e.action, e.userName, e.note]);
+    assert.deepEqual(steps(marlin.id), [
       ['registered', 'Captain A', null],
       ['disputed', 'Captain B', 'That marlin was caught yesterday'],
       ['approved', 'Robert', 'Checked the radio log: caught today'],
     ]);
-    assert.deepEqual(of(wahoo.id), [['registered', 'Captain A', null], ['withdrawn', 'Captain A', null]]);
-    const registered = log.find((e) => e.catchId === wahoo.id && e.action === 'registered');
-    assert.deepEqual([registered.boat, registered.species, registered.weightKg, registered.points, registered.lat, registered.lng],
-      ['Sea Hunter', 'Wahoo', 20, 100, 6.3, -10.8]);
-    const withdrawn = log.find((e) => e.catchId === wahoo.id && e.action === 'withdrawn');
-    assert.match(withdrawn.scalePhotoUrl, /^\/uploads\//, 'the scale photo stays as evidence');
-    assert.equal((await fetch(at.replace('/api', '') + withdrawn.scalePhotoUrl)).status, 200);
-    assert.equal((await boss('GET', `/registrations/log?team=${reelDeal.id}`)).body.entries.length, 0, 'filtered by boat');
-    assert.equal((await boss('GET', `/registrations/log?catch=${marlin.id}`)).body.entries.length, 3, 'one fish');
+    assert.deepEqual(steps(wahoo.id), [['registered', 'Captain A', null], ['withdrawn', 'Captain A', null]]);
+    const w = log.find((f) => f.catchId === wahoo.id);
+    assert.deepEqual([w.boat, w.species, w.weightKg, w.points, w.steps[0].lat, w.steps[0].lng], ['Sea Hunter', 'Wahoo', 20, 100, 6.3, -10.8]);
+    assert.match(w.scalePhotoUrl, /^\/uploads\//, 'the scale photo stays as evidence');
+    assert.equal((await fetch(at.replace('/api', '') + w.scalePhotoUrl)).status, 200);
+    assert.equal((await boss('GET', `/registrations/log?team=${reelDeal.id}`)).body.fish.length, 0, 'filtered by boat');
+    const one = (await boss('GET', `/registrations/log?catch=${marlin.id}`)).body.fish;
+    assert.deepEqual([one.length, one[0].steps.length], [1, 3], 'one fish');
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

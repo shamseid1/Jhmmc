@@ -66,21 +66,26 @@ function options(items, selected, placeholder) {
 // How recent a scale photo must be: taken at the dock, not from the past.
 const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
 
-// Entries of the registration record, as list items.
+// The registration record, one entry per fish: where it stands now, and
+// everything that happened to it, in order.
 const LOG_ACTIONS = {
   registered: 'Registered', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
 };
-function logItems(entries) {
-  if (!entries.length) return '<li class="muted">Nothing recorded yet.</li>';
-  return entries.map((e) => html`<li class="log-entry">
-    <div><span class="badge log-${e.action}">${LOG_ACTIONS[e.action]}</span> <b>${e.species}</b>
-      ${e.weightKg ? ` · ${fmtWeight(e.weightKg)}` : e.released ? ' · released' : ''}${e.points != null ? ` · ${fmtPoints(e.points)}` : ''}</div>
-    <div class="small muted">${e.boat || 'Boat removed'} · ${e.angler}${e.station ? ` · ${e.station}` : ''} · caught ${fmtDay(e.caughtOn)}</div>
-    <div class="small">By <b>${e.userName}</b>, ${fmtWhen(e.createdAt)}
-      ${e.lat != null ? raw(html` · <a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=15/${e.lat}/${e.lng}" target="_blank" rel="noopener">where the phone was</a>`) : ''}
-      ${e.scalePhotoUrl ? raw(html` · <a href="${e.scalePhotoUrl}" target="_blank" rel="noopener">scale photo</a>`) : ''}
-      ${e.catchId && !['withdrawn', 'deleted'].includes(e.action) ? raw(html` · <a href="#/catch/${e.catchId}">the fish</a>`) : ''}</div>
-    ${e.note ? raw(html`<div class="small log-note">${e.note}</div>`) : ''}
+const LOG_STATUS = {
+  registered: 'Waiting', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
+};
+function logItems(fish) {
+  if (!fish.length) return '<li class="muted">Nothing recorded yet.</li>';
+  return fish.map((f) => html`<li class="log-entry">
+    <div><span class="badge log-${f.status}">${LOG_STATUS[f.status]}</span> <b>${f.species}</b>
+      ${f.weightKg ? ` · ${fmtWeight(f.weightKg)}` : f.released ? ' · released' : ''}${f.points != null ? ` · ${fmtPoints(f.points)}` : ''}</div>
+    <div class="small muted">${f.boat || 'Boat removed'} · ${f.angler}${f.station ? ` · ${f.station}` : ''} · caught ${fmtDay(f.caughtOn)}</div>
+    <ol class="log-steps">${f.steps.map((e) => raw(html`<li>
+      <span class="small"><b>${LOG_ACTIONS[e.action]}</b> by ${e.userName}, ${fmtWhen(e.createdAt)}${e.lat != null ? raw(html` · <a href="https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=15/${e.lat}/${e.lng}" target="_blank" rel="noopener">where the phone was</a>`) : ''}</span>
+      ${e.note ? raw(html`<div class="small log-note">${e.note}</div>`) : ''}
+    </li>`))}</ol>
+    <div class="small">${f.scalePhotoUrl ? raw(html`<a href="${f.scalePhotoUrl}" target="_blank" rel="noopener">Scale photo</a>`) : ''}
+      ${!['withdrawn', 'deleted'].includes(f.status) ? raw(html`${f.scalePhotoUrl ? ' · ' : ''}<a href="#/catch/${f.catchId}">The fish</a>`) : ''}</div>
   </li>`).join('');
 }
 
@@ -574,7 +579,7 @@ const pagesFor = (view) => ({
   async catch(id) {
     const { catch: c, comments } = await api(`/catches/${id}`);
     // The secretary and admin see a registration's record on its page.
-    const record = c.status !== 'unofficial' && state.me?.canReview ? (await api(`/registrations/log?catch=${c.id}`)).entries : null;
+    const record = c.status !== 'unofficial' && state.me?.canReview ? (await api(`/registrations/log?catch=${c.id}`)).fish : null;
     view.innerHTML = html`
       <div class="feed">${raw(catchCard(c, { full: true }))}</div>
       ${record ? raw(html`<h2>Registration history</h2><div class="card"><ul class="list log">${raw(logItems(record))}</ul></div>`) : ''}
@@ -1680,19 +1685,19 @@ const pagesFor = (view) => ({
   async history() {
     if (!state.me?.canReview) return needLogin(view, 'see the registration record (the secretary and admin)');
     const team = new URLSearchParams(location.hash.split('?')[1] || '').get('team') || '';
-    const [{ teams }, { entries, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
+    const [{ teams }, { fish, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Registration history</h1>
-      <p class="small muted">Everything that happened to JHMMC registrations: who registered, withdrew, disputed, approved or rejected each fish, when, and where the phone was when the captain allowed it. Nothing here can be changed.</p>
+      <p class="small muted">Every JHMMC registration, one entry per fish with where it stands now, and underneath everything that happened to it: who registered, disputed, approved, rejected or withdrew it, when, and where the captain's phone was. Nothing here can be changed.</p>
       <label class="log-filter">Boat <select id="log-team">${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, t.name]), team, 'All boats'))}</select></label>
-      <div class="card"><ul class="list log" id="log">${raw(logItems(entries))}</ul></div>
+      <div class="card"><ul class="list log" id="log">${raw(logItems(fish))}</ul></div>
       ${nextBefore ? raw(html`<p><button id="log-more" data-before="${nextBefore}">Show older</button></p>`) : ''}`;
     view.querySelector('#log-team').addEventListener('change', (e) => {
       location.hash = e.target.value ? `#/history?team=${e.target.value}` : '#/history';
     });
     view.querySelector('#log-more')?.addEventListener('click', async (e) => {
       const more = await api(`/registrations/log?team=${encodeURIComponent(team)}&before=${e.target.dataset.before}`);
-      view.querySelector('#log').insertAdjacentHTML('beforeend', logItems(more.entries));
+      view.querySelector('#log').insertAdjacentHTML('beforeend', logItems(more.fish));
       if (more.nextBefore) e.target.dataset.before = more.nextBefore;
       else e.target.remove();
     });
