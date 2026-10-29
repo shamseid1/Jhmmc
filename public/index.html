@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1d1e21">
+  <meta name="color-scheme" content="dark">
   <title>West Africa Big Game</title>
   <meta name="description" content="Log and share big game catches across West Africa, home of the JHMMC club's points and tournaments.">
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
@@ -17,7 +18,10 @@
   <script>
     // The chosen theme, applied before the page draws so it doesn't flash.
     try {
-      if (localStorage.getItem('theme') === 'light') document.documentElement.dataset.theme = 'light';
+      if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.dataset.theme = 'light';
+        document.querySelector('meta[name=color-scheme]').content = 'only light';
+      }
     } catch {}
   </script>
 </head>

@@ -2814,6 +2814,8 @@ function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', THEME_COLORS[theme]);
+  // Light is "only light" so a browser's own dark mode (Samsung Internet) leaves it light.
+  document.querySelector('meta[name=color-scheme]')?.setAttribute('content', theme === 'light' ? 'only light' : 'dark');
 }
 applyTheme(currentTheme());
 const themeButton = () => {
