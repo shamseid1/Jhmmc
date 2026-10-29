@@ -568,3 +568,6 @@ button.link[hidden] { display: none; }
   .topbar { flex-direction: column; gap: 8px; }
   .brand .mark { width: 30px; height: 30px; }
 }
+
+/* A person's full name under their nickname, on their profile. */
+.full-name { margin: -0.5rem 0 0.25rem; font-weight: 600; }

@@ -217,7 +217,8 @@ test('participants: boats and anglers with photos and tallies', async () => {
   // Others see the nickname; the full name stays with the account.
   const fatu = (await anon('GET', '/anglers')).body.anglers.find((a) => a.id === r.body.user.id);
   assert.equal(fatu.name, 'Fatu');
-  assert.equal((await anon('GET', `/users/${fatu.id}`)).body.user.name, 'Fatu');
+  const page = (await anon('GET', `/users/${fatu.id}`)).body.user;
+  assert.deepEqual([page.name, page.fullName], ['Fatu', 'Fatu Kollie'], 'the profile shows both');
   assert.match((await crew('PATCH', '/me', { name: 'Fatu' })).body.error, /full name/);
   assert.equal((await crew('PATCH', '/me', { nickname: '' })).body.user.displayName, 'Fatu Kollie', 'no nickname: the full name shows');
   const pic = new FormData();

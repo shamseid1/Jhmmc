@@ -2185,6 +2185,7 @@ const pagesFor = (view) => ({
   async user(id) {
     const { user, stats } = await api(`/users/${id}`);
     view.innerHTML = html`${user.photoUrl ? raw(html`<img class="avatar" src="${user.photoUrl}" alt="">`) : ''}<h1>${user.name}</h1>
+      ${user.fullName !== user.name ? raw(html`<p class="full-name">${user.fullName}</p>`) : ''}
       <p class="muted">${user.teamName ? raw(html`<a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
       ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
@@ -2204,7 +2205,7 @@ const pagesFor = (view) => ({
       <p>${me.teamId ? raw(html`Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
       <form class="card pad stack" id="f">
         <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name" value="${me.name}">
-          <span class="small muted">First and last name. Only the club officials see it.</span></label>
+          <span class="small muted">First and last name. Shown on your profile.</span></label>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo" value="${me.nickname || ''}">
           <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
@@ -2315,7 +2316,7 @@ const pagesFor = (view) => ({
       <p class="muted">Every angler signs in with their own account. After this you can join your boat's crew, register a boat, or just follow the feed.</p>
       <form class="card pad stack" id="f">
         <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name">
-          <span class="small muted">First and last name. Only the club officials see it.</span></label>
+          <span class="small muted">First and last name. Shown on your profile.</span></label>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo">
           <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Email <input name="email" type="email" required autocomplete="email"></label>

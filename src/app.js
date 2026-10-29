@@ -1726,7 +1726,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/users/:id', (req, res) => {
     const id = intId(req.params.id);
     const user = id && db.prepare(`
-      SELECT u.id, ${SHOWN} AS name, u.country, u.bio, u.photo, u.created_at AS joinedAt, t.id AS teamId, t.name AS teamName
+      SELECT u.id, ${SHOWN} AS name, u.name AS fullName, u.country, u.bio, u.photo, u.created_at AS joinedAt, t.id AS teamId, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     if (!user) return res.status(404).json({ error: 'Angler not found.' });
