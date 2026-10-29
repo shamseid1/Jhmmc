@@ -716,3 +716,9 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .photo-manager .photo-menu .btn { gap: 6px; }
 .edit-link { margin-left: auto; }
 .club-who .edit-link + .link { margin-left: 8px; }
+
+/* Country names on the satellite maps. */
+.country-label { width: 0; height: 0; }
+.country-label span { display: inline-block; transform: translate(-50%, -50%); color: #fff; font: 700 13px/1 system-ui, sans-serif;
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 6px #000; }
+.country-label.hidden { display: none; }
