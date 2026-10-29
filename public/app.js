@@ -1848,7 +1848,7 @@ const pagesFor = (view) => ({
       <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
       ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
       <span class="mi-go" aria-hidden="true">›</span></a>`;
-    view.innerHTML = html`<h1 class="center">More</h1>
+    view.innerHTML = html`<div class="page-head"><h1 class="center">More</h1>${raw(themeButton())}</div>
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
           <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
@@ -2806,22 +2806,27 @@ async function route() {
   }
 }
 
-// Dark (the default) or light, for bright sun; remembered on this phone.
-const THEME_COLORS = { dark: '#1d1e21', light: '#eef2f7' };
+// Dark (the default) or light, for bright sun; remembered on this phone. Switched on More.
+const THEME_COLORS = { dark: '#1d1e21', light: '#e9f1f8' };
+const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', THEME_COLORS[theme]);
-  const btn = document.getElementById('theme-toggle');
-  btn.innerHTML = icon(theme === 'light' ? 'moon' : 'sun');
-  btn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
-  btn.title = btn.getAttribute('aria-label');
 }
-const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 applyTheme(currentTheme());
-document.getElementById('theme-toggle').addEventListener('click', () => {
+const themeButton = () => {
+  const light = currentTheme() === 'light';
+  return `<button type="button" class="theme-toggle" id="theme-toggle" aria-label="${light ? 'Switch to dark mode' : 'Switch to light mode'}"
+    title="${light ? 'Dark mode' : 'Light mode'}">${icon(light ? 'moon' : 'sun')}</button>`;
+};
+// The button on More (its page is redrawn, so listen at the document).
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#theme-toggle');
+  if (!btn) return;
   const next = currentTheme() === 'light' ? 'dark' : 'light';
   applyTheme(next);
+  btn.outerHTML = themeButton();
   try {
     localStorage.setItem('theme', next);
   } catch {

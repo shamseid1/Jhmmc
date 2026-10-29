@@ -637,20 +637,10 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .scale-video-preview { display: block; width: 100%; max-height: 260px; background: #000; border-radius: 12px; margin-bottom: 8px; }
 .thumbs video { width: 120px; height: 90px; object-fit: cover; border-radius: 10px; background: #000; }
 
-/* Dark / light switch in the header. */
-.theme-toggle { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; flex: none; }
-.theme-toggle .icon { width: 19px; height: 19px; }
-@media (max-width: 640px) {
-  /* Room on both sides of the centred name for the switch on the right. */
-  .topbar { padding-left: 48px; padding-right: 48px; gap: 8px; }
-  .theme-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; }
-  .brand span { font-size: 16px; }
-}
+/* Dark / light switch, at the top right of More. */
+.page-head { position: relative; }
+.theme-toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: grid; place-items: center;
+  width: 46px; height: 46px; padding: 0; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--text); }
+.theme-toggle .icon { width: 21px; height: 21px; }
 :root[data-theme="light"] .badge.status.wait { color: #8a4b00; }
-@media (max-width: 420px) {
-  /* Narrow phones: the JHMMC tag is just its logo (which reads JHMMC). */
-  .club-chip { padding: 3px; }
-  .club-chip span { display: none; }
-  .club-chip img { width: 26px; }
-}
 .composer-tools .photo-cta, .composer-tools button { white-space: nowrap; }
