@@ -21,6 +21,12 @@ function html(strings, ...values) {
   }, '');
 }
 
+// While the server restarts (each update, for a few seconds) or is busy, the
+// host answers 502-504 without the request reaching the app: safe to send again.
+const RETRY_STATUS = new Set([502, 503, 504]);
+const RETRY_WAITS = [1500, 3000, 6000];
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
 async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: {}, credentials: 'same-origin' };
   if (opts.form) init.body = opts.form;
@@ -28,7 +34,26 @@ async function api(path, opts = {}) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);
   }
-  const res = await fetch('/api' + path, init);
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch('/api' + path, init);
+    } catch {
+      // No answer at all (no signal, or the connection dropped). Reading is
+      // safe to repeat; anything that changes something might have arrived, so
+      // it's left for the person to send again.
+      if (init.method === 'GET' && attempt < RETRY_WAITS.length) {
+        await wait(RETRY_WAITS[attempt]);
+        continue;
+      }
+      throw new Error(init.method === 'GET'
+        ? "Can't reach the app right now. Check your signal and try again."
+        : "No connection, so it wasn't sent. Check your signal and tap again.");
+    }
+    if (!RETRY_STATUS.has(res.status) || attempt >= RETRY_WAITS.length) break;
+    await wait(RETRY_WAITS[attempt]);
+  }
+  if (RETRY_STATUS.has(res.status)) throw new Error('The app is updating or busy for a moment. Try again in a minute.');
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && state.me) {
     // Session expired: send them back to sign in.
@@ -49,10 +74,11 @@ function toast(msg) {
 
 const kgToLb = (kg) => Math.round(kg * 2.20462);
 const fmtWeight = (kg) => (kg == null ? '' : `${+kg.toFixed(1)} kg · ${kgToLb(kg)} lb`);
-const fmtDate = (d) =>
-  new Date(d + (d.length === 10 ? 'T12:00:00' : 'Z')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+// Stored times look like "2026-10-28 14:05:00" (UTC); iPhones only read them with a "T".
+const parseTime = (d) => new Date(d.length === 10 ? `${d}T12:00:00` : `${d.replace(' ', 'T')}${/Z|[+-]\d\d:\d\d$/.test(d) ? '' : 'Z'}`);
+const fmtDate = (d) => parseTime(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 // A stored time ("2026-10-28 14:05:00", UTC) as local day and time.
-const fmtWhen = (d) => new Date(`${d.replace(' ', 'T')}Z`).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const fmtWhen = (d) => parseTime(d).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const today = () => new Date().toISOString().slice(0, 10);
 const plural = (n, word) => `${n} ${word}${n === 1 || word === 'fish' ? '' : word.endsWith('ch') ? 'es' : 's'}`;
 
