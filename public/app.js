@@ -1794,16 +1794,17 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1 class="center">More</h1>
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
-          <div><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
-        </div>`)
+          <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
+          ${me.jhmmc ? raw(html`<a class="btn feed-switch" href="#/?feed=${feedPref() === 'club' ? 'wa' : 'club'}" aria-label="Switch to the ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']} feed">${raw(icon('switch', 'icon small'))}
+            ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']}</a>`) : ''}
+        </div>
+        ${me.jhmmc ? raw(html`<p class="small muted feed-now">You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.</p>`) : ''}`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${me ? raw(`<h2>You</h2><div class="card menu">
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
-        ${me.jhmmc ? item(`#/?feed=${feedPref() === 'club' ? 'wa' : 'club'}`, 'feed', `Switch to the ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']} feed`,
-          `You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.`) : ''}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
@@ -2579,7 +2580,7 @@ const ICONS = {
   eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
-  chevron: '<path d="m6 9 6 6 6-6"/>',
+  switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',

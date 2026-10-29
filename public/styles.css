@@ -584,3 +584,9 @@ button.link[hidden] { display: none; }
 /* More as a profile tab: your photo or initials. */
 .nav-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; box-shadow: 0 0 0 1.5px currentColor; }
 .nav-avatar.initials { display: grid; place-items: center; font-size: 10px; font-weight: 800; letter-spacing: .02em; background: var(--surface-2); }
+
+/* Switch feeds from the profile card on More. */
+.me-who { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.feed-switch { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; font-size: 13px; white-space: nowrap; flex: none; }
+.feed-switch .icon { width: 15px; height: 15px; }
+.feed-now { margin: 8px 4px 0; }
