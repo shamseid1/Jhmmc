@@ -2,6 +2,8 @@
 
 A shared catch log and social feed for big game fishing clubs across West Africa.
 
+
+**Two sides.** A switch at the top moves between **West Africa** (the open catch log: Feed, Leaderboard, Post, Participants, More) and **JHMMC** (the club: Points, Tournaments, Records, Club). JHMMC results are public; the club's tools appear under Club by role (captains, secretary, admin). JHMMC members open on the JHMMC side. Pages that belong to neither (a catch, a boat, a profile) keep the side you came from.
 ## Features
 
 - **Open to look at**: anyone with the link can browse the feed, leaderboards, boats, anglers, clubs and catches without an account.

@@ -264,13 +264,13 @@ function createApp({
   function getMe(id) {
     const me = db.prepare(`
       SELECT u.id, u.name, u.email, u.country, u.bio, u.photo,
-        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role,
+        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
         t.weigh_station AS weighStation
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, ...rest } = me;
     return {
-      ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain,
+      ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
       isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me),
     };
   }
@@ -1368,9 +1368,11 @@ function createApp({
   const memberNow = (a) => (a.userId ? isPaidMember(a.userId) : a.personId ? isPaidPerson(a.personId) : !!a.member);
   const todayUtc = () => new Date().toISOString().slice(0, 10);
 
-  // The season's tournaments with how many boats and anglers are in.
-  api.get('/tournaments', requireWeigh, (req, res) => {
-    const myTeam = req.user.teamId;
+  // The season's tournaments, open to everyone; officials also get the
+  // anglers and money owed, captains whether their boat is in.
+  api.get('/tournaments', (req, res) => {
+    const myTeam = req.user && canWeigh(req.user) ? req.user.teamId : null;
+    const official = canReview(req.user);
     const rows = db.prepare(`SELECT e.id, e.name, e.date, COALESCE(e.end_date, e.date) AS endDate,
         (SELECT COUNT(*) FROM tournament_entries te WHERE te.event_id = e.id) AS boats,
         (SELECT COUNT(*) FROM tournament_anglers ta JOIN tournament_entries te ON te.event_id = ta.event_id AND te.team_id = ta.team_id
@@ -1383,7 +1385,10 @@ function createApp({
       .all({ start: setting('season_start'), end: setting('season_end'), season: memberSeason() });
     res.json({
       fee: TEMP_MEMBERSHIP_USD,
-      tournaments: rows.map((t) => ({ ...t, open: t.endDate >= todayUtc(), mine: myTeam ? isEntered(t.id, myTeam) : false })),
+      tournaments: rows.map(({ anglers, guests, unpaid, ...t }) => ({
+        ...t, open: t.endDate >= todayUtc(), mine: myTeam ? isEntered(t.id, myTeam) : false,
+        ...(official && { anglers, guests, unpaid }),
+      })),
     });
   });
 
