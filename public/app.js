@@ -70,13 +70,6 @@ const SCALE_PHOTO_MAX_AGE = 15 * 60 * 1000;
 const ROLE_OPTIONS = [['', 'Member'], ['president', 'President'], ['vice_president', 'Vice President'], ['secretary', 'Secretary'], ['treasurer', 'Treasurer']];
 const roleLabel = (role) => ROLE_OPTIONS.find(([k]) => k === role)?.[1] || role;
 
-// A row in a menu card: icon, label, a line under it, and an optional count.
-const menuItem = (href, iconName, label, sub = '', count = 0) => `<a class="menu-item" href="${href}">
-  <span class="mi-icon">${icon(iconName)}</span>
-  <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
-  ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
-  <span class="mi-go" aria-hidden="true">›</span></a>`;
-
 // The registration record, one entry per fish: where it stands now, and
 // everything that happened to it, in order.
 const LOG_ACTIONS = {
@@ -492,8 +485,8 @@ function needLogin(view, what) {
 }
 
 const HERO = `<section class="hero">
-  <h1>Every big fish in West Africa, in one place</h1>
-  <p>Follow the boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
+  <h1>Every big fish at JHMMC, in one place</h1>
+  <p>Follow the club's boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
   <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
 </section>`;
 
@@ -506,8 +499,8 @@ function noBoatBanner() {
   </div>`;
 }
 
-// West Africa side: the leaderboard and the record books.
-const boardTabs = (active) => `<div class="seg" role="tablist">
+const boardTabs = (active) => `<div class="seg three" role="tablist">
+  <a role="tab" href="#/points" aria-selected="${active === 'points'}">Points</a>
   <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
   <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
 </div>`;
@@ -1067,7 +1060,7 @@ const pagesFor = (view) => ({
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     const scopeTab = (key, label) => html`<a role="tab" href="#/points?scope=${key}&division=${division}" aria-selected="${scope === key}">${label}</a>`;
-    view.innerHTML = html`<h1>JHMMC points</h1>
+    view.innerHTML = html`${raw(boardTabs('points'))}
       <div class="seg scope" role="tablist">${raw(scopeTab('overall', 'Overall'))}${raw(scopeTab('tournaments', 'Tournaments'))}</div>
       ${raw(divisionTabs(`#/points?scope=${scope}`, division))}
       <p class="small muted">${scope === 'tournaments'
@@ -1103,7 +1096,7 @@ const pagesFor = (view) => ({
     // Each tab lists only its own division's boats.
     const entries = allEntries.filter((e) => e.division === division);
     const side = division === 'river' ? 'River' : 'Ocean';
-    view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)}</p>
       ${raw(divisionTabs(`#/tournament/${id}`, division))}
@@ -1176,7 +1169,7 @@ const pagesFor = (view) => ({
     // A captain's own boat, with its weigh station (its home port).
     const own = official ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
@@ -1377,7 +1370,7 @@ const pagesFor = (view) => ({
       return [...groups.values()];
     };
     const tab = (label, href, n, on) => html`<a href="${href}" class="station-tab${n ? '' : ' none'}" ${on ? raw('aria-current="page"') : ''} data-count-for="${label}">${label} <span class="tab-count">${n}</span></a>`;
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
       <div class="card pad notify" id="notify"></div>
       ${raw(html`<nav class="station-tabs" aria-label="Weigh stations">
@@ -1447,7 +1440,7 @@ const pagesFor = (view) => ({
   async calendar() {
     const { season, events } = await api('/events');
     const editable = !!state.me?.canReview;
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
       <p class="small muted">Every fishing day scores. Tournaments listed here get their own results page and winner.</p>
       ${editable ? raw(html`<form class="card pad stack" id="season">
@@ -1547,7 +1540,11 @@ const pagesFor = (view) => ({
   async more() {
     const me = state.me;
     if (me?.canReview) await refreshPending();
-    const item = menuItem;
+    const item = (href, iconName, label, sub = '', count = 0) => `<a class="menu-item" href="${href}">
+      <span class="mi-icon">${icon(iconName)}</span>
+      <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
+      ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
+      <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<h1 class="center">More</h1>
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
@@ -1560,16 +1557,36 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
       </div>`) : ''}
-      <h2>Clubs</h2>
+      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'Club officials' : 'JHMMC points'}</h2><div class="card menu">
+        ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+        ${item('#/tournaments', 'trophy', me.canReview ? 'Tournaments' : 'Tournament entry', me.canReview ? "Who's in, anglers, members and guests" : 'Enter your boat and anglers')}
+        ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
+        ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
+        ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision') : ''}
+        ${me.canReview ? item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season') : ''}
+        ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
+        ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
+      </div>`) : ''}
+      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>Treasurer</h2><div class="card menu">
+        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
+        ${item('#/tournaments', 'trophy', 'Tournaments', 'Temporary memberships to collect')}
+      </div>`) : ''}
+      ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
+        ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
+        ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
+      </div>`) : ''}
+      <h2>Rules</h2>
       <div class="card menu">
-        ${raw(item('#/points', 'trophy', 'JHMMC', 'Points, tournaments, record book and the club'))}
-        ${raw(item('#/clubs', 'clubs', 'All clubs'))}
-      </div>
-      <h2>Rules &amp; records</h2>
-      <div class="card menu">
+        ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
+        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
+        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
+      </div>
+      <h2>Records &amp; clubs</h2>
+      <div class="card menu">
         ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
         ${raw(item('#/records', 'medal', 'Club records'))}
+        ${raw(item('#/clubs', 'clubs', 'Clubs'))}
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
@@ -1593,7 +1610,7 @@ const pagesFor = (view) => ({
     const jhmmc = teams.filter((t) => isJhmmc(t.clubId));
     const others = teams.filter((t) => !isJhmmc(t.clubId));
     const find = (t) => `${t.name} ${t.clubName || ''} ${t.weighStation || t.homePort || ''}`.toLowerCase();
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Boats (${teams.length})</h1>
       <p class="small muted">Set each JHMMC boat's weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away. Tap a boat to change anything else: name, photo, club, captain or crew.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by boat, club or station" aria-label="Search boats" autocomplete="off"></label>
@@ -1634,7 +1651,7 @@ const pagesFor = (view) => ({
     if (!state.me?.canWeigh) return needLogin(view, 'see pending registrations (captains of JHMMC boats)');
     const { registrations } = await api('/registrations/pending');
     const until = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Pending registrations</h1>
       <p class="small muted">Fish every JHMMC boat has registered that the secretary hasn't decided on yet. If something looks wrong,
         dispute it within 24 hours with a reason; the secretary sees it before approving. <a href="#/rules?section=app-registrations">The rule</a></p>
@@ -1681,7 +1698,7 @@ const pagesFor = (view) => ({
     if (!state.me?.canReview) return needLogin(view, 'see the registration record (the club officers)');
     const team = new URLSearchParams(location.hash.split('?')[1] || '').get('team') || '';
     const [{ teams }, { fish, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Registration history</h1>
       <p class="small muted">Every JHMMC registration, one entry per fish with where it stands now, and underneath everything that happened to it: who registered, disputed, approved, rejected or withdrew it, when, and where the captain's phone was. Nothing here can be changed.</p>
       <label class="log-filter">Boat <select id="log-team">${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, t.name]), team, 'All boats'))}</select></label>
@@ -1700,24 +1717,21 @@ const pagesFor = (view) => ({
 
   // Tournaments for captains (enter your boat) and officials (the registration sheet).
   async tournaments() {
-    const me = state.me;
-    const official = !!me?.canHandleMoney;
-    const captain = !!me?.canWeigh && !official;
+    if (!state.me?.canWeigh && !state.me?.canHandleMoney) return needLogin(view, 'enter tournaments (captains of JHMMC boats)');
+    const official = state.me.canHandleMoney;
     const { tournaments, fee } = await api('/tournaments');
-    view.innerHTML = html`<h1>Tournaments</h1>
-      <p class="small muted">This season's JHMMC tournaments. Each has its own results for Ocean and River boats.
-        ${captain ? `Enter your boat and say who's fishing; non-members pay a USD ${fee} temporary membership.` : ''}
-        ${official ? `Open a registration sheet for who's in, the anglers and the temporary memberships (USD ${fee} each).` : ''}</p>
-      ${tournaments.length ? raw(html`<div class="stack">${tournaments.map((t) => raw(html`<article class="card pad tour">
-        <div class="catch-head"><h3 class="catch-title"><a href="#/tournament/${t.id}">${t.name}</a></h3>
-          ${t.mine ? raw('<span class="badge new">Your boat is in</span>') : t.open ? '' : raw('<span class="badge">Over</span>')}</div>
-        <p class="meta">${fmtDays(t)} · ${plural(t.boats, 'boat')} entered${official ? ` · ${plural(t.anglers, 'angler')} · ${t.guests} non-member${t.guests === 1 ? '' : 's'}${t.unpaid ? ` · ${t.unpaid} unpaid` : ''}` : ''}</p>
-        <div class="actions">
-          <a class="btn" href="#/tournament/${t.id}">Results</a>
-          ${captain && (t.open || t.mine) ? raw(html`<a class="btn ${t.mine ? '' : 'primary'}" href="#/enter/${t.id}">${t.mine ? 'Your entry' : 'Enter my boat'}</a>`) : ''}
-          ${official ? raw(html`<a class="btn primary" href="#/sheet/${t.id}">Registration sheet</a>`) : ''}
-        </div>
-      </article>`))}</div>`)
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>${official ? 'Tournaments' : 'Tournament entry'}</h1>
+      <p class="small muted">${official
+        ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
+        : `Enter your boat and say who's fishing on it. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`}</p>
+      ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="#/${official ? 'sheet' : 'enter'}/${t.id}">
+        <span class="mi-icon">${raw(icon('trophy'))}</span>
+        <span class="mi-text"><b>${t.name}</b><span>${fmtDays(t)}${t.open ? '' : ' · over'}</span>
+          <span>${official ? `${plural(t.boats, 'boat')} · ${plural(t.anglers, 'angler')} · ${t.guests} non-member${t.guests === 1 ? '' : 's'}${t.unpaid ? ` · ${t.unpaid} unpaid` : ''}`
+            : t.mine ? 'Your boat is entered' : t.open ? 'Not entered yet' : 'You did not enter'}</span></span>
+        ${t.mine && !official ? raw(`<span class="badge new">In</span>`) : ''}
+        <span class="mi-go" aria-hidden="true">›</span></a>`))}</div>`)
         : raw(html`<div class="card pad empty">No tournaments on the calendar this season yet.${official ? raw(' <a href="#/calendar">Add one</a>') : ''}</div>`)}`;
   },
 
@@ -1856,7 +1870,7 @@ const pagesFor = (view) => ({
     const [{ season, people, named }, { teams }] = await Promise.all([api('/club-members'), api('/teams')]);
     const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
     const paid = people.filter((p) => p.paid).length;
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Club members</h1>
       <p class="small muted">Tick everyone who has paid their JHMMC membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
         In tournaments, anyone who isn't ticked here counts as a non-member and pays the temporary membership.</p>
@@ -1948,50 +1962,6 @@ const pagesFor = (view) => ({
     });
   },
 
-  // JHMMC side: the club's record book.
-  async 'jhmmc-records'() {
-    return this.records(null, { clubSide: true });
-  },
-
-  // JHMMC side: everything the club does, by who you are.
-  async jhmmc() {
-    const me = state.me;
-    if (me?.canReview) await refreshPending();
-    const item = menuItem;
-    view.innerHTML = html`<h1 class="center">JHMMC</h1>
-      <p class="center small muted">Jim Holder Memorial Marine Club · Monrovia, Liberia</p>
-      ${me?.canWeigh && !me.canReview ? raw(`<h2>Your boat</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Register fish', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
-        ${item('#/tournaments', 'trophy', 'Tournament entry', 'Enter your boat and anglers')}
-        ${item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
-      </div>`) : ''}
-      ${me?.canReview ? raw(`<h2>Club officials</h2><div class="card menu">
-        ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
-        ${item('#/tournaments', 'trophy', 'Tournaments', "Who's in, anglers, members and guests")}
-        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
-        ${item('#/weigh', 'weight', 'Register fish', 'For any JHMMC boat, any day')}
-        ${item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision')}
-        ${item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments')}
-        ${item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species')}
-      </div>`) : ''}
-      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>Treasurer</h2><div class="card menu">
-        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
-        ${item('#/tournaments', 'trophy', 'Tournaments', 'Temporary memberships to collect')}
-      </div>`) : ''}
-      ${me?.isAdmin ? raw(`<h2>Admin</h2><div class="card menu">
-        ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
-        ${item('#/admin-boats', 'boat', 'Boats', "Weigh station, Ocean or River, and every boat's details")}
-      </div>`) : ''}
-      <h2>The club</h2>
-      <div class="card menu">
-        ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
-        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
-        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments this season'))}
-        ${raw(item(`#/club/${state.meta.homeClubId}`, 'boat', 'JHMMC boats', 'The club page'))}
-      </div>
-      ${me ? '' : raw('<div class="card pad"><p style="margin-top:0">JHMMC captains and officials sign in for the club tools.</p><a class="btn primary" href="#/login" data-return>Sign in</a></div>')}`;
-  },
-
   async members() {
     if (!state.me?.isAdmin) {
       view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
@@ -1999,7 +1969,7 @@ const pagesFor = (view) => ({
     }
     const { users } = await api('/admin/users');
     const inClub = users.filter((u) => u.jhmmc).length;
-    view.innerHTML = html`<p class="back"><a href="#/jhmmc">‹ Club</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})</h1>
       <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
@@ -2076,7 +2046,7 @@ const pagesFor = (view) => ({
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const which = q.get('book') === 'igfa' ? 'igfa' : 'jhmmc';
     const book = window.RULES[which];
-    view.innerHTML = html`${raw(state.side === 'club' ? '<p class="back"><a href="#/jhmmc">‹ Club</a></p>' : '<p class="back"><a href="#/more">‹ More</a></p>')}
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="seg" role="tablist">
         <a role="tab" href="#/rules?book=jhmmc" aria-selected="${which === 'jhmmc'}">JHMMC rules</a>
         <a role="tab" href="#/rules?book=igfa" aria-selected="${which === 'igfa'}">IGFA rules</a>
@@ -2092,8 +2062,8 @@ const pagesFor = (view) => ({
   },
 
   // One page, many record books: IGFA's world records, or any club's own.
-  async records(_arg, { clubSide = false } = {}) {
-    const q = new URLSearchParams(clubSide ? `club=${state.meta.homeClubId}` : location.hash.split('?')[1] || '');
+  async records() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const clubs = await loadClubs();
     // The home club comes first after IGFA, then the rest by name.
     const home = state.meta.homeClub.toLowerCase();
@@ -2176,8 +2146,8 @@ const pagesFor = (view) => ({
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }
-    view.innerHTML = clubSide ? html`${raw(body)}` : html`${raw(boardTabs('records'))}${raw(picker)}${raw(body)}`;
-    view.querySelector('#club-pick')?.addEventListener('change', (e) => {
+    view.innerHTML = html`${raw(boardTabs('records'))}${raw(picker)}${raw(body)}`;
+    view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });
   },
@@ -2259,7 +2229,7 @@ const pagesFor = (view) => ({
     const form = view.querySelector('#f');
     bindForm(form, async () => {
       state.me = (await api('/auth/login', { method: 'POST', body: formData(form) })).user;
-      location.hash = state.afterLogin || (startsOnClub() ? '#/points' : '#/');
+      location.hash = state.afterLogin || '#/';
       state.afterLogin = null;
     });
   },
@@ -2413,7 +2383,7 @@ async function refreshPending() {
   } catch {
     return;
   }
-  setTitle();
+  document.title = `${state.pending ? `(${state.pending}) ` : ''}JHMMC`;
   if (state.pending !== before) renderNav();
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);
@@ -2482,62 +2452,25 @@ async function renderNotify(el) {
   };
 }
 
-// Two sides: the West Africa catch log, open to every angler, and the JHMMC
-// club side (points, tournaments, record book and the club's own tools).
-const SIDE_NAMES = { wa: 'West Africa Big Game', club: 'JHMMC' };
-const CLUB_PAGES = new Set(['points', 'tournament', 'tournaments', 'enter', 'sheet', 'weigh', 'review', 'pending', 'history',
-  'club-members', 'calendar', 'scoring', 'admin-boats', 'members', 'jhmmc', 'jhmmc-records']);
-// Pages shared by both sides (a catch, a boat, a profile, signing in) keep whichever side you came from.
-const SHARED_PAGES = new Set(['catch', 'boat', 'user', 'profile', 'login', 'register', 'forgot', 'reset', 'rules']);
-function sideOf(page) {
-  if (CLUB_PAGES.has(page)) return 'club';
-  if (page === 'rules') return new URLSearchParams(location.hash.split('?')[1] || '').get('book') === 'igfa' ? state.side || 'wa' : 'club';
-  if (SHARED_PAGES.has(page)) return state.side || 'wa';
-  return 'wa';
-}
-// JHMMC members (and the club's captains and officials) start on the JHMMC side.
-const startsOnClub = () => !!(state.me && (state.me.jhmmc || state.me.canWeigh || state.me.canReview));
-
 function renderNav(active = state.navActive) {
   state.navActive = active;
-  const club = state.side === 'club';
-  const links = club
-    ? [
-      ['#/points', 'Points', 'points', 'leaderboard'],
-      ['#/tournaments', 'Tournaments', 'tournaments', 'trophy'],
-      ['#/jhmmc-records', 'Records', 'jhmmc-records', 'medal'],
-      ['#/jhmmc', 'Club', 'jhmmc', 'clubs'],
-    ]
-    : [
-      ['#/', 'Feed', 'home', 'feed'],
-      ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
-      ...(state.me?.teamId ? [['#/new', 'Post', 'new', 'catch', 'cta']] : []),
-      ['#/participants', 'Participants', 'participants', 'participants'],
-      ['#/more', 'More', 'more', 'more'],
-    ];
-  const current = (club
-    ? { tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points', rules: 'jhmmc' }
-    : { boat: 'participants', user: 'participants', records: 'leaderboard', rules: 'more', clubs: 'more', club: 'more',
-      profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more' })[active] || (club && CLUB_PAGES.has(active) && !links.some((l) => l[2] === active) ? 'jhmmc' : active);
-  // The secretary's count of fish to review sits on the Club tab.
-  const badgeOn = 'jhmmc';
+  const links = [
+    ['#/', 'Feed', 'home', 'feed'],
+    ['#/points', 'Leaderboard', 'points', 'leaderboard'],
+  ];
+  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  links.push(['#/participants', 'Participants', 'participants', 'participants']);
+  links.push(['#/more', 'More', 'more', 'more']);
+  const current = {
+    boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
+    rules: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+  }[active] || active;
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}>
-      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>${key === badgeOn && state.pending
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
-  document.getElementById('side-switch').innerHTML = [['wa', 'West Africa', '#/'], ['club', 'JHMMC', '#/points']]
-    .map(([key, label, href]) => `<a role="tab" href="${href}" aria-selected="${state.side === key}">${label}</a>`).join('');
-  // Each side has its own mark: the JHMMC logo, or the plain marlin.
-  const brand = document.querySelector('.brand');
-  brand.href = club ? '#/points' : '#/';
-  brand.innerHTML = club
-    ? '<img class="logo" src="/jhmmc-logo.png" alt="JHMMC home" width="345" height="294">'
-    : `<svg class="mark" viewBox="0 0 670 658" aria-hidden="true"><use href="/marlin.svg#m"/></svg><span>${SIDE_NAMES.wa}</span>`;
-  document.body.dataset.side = state.side;
-  setTitle();
 }
-const setTitle = () => { document.title = `${state.pending ? `(${state.pending}) ` : ''}${SIDE_NAMES[state.side || 'wa']}`; };
 
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, '').split('?');
@@ -2546,7 +2479,6 @@ async function route() {
   const pages = pagesFor(view);
   let page = Object.hasOwn(pages, name) ? name : 'home';
   if (state.me && (page === 'login' || page === 'register')) page = 'home';
-  state.side = sideOf(page);
   renderNav(page);
   refreshPending();
   main.replaceChildren(view);
@@ -2565,8 +2497,6 @@ document.addEventListener('click', (e) => {
 
 (async function init() {
   [state.meta] = await Promise.all([api('/meta'), refreshMe()]);
-  // Opening the app with no page in mind: JHMMC members start on the JHMMC side.
-  if (!location.hash && startsOnClub()) history.replaceState(null, '', '#/points');
   window.addEventListener('hashchange', route);
   route();
 })();

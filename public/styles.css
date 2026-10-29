@@ -557,17 +557,5 @@ button.link[hidden] { display: none; }
 .member-pay .role-pick select { width: auto; padding: 4px 8px; font-size: 13px; }
 .member-pay .badge { display: inline-block; margin-top: 6px; }
 
-/* ---- the two sides: West Africa | JHMMC ---- */
-.side-switch { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); }
-.side-switch a { padding: 6px 14px; border-radius: 999px; text-align: center; font-size: 14px; font-weight: 700; color: var(--muted); text-decoration: none; white-space: nowrap; }
-.side-switch a[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
-.brand .mark { width: 34px; height: 34px; fill: currentColor; flex: none; }
-.brand span { font-size: 17px; }
-.tour .actions { margin-top: 10px; }
-@media (max-width: 640px) {
-  .topbar { flex-direction: column; gap: 8px; }
-  .brand .mark { width: 30px; height: 30px; }
-}
-
 /* A person's full name under their nickname, on their profile. */
 .full-name { margin: -0.5rem 0 0.25rem; font-weight: 600; }
