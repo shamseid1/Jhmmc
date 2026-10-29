@@ -1866,7 +1866,10 @@ const pagesFor = (view) => ({
       </div>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search people" autocomplete="off"></label>
       <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
-        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div></span>
+        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div>
+          ${p.isAdmin ? raw('<span class="badge new">Admin</span>')
+            : state.me.isAdmin ? raw(html`<label class="role-pick">Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], p.role || ''))}</select></label>`)
+              : p.role ? raw(html`<span class="badge">${p.role === 'secretary' ? 'Secretary' : p.role}</span>`) : ''}</span>
         <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
       </li>`))}</ul></div>
       <h2>Members without an account</h2>
@@ -1902,6 +1905,17 @@ const pagesFor = (view) => ({
       filter();
     });
     view.addEventListener('change', async (e) => {
+      // The admin sets club roles here.
+      const sel = e.target.closest('select[data-act=role]');
+      if (sel) {
+        try {
+          await api(`/admin/users/${sel.closest('[data-id]').dataset.id}`, { method: 'PATCH', body: { role: sel.value } });
+          toast(sel.value ? `${sel.closest('[data-id]').querySelector('b').textContent} is now the secretary` : 'Now a member');
+        } catch (ex) {
+          toast(ex.message);
+        }
+        return;
+      }
       const box = e.target.closest('.member-pay input[type=checkbox]');
       if (!box) return;
       const li = box.closest('.member-pay');
@@ -1943,15 +1957,14 @@ const pagesFor = (view) => ({
     const inClub = users.filter((u) => u.jhmmc).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})</h1>
-      <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Club roles are for JHMMC members only. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
+      <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
-          ${u.isAdmin ? raw('<span class="badge new">Admin</span>')
-            : raw(html`<label class="role-pick" ${u.jhmmc ? '' : 'hidden'}>Role <select data-act="role">${raw(options([['', 'Member'], ['secretary', 'Secretary']], u.role || ''))}</select></label>`)}
+          ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${u.role === 'secretary' ? 'Secretary' : u.role}</span>`) : ''}
         </div>
         <div class="reset-out" hidden></div>
         ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
@@ -1965,30 +1978,19 @@ const pagesFor = (view) => ({
       if (box) {
         const row = box.closest('.member-row');
         const name = row.querySelector('b').textContent;
-        const hasRole = !!row.querySelector('select[data-act=role]').value;
+        const hasRole = !!row.querySelector('.badge:not(.new)');
         if (!box.checked && hasRole && !confirm(`Take ${name} out of JHMMC? They'll lose their role as well.`)) {
           box.checked = true;
           return;
         }
         try {
           const { role } = await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: { jhmmc: box.checked } });
-          row.querySelector('.role-pick').hidden = !box.checked;
-          row.querySelector('select[data-act=role]').value = role || '';
+          if (!role) row.querySelector('.badge:not(.new)')?.remove();
           toast(box.checked ? `${name} is a JHMMC member` : `${name} is no longer a JHMMC member`);
         } catch (ex) {
           box.checked = !box.checked;
           toast(ex.message);
         }
-        return;
-      }
-      const sel = e.target.closest('select[data-act=role]');
-      if (!sel) return;
-      const row = sel.closest('.member-row');
-      try {
-        await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: { role: sel.value } });
-        toast(sel.value ? `Now the ${sel.value}` : 'Now a member');
-      } catch (ex) {
-        toast(ex.message);
       }
     });
     view.addEventListener('click', async (e) => {

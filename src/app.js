@@ -1295,10 +1295,10 @@ function createApp({
 
   api.get('/club-members', requireReview, (_req, res) => {
     const season = { start: setting('season_start'), end: setting('season_end') };
-    const people = db.prepare(`SELECT u.id, u.name, u.email, t.name AS teamName,
+    const people = db.prepare(`SELECT u.id, u.name, u.email, u.role, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 ORDER BY u.name COLLATE NOCASE`).all(season.start)
-      .map((p) => ({ ...p, paid: !!p.paid }));
+      .map((p) => ({ ...p, paid: !!p.paid, isAdmin: isAdminUser(p) }));
     const named = db.prepare(`SELECT p.id, p.name, p.team_id AS teamId, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_people_paid c WHERE c.person_id = p.id AND c.season = ?) AS paid
       FROM club_people p LEFT JOIN teams t ON t.id = p.team_id ORDER BY p.name COLLATE NOCASE`).all(season.start)
