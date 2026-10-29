@@ -892,7 +892,8 @@ function createApp({
   `).run(...values).lastInsertRowid);
 
   function insertCatch(req, res, opts) {
-    const checked = opts.official && !declared(req.user, req.body) ? { error: DECLARATION } : checkCatch(req.user, req.body, req.file, opts);
+    const problem = opts.official && sheetProblem(req.user, req.body);
+    const checked = problem ? { error: problem } : checkCatch(req.user, req.body, req.file, opts);
     if (checked.error) {
       removeUpload(req.file?.filename);
       return res.status(400).json({ error: checked.error });
@@ -937,6 +938,11 @@ function createApp({
   // Captains declare their sheet is true; the secretary and admin don't need to.
   const DECLARATION = 'Tick the declaration that these fish are true before sending.';
   const declared = (user, b) => canReview(user) || b.declared === 'yes';
+  // Captains register from the weigh station: their phone's location is required.
+  const LOCATION_NEEDED = "The phone's location is needed to register fish. Turn on location for this site and send again.";
+  const located = (user, b) => canReview(user) || !!deviceSpot(b);
+  // What stops an official registration before the fish are checked, if anything.
+  const sheetProblem = (user, b) => (!declared(user, b) ? DECLARATION : !located(user, b) ? LOCATION_NEEDED : null);
   // When disputes close: 24 hours after the fish was registered.
   const disputeUntil = (createdAt) => new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + DISPUTE_HOURS * 3600e3).toISOString();
   const disputesFor = db.prepare(`
@@ -1009,7 +1015,8 @@ function createApp({
       return fail('The list of fish could not be read.');
     }
     if (!Array.isArray(fish) || !fish.length) return fail('Add at least one fish.');
-    if (!declared(req.user, req.body)) return fail(DECLARATION);
+    const problem = sheetProblem(req.user, req.body);
+    if (problem) return fail(problem);
     if (fish.length > MAX_FISH_PER_SHEET) return fail(`At most ${MAX_FISH_PER_SHEET} fish at a time.`);
     const rows = [];
     for (const [i, f] of fish.entries()) {

@@ -543,3 +543,5 @@ button.link[hidden] { display: none; }
 .member-pay { flex-wrap: nowrap; }
 .member-pay > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .member-pay > label.check { flex: none; white-space: nowrap; }
+.location-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
+.location-note .icon { width: 18px; height: 18px; flex: none; margin-top: 2px; }

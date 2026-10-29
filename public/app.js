@@ -1178,6 +1178,7 @@ const pagesFor = (view) => ({
         ${official ? '' : raw(html`<label class="check declare"><input type="checkbox" name="declared" value="yes" required>
           <span>I declare these fish were caught today by the anglers named, under the club rules, and weighed on this station's scale.
           A false registration disqualifies the boat (<a href="#/rules?section=app-registrations">rule</a>).</span></label>`)}
+        ${official ? '' : raw(html`<p class="small muted location-note">${raw(icon('locate'))} Your phone's location is taken when you send, to show the fish were registered at the weigh station. Allow location when the phone asks.</p>`)}
         <p class="error"></p>
         <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
@@ -1304,8 +1305,15 @@ const pagesFor = (view) => ({
       fd.set('caughtOn', sheet.caughtOn.value);
       if (sheet.weighStation) fd.set('weighStation', sheet.weighStation.value);
       if (sheet.declared?.checked) fd.set('declared', 'yes');
-      // Where the phone is, for the record, if the captain allows it.
-      const spot = await phoneSpot();
+      // Where the phone is: required from captains, recorded for the secretary.
+      const btn = view.querySelector('#submit-sheet');
+      const label = btn.textContent;
+      btn.textContent = 'Getting your location…';
+      const spot = await phoneSpot(15000);
+      btn.textContent = label;
+      if (!spot && !official) {
+        throw new Error("Your phone's location is needed to register fish. Turn on location (GPS) and allow it for this site in the browser's settings, then send again.");
+      }
       if (spot) {
         fd.set('deviceLat', spot.lat);
         fd.set('deviceLng', spot.lng);

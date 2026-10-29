@@ -501,7 +501,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     // The captain registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;
-    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY, declared: 'yes' };
+    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY, declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' };
     r = await cap('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
     assert.match(r.body.error ?? '', /today/, 'only today can be registered');
     r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(-3), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
@@ -515,6 +515,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.match(r.body.error, /weigh station/, 'a boat without a station has to name one');
     r = await cap('POST', '/weigh', weighed({ ...reg, declared: '', speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
     assert.match(r.body.error, /declaration/, 'captains declare their fish are true');
+    r = await cap('POST', '/weigh', weighed({ ...reg, deviceLat: '', deviceLng: '', speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
+    assert.match(r.body.error, /location/, "captains register with the phone's location");
     await sec('PATCH', '/settings/season', { start: day(-180), end: day(180) });
     // The admin puts each JHMMC boat under a weigh station.
     assert.equal((await sec('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 403, 'admin only');
@@ -592,7 +594,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const snapper = r.body.catch;
     // Every day scores now: a barracuda the secretary will reject.
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
-      caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville', declared: 'yes' }));
+      caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville', declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' }));
     const extra = r.body.catch;
 
     const queue = (await sec('GET', '/officials/queue')).body;
@@ -603,7 +605,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sug(extra.id), 24, 'every day scores');
     // A whole boat's sheet in one go: all or nothing.
     const sheet = (fish, photos) => {
-      const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish), declared: 'yes' });
+      const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish), declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' });
       for (const i of photos) fd.set(`scale_${i}`, new Blob([PNG], { type: 'image/png' }), `s${i}.png`);
       return fd;
     };
@@ -645,7 +647,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${visitor.id}`, { entered: true })).status, 400);
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 200);
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
-      caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club', declared: 'yes' }));
+      caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club', declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
 
     const oceanTable = (await as()('GET', '/points?division=ocean')).body;
