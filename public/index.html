@@ -16,13 +16,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="/styles.css">
   <script>
-    // The chosen theme, applied before the page draws so it doesn't flash.
-    try {
-      if (localStorage.getItem('theme') === 'light') {
+    // The theme, applied before the page draws so it doesn't flash: the one
+    // chosen on this phone, else the phone's own setting (light if it has none).
+    (function () {
+      var chosen = null;
+      try { chosen = localStorage.getItem('theme'); } catch (e) {}
+      var dark = chosen ? chosen === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      if (!dark) {
         document.documentElement.dataset.theme = 'light';
         document.querySelector('meta[name=color-scheme]').content = 'only light';
       }
-    } catch {}
+    })();
   </script>
 </head>
 <body>

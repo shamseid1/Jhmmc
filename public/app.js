@@ -2640,6 +2640,7 @@ const ICONS = {
   switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   brush: '<path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>',
+  settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
@@ -2807,24 +2808,38 @@ async function route() {
   }
 }
 
-// Dark (the default) or light, for bright sun; remembered on this phone. Switched on More.
+// Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
+// setting (light if it has none) and is where everyone starts.
 const THEME_COLORS = { dark: '#1d1e21', light: '#f3f8fc' };
-const currentTheme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
-function applyTheme(theme) {
+const phoneDark = matchMedia('(prefers-color-scheme: dark)');
+const themeChoice = () => {
+  try {
+    const t = localStorage.getItem('theme');
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  } catch {
+    return 'auto';
+  }
+};
+function applyTheme(choice = themeChoice()) {
+  const theme = choice === 'auto' ? (phoneDark.matches ? 'dark' : 'light') : choice;
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', THEME_COLORS[theme]);
   // Light is "only light" so a browser's own dark mode (Samsung Internet) leaves it light.
   document.querySelector('meta[name=color-scheme]')?.setAttribute('content', theme === 'light' ? 'only light' : 'dark');
 }
-applyTheme(currentTheme());
+applyTheme();
+// Following the phone: change when the phone does.
+phoneDark.addEventListener('change', () => {
+  if (themeChoice() === 'auto') applyTheme('auto');
+});
 const themeButton = () => {
-  const now = currentTheme();
-  const choice = (theme, iconName, label) => `<button type="button" role="menuitemradio" data-theme-choice="${theme}" aria-checked="${now === theme}">
-    ${icon(iconName)} ${label}${now === theme ? `<span class="tick">${icon('check')}</span>` : ''}</button>`;
+  const now = themeChoice();
+  const choice = (value, iconName, label) => `<button type="button" role="menuitemradio" data-theme-choice="${value}" aria-checked="${now === value}">
+    ${icon(iconName)} ${label}${now === value ? `<span class="tick">${icon('check')}</span>` : ''}</button>`;
   return `<div class="theme-pick">
-    <button type="button" class="theme-btn" aria-label="Appearance: light or dark" aria-haspopup="true" aria-expanded="false">${icon('brush')}</button>
-    <div class="theme-menu" role="menu" hidden>${choice('light', 'sun', 'Light')}${choice('dark', 'moon', 'Dark')}</div></div>`;
+    <button type="button" class="theme-btn" aria-label="Appearance: auto (the phone's setting), light or dark" aria-haspopup="true" aria-expanded="false">${icon('brush')}</button>
+    <div class="theme-menu" role="menu" hidden>${choice('auto', 'settings', 'Auto')}${choice('light', 'sun', 'Light')}${choice('dark', 'moon', 'Dark')}</div></div>`;
 };
 // The brush on More opens the choice; a tap anywhere else closes it.
 document.addEventListener('click', (e) => {
@@ -2843,14 +2858,15 @@ document.addEventListener('click', (e) => {
     pick.querySelector('.theme-btn').setAttribute('aria-expanded', String(!menu.hidden));
     return;
   }
-  const theme = choice.dataset.themeChoice;
-  applyTheme(theme);
-  pick.outerHTML = themeButton();
+  const value = choice.dataset.themeChoice;
   try {
-    localStorage.setItem('theme', theme);
+    if (value === 'auto') localStorage.removeItem('theme');
+    else localStorage.setItem('theme', value);
   } catch {
     // Private browsing: the choice lasts until the page closes.
   }
+  applyTheme(value);
+  pick.outerHTML = themeButton();
 });
 
 // Like Instagram's profile tab: a JHMMC member double-taps More to switch feeds.
