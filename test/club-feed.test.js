@@ -96,6 +96,15 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     assert.deepEqual([items[0].kind, items[0].species, items[0].teamName, items[0].points, items[0].angler], ['verified', 'Wahoo', 'Liberian Girl', 100, 'Guest']);
     assert.match(items[0].photoUrl, /^\/uploads\//, 'with the scale photo');
 
+    // Filters: verified fish only, any fish, photos, members' posts, one boat.
+    const kinds = async (q) => (await cap('GET', `/club-feed?${q}`)).body.items.map((i) => i.kind === 'verified' ? 'verified' : i.body);
+    assert.deepEqual(await kinds('show=verified'), ['verified']);
+    assert.deepEqual(await kinds('show=fish'), ['verified', 'Sail released!']);
+    assert.deepEqual(await kinds('show=photos'), ['Flat calm out here']);
+    assert.deepEqual(await kinds('show=posts'), ['Sail released!', 'Flat calm out here', 'Lines in at 7']);
+    assert.deepEqual(await kinds(`team=${boat.id}`), ['verified', 'Sail released!', 'Lines in at 7'], "the boat's fish and its crew's posts");
+    assert.deepEqual(await kinds(`show=photos&team=${boat.id}`), []);
+
     // Paging: a few at a time, nothing missed or repeated.
     for (let i = 0; i < 25; i++) await cap('POST', '/club-feed', form({ body: `Update ${i}` }));
     const one = (await cap('GET', '/club-feed')).body;

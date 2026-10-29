@@ -1611,14 +1611,21 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const PAGE = 20;
     // Posts and verified fish in one timeline; the cursor is "time|key".
     const [bt, bk] = typeof req.query.before === 'string' ? req.query.before.split('|') : [];
+    // Filters: what to show (verified fish, any fish, photos, members' posts) and one boat.
+    const show = ['verified', 'fish', 'photos', 'posts'].includes(req.query.show) ? req.query.show : '';
+    const team = intId(req.query.team);
+    const postsWhere = [show === 'fish' && 'p.species_id IS NOT NULL', show === 'photos' && 'p.photo IS NOT NULL',
+      team && '(SELECT team_id FROM users WHERE id = p.user_id) = :team'].filter(Boolean);
+    const parts = [
+      show !== 'verified' && `SELECT 'post' AS kind, p.id, p.created_at AS ts, printf('p%010d', p.id) AS key FROM club_posts p
+        ${postsWhere.length ? `WHERE ${postsWhere.join(' AND ')}` : ''}`,
+      ['', 'verified', 'fish'].includes(show) && `SELECT 'verified' AS kind, k.id, datetime(k.reviewed_at) AS ts, printf('v%010d', k.id) AS key FROM catches k
+        WHERE k.status = 'approved' AND k.reviewed_at IS NOT NULL${team ? ' AND k.team_id = :team' : ''}`,
+    ].filter(Boolean);
     const rows = db.prepare(`
-      SELECT * FROM (
-        SELECT 'post' AS kind, p.id, p.created_at AS ts, printf('p%010d', p.id) AS key FROM club_posts p
-        UNION ALL
-        SELECT 'verified', k.id, datetime(k.reviewed_at), printf('v%010d', k.id) FROM catches k
-        WHERE k.status = 'approved' AND k.reviewed_at IS NOT NULL
-      ) WHERE :bt IS NULL OR ts < :bt OR (ts = :bt AND key < :bk)
-      ORDER BY ts DESC, key DESC LIMIT ${PAGE + 1}`).all({ bt: bt || null, bk: bk || '' });
+      SELECT * FROM (${parts.join(' UNION ALL ')})
+      WHERE :bt IS NULL OR ts < :bt OR (ts = :bt AND key < :bk)
+      ORDER BY ts DESC, key DESC LIMIT ${PAGE + 1}`).all({ bt: bt || null, bk: bk || '', ...(team && { team }) });
     const more = rows.length > PAGE;
     const page = rows.slice(0, PAGE);
     const post = db.prepare(`

@@ -465,6 +465,10 @@ async function renderFeed(container, query = {}) {
 
 // ---- the JHMMC feed (members only) -----------------------------------------
 
+// The club feed's filters, as they appear in the address (#/?show=verified&boat=3).
+const CLUB_FILTERS = ['show', 'boat'];
+const CLUB_SHOW = [['verified', 'Approved catches'], ['fish', 'All fish'], ['photos', 'Photos'], ['posts', "Members' posts"]];
+
 function clubComment(postId, m) {
   return html`<div class="comment" data-cid="${m.id}">
     <a href="#/user/${m.userId}"><b>${m.author}</b></a> ${m.body}
@@ -503,9 +507,30 @@ function clubItem(i) {
     </div></article>`;
 }
 
-async function clubFeed(view) {
+async function clubFeed(view, filters = {}) {
+  const boats = (await api('/teams')).teams.filter((t) => isJhmmc(t.clubId));
+  const label = {
+    show: (v) => CLUB_SHOW.find(([k]) => k === v)?.[1],
+    boat: (v) => boats.find((t) => String(t.id) === v)?.name,
+  };
+  const active = CLUB_FILTERS.filter((k) => filters[k] && label[k](filters[k]));
+  const without = (key) => {
+    const p = new URLSearchParams(filters);
+    p.delete(key);
+    return `#/${p.size ? `?${p}` : ''}`;
+  };
   const box = document.createElement('div');
-  box.innerHTML = html`<form class="card pad stack composer" id="club-post">
+  box.innerHTML = html`<div class="filter-bar">
+      <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="club-filter">
+        ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
+      ${active.map((k) => raw(html`<span class="chip">${label[k](filters[k])} <a href="${without(k)}" aria-label="Remove ${label[k](filters[k])}">✕</a></span>`))}
+    </div>
+    <form class="card pad filter-panel stack" id="club-filter" hidden>
+      <label>Show <select name="show">${raw(options(CLUB_SHOW, filters.show, 'Everything'))}</select></label>
+      <label>Boat <select name="boat">${raw(options(boats.map((t) => [t.id, t.name]), filters.boat, 'All boats'))}</select></label>
+      <div class="actions"><button type="submit" class="primary">Show</button> <a class="btn" href="#/">Clear all</a></div>
+    </form>
+    <form class="card pad stack composer" id="club-post">
       <textarea name="body" rows="2" maxlength="2000" placeholder="What's happening on the water?"></textarea>
       <div class="photo-pick">
         <span class="photo-preview" hidden><img alt=""></span>
@@ -530,6 +555,18 @@ async function clubFeed(view) {
     <div class="feed" id="club-items"></div>
     <button class="more" hidden>Load more</button>`;
   view.append(...box.childNodes);
+  const panel = view.querySelector('#club-filter');
+  const toggle = view.querySelector('.filter-toggle');
+  toggle.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    toggle.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+  panel.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const p = new URLSearchParams();
+    for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
+    location.hash = `#/${p.size ? `?${p}` : ''}`;
+  });
   const form = view.querySelector('#club-post');
   const list = view.querySelector('#club-items');
   const moreBtn = view.querySelector('button.more');
@@ -570,13 +607,16 @@ async function clubFeed(view) {
       items.clear();
       list.innerHTML = '';
     }
-    const q = before ? `?before=${encodeURIComponent(before)}` : '';
-    const { items: got, nextBefore } = await api('/club-feed' + q);
+    const q = new URLSearchParams({ ...(filters.show && { show: filters.show }), ...(filters.boat && { team: filters.boat }), ...(before && { before }) });
+    const { items: got, nextBefore } = await api(`/club-feed${q.size ? `?${q}` : ''}`);
     for (const i of got) if (i.kind === 'post') items.set(String(i.id), i);
     list.insertAdjacentHTML('beforeend', got.map(clubItem).join(''));
     before = nextBefore;
     moreBtn.hidden = !nextBefore;
-    if (!list.children.length) list.innerHTML = '<div class="card pad empty">Nothing yet today. Say hello to the club!</div>';
+    if (!list.children.length) {
+      list.innerHTML = active.length ? '<div class="card pad empty">Nothing matches these filters yet.</div>'
+        : '<div class="card pad empty">Nothing yet today. Say hello to the club!</div>';
+    }
   }
   moreBtn.addEventListener('click', () => page());
 
@@ -713,13 +753,13 @@ const pagesFor = (view) => ({
     // JHMMC members have two feeds: the club's own (members only) and West Africa's.
     const member = !!state.me?.jhmmc;
     const { feed: which, ...rest } = filters;
-    const club = member && which !== 'wa' && !Object.keys(rest).length;
+    const club = member && which !== 'wa' && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
     const feedTabs = member ? `<div class="seg" role="tablist">
       <a role="tab" href="#/" aria-selected="${club}">JHMMC</a>
       <a role="tab" href="#/?feed=wa" aria-selected="${!club}">West Africa</a></div>` : '';
     if (club) {
       view.innerHTML = feedTabs;
-      return clubFeed(view);
+      return clubFeed(view, rest);
     }
     delete filters.feed;
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
