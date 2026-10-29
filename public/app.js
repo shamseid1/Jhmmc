@@ -1905,7 +1905,11 @@ const pagesFor = (view) => ({
         ${me.jhmmc ? raw(html`<p class="small muted feed-now">You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.</p>`) : ''}`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
-      ${isInstalled() ? '' : raw(`<div class="card menu">${item('#/install', 'download', 'Install the app', 'On your home screen, opens like any other app')}</div>`)}
+      ${isInstalled() ? '' : raw(`<div class="card pad install-card">
+        <img src="/icon-192.png" alt="" width="48" height="48">
+        <div><b>Get the app</b><span class="small muted">On your home screen, opens like any other app</span></div>
+        <button type="button" class="primary" data-install>${icon('download')} Install</button>
+      </div>`)}
       ${me ? raw(`<h2>You</h2><div class="card menu">
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
@@ -2938,8 +2942,24 @@ window.addEventListener('beforeinstallprompt', (e) => {
   installPrompt = e;
   document.querySelector('[data-install-ready]')?.removeAttribute('hidden');
 });
+// The Install button on More: the browser's own install where it offers one,
+// otherwise the steps for this phone.
+async function installApp() {
+  if (!installPrompt) {
+    location.hash = '#/install';
+    return;
+  }
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  if (outcome === 'accepted') document.querySelector('.install-card')?.remove();
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-install]')) installApp();
+});
 window.addEventListener('appinstalled', () => {
   installPrompt = null;
+  document.querySelector('.install-card')?.remove();
   toast('Installed. Open West Africa Big Game from your home screen.');
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
