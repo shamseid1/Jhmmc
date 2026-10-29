@@ -1859,9 +1859,9 @@ const pagesFor = (view) => ({
       <h2>Members without an account</h2>
       <p class="small muted">Children and anyone else who doesn't use the app. Give them their boat so its captain can pick them for tournaments.</p>
       <div class="card"><ul class="list">${named.length ? named.map((p) => raw(html`<li class="member member-pay" data-person="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.teamName || ''}`.toLowerCase()}">
-        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · no account</div></span>
-        <span class="actions"><label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
-          <button type="button" class="link danger" data-act="remove-person">Remove</button></span>
+        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · no account ·
+          <button type="button" class="link danger" data-act="remove-person">Remove</button></div></span>
+        <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
       </li>`)) : raw('<li class="muted">None yet.</li>')}</ul></div>
       <form class="card pad stack" id="add-person">
         <h3>Add a member without an account</h3>

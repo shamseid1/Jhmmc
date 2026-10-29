@@ -538,3 +538,8 @@ button.link[hidden] { display: none; }
 .member-filter { margin-top: 12px; }
 #add-person { margin-top: 12px; }
 #add-person h3 { margin: 0; }
+.member-pay .link { font-size: 13px; }
+/* Club members: the Paid tick always sits on the right of the name. */
+.member-pay { flex-wrap: nowrap; }
+.member-pay > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.member-pay > label.check { flex: none; white-space: nowrap; }
