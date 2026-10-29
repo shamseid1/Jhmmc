@@ -805,7 +805,7 @@ function clubItem(i) {
     </div></article>`;
 }
 
-async function clubFeed(view, filters = {}) {
+async function clubFeed(view, filters = {}, { compose = false } = {}) {
   const boats = (await api('/teams')).teams.filter((t) => isJhmmc(t.clubId));
   const label = {
     show: (v) => CLUB_SHOW.find(([k]) => k === v)?.[1],
@@ -963,6 +963,11 @@ async function clubFeed(view, filters = {}) {
     }
   });
   await page(true);
+  // From the Post button: straight to writing.
+  if (compose) {
+    form.scrollIntoView({ block: 'start' });
+    form.body.focus();
+  }
 }
 
 // Sends a visitor to sign in, then back to where they were.
@@ -1042,12 +1047,13 @@ const pagesFor = (view) => ({
     const { feed: which, ...rest } = filters;
     if (member && FEED_NAMES[which]) {
       setFeedPref(which);
-      syncClubChip();
+      renderNav(); // the JHMMC tag and where Post goes follow the side
     }
     const club = member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')
-      && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
+      && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k) || k === 'compose');
     if (club) {
-      return clubFeed(view, rest);
+      const { compose, ...clubFilters } = rest;
+      return clubFeed(view, clubFilters, { compose: !!compose });
     }
     delete filters.feed;
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
@@ -3188,7 +3194,10 @@ function renderNav(active = state.navActive) {
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
-  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  // On the JHMMC side, Post opens the JHMMC feed's post box (which can also post
+  // to West Africa); elsewhere, the West Africa Post a catch form.
+  if (state.me?.jhmmc && feedPref() === 'club') links.push(['#/?feed=club&compose=1', 'Post', 'compose', 'catch', 'cta']);
+  else if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
