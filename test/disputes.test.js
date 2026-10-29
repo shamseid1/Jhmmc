@@ -34,14 +34,15 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
       return { status: res.status, body: await res.json() };
     };
   };
-  const person = async (name, email) => {
+  const person = async (name, nickname, email) => {
+    if (!email) [nickname, email] = [undefined, nickname];
     const c = as();
-    await c('POST', '/auth/register', { name, email, password: 'password1' });
+    await c('POST', '/auth/register', { name, nickname, email, password: 'password1' });
     return c;
   };
   try {
-    const boss = await person('Boss', 'boss@example.com');
-    const sec = await person('Robert', 'sec@example.com');
+    const boss = await person('Boss Admin', 'Boss', 'boss@example.com');
+    const sec = await person('Robert Khoueiry', 'Robert', 'sec@example.com');
     const capA = await person('Captain A', 'a@example.com');
     const capB = await person('Captain B', 'b@example.com');
     const crewB = await person('Deck Hand', 'crew@example.com');
@@ -114,7 +115,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.deepEqual(steps(marlin.id), [
       ['registered', 'Captain A', null],
       ['disputed', 'Captain B', 'That marlin was caught yesterday'],
-      ['approved', 'Robert', 'Checked the radio log: caught today'],
+      ['approved', 'Robert Khoueiry', 'Checked the radio log: caught today'],
     ]);
     assert.deepEqual(steps(wahoo.id), [['registered', 'Captain A', null], ['withdrawn', 'Captain A', null]]);
     const w = log.find((f) => f.catchId === wahoo.id);

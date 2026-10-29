@@ -3,6 +3,8 @@
 A shared catch log and social feed for big game fishing clubs across West Africa.
 
 
+**Names.** Everyone signs up with their full name (first and last) and may add a nickname. Others see the nickname (on the feed, Participants, leaderboards, records, profiles and comments), or the full name if there is none. The full name is for the club's records: the Members and Club members pages (which show both), tournament sheets, registration history and the secretary's notifications. Accounts from before keep their name until they change it.
+
 **Two sides.** A switch at the top moves between **West Africa** (the open catch log: Feed, Leaderboard, Post, Participants, More) and **JHMMC** (the club: Points, Tournaments, Records, Club). JHMMC results are public; the club's tools appear under Club by role (captains, secretary, admin). JHMMC members open on the JHMMC side. Pages that belong to neither (a catch, a boat, a profile) keep the side you came from.
 ## Features
 

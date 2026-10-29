@@ -209,8 +209,17 @@ test('participants: boats and anglers with photos and tallies', async () => {
   assert.notEqual(musa.photoUrl, boat.photoUrl);
 
   const crew = client();
-  await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' });
+  assert.match((await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' })).body.error, /full name/,
+    'first and last name');
+  r = await crew('POST', '/auth/register', { name: 'Fatu Kollie', nickname: 'Fatu', email: 'fatu@example.com', password: 'password1' });
+  assert.deepEqual([r.body.user.name, r.body.user.nickname, r.body.user.displayName], ['Fatu Kollie', 'Fatu', 'Fatu']);
   await crew('POST', '/teams/join', { code: team.joinCode });
+  // Others see the nickname; the full name stays with the account.
+  const fatu = (await anon('GET', '/anglers')).body.anglers.find((a) => a.id === r.body.user.id);
+  assert.equal(fatu.name, 'Fatu');
+  assert.equal((await anon('GET', `/users/${fatu.id}`)).body.user.name, 'Fatu');
+  assert.match((await crew('PATCH', '/me', { name: 'Fatu' })).body.error, /full name/);
+  assert.equal((await crew('PATCH', '/me', { nickname: '' })).body.user.displayName, 'Fatu Kollie', 'no nickname: the full name shows');
   const pic = new FormData();
   pic.set('photo', new Blob([PNG], { type: 'image/png' }), 'boat.png');
   assert.equal((await crew('POST', `/teams/${team.id}/photo`, pic)).status, 403, 'captain only');
@@ -300,8 +309,8 @@ test('validation and auth errors', async () => {
   assert.equal((await anon('POST', '/auth/login', { email: 'nobody@example.com', password: 'x' })).status, 401);
 
   const u = client();
-  await u('POST', '/auth/register', { name: 'Ade', email: 'ade@example.com', password: 'password1' });
-  assert.equal((await u('POST', '/auth/register', { name: 'Ade', email: 'ADE@example.com', password: 'password1' })).status, 409);
+  await u('POST', '/auth/register', { name: 'Ade Bello', nickname: 'Ade', email: 'ade@example.com', password: 'password1' });
+  assert.equal((await u('POST', '/auth/register', { name: 'Ade Bello', nickname: 'Ade', email: 'ADE@example.com', password: 'password1' })).status, 409);
   assert.equal((await u('POST', '/clubs', { name: 'Atlantis', country: 'France' })).status, 400);
   await u('POST', '/teams', { name: 'Lagos Lady', country: 'Nigeria' });
 
@@ -447,7 +456,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
   };
   try {
     const boss = as();
-    await boss('POST', '/auth/register', { name: 'Boss', email: 'boss@example.com', password: 'password1' });
+    await boss('POST', '/auth/register', { name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
     const sec = as();
     await sec('POST', '/auth/register', { name: 'Robert Secretary', email: 'sec@example.com', password: 'password1' });
     const wm = as();

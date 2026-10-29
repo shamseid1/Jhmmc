@@ -1551,7 +1551,7 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1 class="center">More</h1>
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
-          <div><b>${me.name}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
+          <div><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
         </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
@@ -1865,8 +1865,8 @@ const pagesFor = (view) => ({
         ${[['all', 'Everyone'], ['paid', 'Paid'], ['unpaid', 'Not paid']].map(([k, l]) => raw(html`<button type="button" class="${k === 'all' ? 'filter-toggle on' : 'filter-toggle'}" data-show="${k}">${l}</button>`))}
       </div>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search people" autocomplete="off"></label>
-      <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
-        <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div>
+      <div class="card"><ul class="list">${people.map((p) => raw(html`<li class="member member-pay" data-id="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.nickname || ''} ${p.email} ${p.teamName || ''}`.toLowerCase()}">
+        <span><b>${p.name}</b>${p.nickname ? raw(html` <span class="muted">“${p.nickname}”</span>`) : ''}<div class="muted small">${p.teamName || 'No boat'} · ${p.email}</div>
           ${p.isAdmin ? raw('<span class="badge new">Admin</span>')
             : state.me.isAdmin ? raw(html`<label class="role-pick">Role <select data-act="role">${raw(options(ROLE_OPTIONS, p.role || ''))}</select></label>`)
               : p.role ? raw(html`<span class="badge">${roleLabel(p.role)}</span>`) : ''}</span>
@@ -2003,8 +2003,8 @@ const pagesFor = (view) => ({
       <h1>Members (${users.length})</h1>
       <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
-      <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
-        <div><b>${u.name}</b><div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
+      <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
+        <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
         <button data-act="reset-link">Create reset link</button>
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
@@ -2203,7 +2203,10 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Your profile</h1>
       <p>${me.teamId ? raw(html`Crew of <a href="#/boat/${me.teamId}">${me.teamName}</a>${me.isCaptain ? ' (captain)' : ''}`) : raw('Individual angler · <a href="#/crew">Get on a boat</a>')}</p>
       <form class="card pad stack" id="f">
-        <label>Name <input name="name" required maxlength="80" value="${me.name}"></label>
+        <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name" value="${me.name}">
+          <span class="small muted">First and last name. Only the club officials see it.</span></label>
+        <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo" value="${me.nickname || ''}">
+          <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
         <label>About you <textarea name="bio" maxlength="500">${me.bio || ''}</textarea></label>
         <label>Your photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
@@ -2311,7 +2314,10 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<h1>Create your account</h1>
       <p class="muted">Every angler signs in with their own account. After this you can join your boat's crew, register a boat, or just follow the feed.</p>
       <form class="card pad stack" id="f">
-        <label>Full name <input name="name" required maxlength="80" autocomplete="name"></label>
+        <label>Full name <input name="name" required maxlength="80" autocomplete="name" pattern="\\S+(\\s+\\S+)+" title="First and last name">
+          <span class="small muted">First and last name. Only the club officials see it.</span></label>
+        <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo">
+          <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Email <input name="email" type="email" required autocomplete="email"></label>
         <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, null, 'Choose…'))}</select></label>

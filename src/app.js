@@ -125,6 +125,8 @@ function createApp({
   const canReview = (u) => isAdminUser(u) || OFFICERS.includes(u?.role);
   const canApprove = (u) => isAdminUser(u) || u?.role === 'secretary';
   const canHandleMoney = (u) => canReview(u) || u?.role === 'treasurer';
+// The name others see: the nickname if there is one, else the full name.
+const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The admin always belongs to JHMMC.
   const markAdminMember = () => adminEmail && db.prepare('UPDATE users SET jhmmc = 1 WHERE lower(email) = ?').run(adminEmail);
   markAdminMember();
@@ -165,15 +167,21 @@ function createApp({
     message: 'Too many new accounts from this connection. Try again later.',
   });
 
+  // A full name is at least a first and a last name.
+  const FULL_NAME = 'Write your full name: first and last name.';
+  const isFullName = (name) => /\S+\s+\S+/.test(name || '');
+
   api.post('/auth/register', registerLimit, (req, res) => {
     const name = str(req.body.name, 80);
+    const nickname = str(req.body.nickname, 40);
     const email = str(req.body.email, 120)?.toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const country = str(req.body.country, 60);
 
     if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Name and a valid email are required.' });
+      return res.status(400).json({ error: 'Full name and a valid email are required.' });
     }
+    if (!isFullName(name)) return res.status(400).json({ error: FULL_NAME });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
@@ -181,8 +189,8 @@ function createApp({
     }
 
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (name, email, password_hash, country) VALUES (?, ?, ?, ?)')
-      .run(name, email, auth.hashPassword(password), country);
+      .prepare('INSERT INTO users (name, nickname, email, password_hash, country) VALUES (?, ?, ?, ?, ?)')
+      .run(name, nickname, email, auth.hashPassword(password), country);
     markAdminMember();
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
@@ -272,7 +280,7 @@ function createApp({
 
   function getMe(id) {
     const me = db.prepare(`
-      SELECT u.id, u.name, u.email, u.country, u.bio, u.photo,
+      SELECT u.id, u.name, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
         t.weigh_station AS weighStation
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
@@ -339,11 +347,14 @@ function createApp({
   api.patch('/me', (req, res) => {
     const u = req.user;
     const name = 'name' in req.body ? str(req.body.name, 80) : u.name;
+    const nickname = 'nickname' in req.body ? str(req.body.nickname, 40) : u.nickname;
     const country = 'country' in req.body ? str(req.body.country, 60) : u.country;
     const bio = 'bio' in req.body ? str(req.body.bio, 500) : u.bio;
-    if (!name) return res.status(400).json({ error: 'Name is required.' });
+    if (!name) return res.status(400).json({ error: 'Full name is required.' });
+    // Accounts from before full names were asked for may keep theirs until they change it.
+    if (name !== u.name && !isFullName(name)) return res.status(400).json({ error: FULL_NAME });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
-    db.prepare('UPDATE users SET name = ?, country = ?, bio = ? WHERE id = ?').run(name, country, bio, u.id);
+    db.prepare('UPDATE users SET name = ?, nickname = ?, country = ?, bio = ? WHERE id = ?').run(name, nickname, country, bio, u.id);
     res.json({ user: getMe(u.id) });
   });
 
@@ -374,7 +385,7 @@ function createApp({
 
   api.get('/admin/users', requireAdmin, (_req, res) => {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
+      SELECT u.id, u.name, u.nickname, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
     `).all().map((u) => ({ ...u, jhmmc: !!u.jhmmc || isAdminUser(u), isAdmin: isAdminUser(u) }));
     res.json({ users });
@@ -414,12 +425,12 @@ function createApp({
   // name like a guest angler's, so standings and records don't change; their
   // comments and likes go. A boat they captained passes to its longest-serving crew.
   api.delete('/admin/users/:id', requireAdmin, (req, res) => {
-    const user = db.prepare('SELECT id, name, email, photo FROM users WHERE id = ?').get(intId(req.params.id) ?? 0);
+    const user = db.prepare('SELECT id, name, nickname, email, photo FROM users WHERE id = ?').get(intId(req.params.id) ?? 0);
     if (!user) return res.status(404).json({ error: 'Member not found.' });
     if (user.id === req.user.id || isAdminUser(user)) return res.status(400).json({ error: "The admin's own account can't be deleted." });
     db.exec('BEGIN');
     try {
-      db.prepare('UPDATE catches SET angler_name = ?, user_id = NULL WHERE user_id = ?').run(user.name, user.id);
+      db.prepare('UPDATE catches SET angler_name = ?, user_id = NULL WHERE user_id = ?').run(user.nickname || user.name, user.id);
       for (const { id } of db.prepare('SELECT id FROM teams WHERE captain_id = ?').all(user.id)) {
         const next = db.prepare('SELECT id FROM users WHERE team_id = ? AND id != ? ORDER BY id LIMIT 1').get(id, user.id);
         db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(next?.id ?? null, id);
@@ -514,9 +525,9 @@ function createApp({
 
   api.get('/anglers', (_req, res) => {
     const anglers = db.prepare(`
-      SELECT u.id, u.name, u.country, u.photo, t.id AS teamId, t.name AS teamName, t.photo AS teamPhoto, ${TALLY}
+      SELECT u.id, ${SHOWN} AS name, u.country, u.photo, t.id AS teamId, t.name AS teamName, t.photo AS teamPhoto, ${TALLY}
       FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'unofficial'
-      GROUP BY u.id ORDER BY u.name COLLATE NOCASE
+      GROUP BY u.id ORDER BY 2 COLLATE NOCASE
     `).all();
     // Anglers without an account, known only by the name typed on their catches.
     const guests = db.prepare(`
@@ -572,8 +583,8 @@ function createApp({
     `).get(id);
     if (!team) return null;
     const members = db.prepare(`
-      SELECT u.id, u.name, (SELECT COUNT(*) FROM catches k WHERE k.user_id = u.id AND k.team_id = ?) AS catches
-      FROM users u WHERE u.team_id = ? ORDER BY u.id = ? DESC, u.name
+      SELECT u.id, ${SHOWN} AS name, (SELECT COUNT(*) FROM catches k WHERE k.user_id = u.id AND k.team_id = ?) AS catches
+      FROM users u WHERE u.team_id = ? ORDER BY u.id = ? DESC, 2
     `).all(id, id, team.captainId ?? 0);
     const isMember = members.some((m) => m.id === viewerId);
     // The captain runs the boat; the club admin can do the same on any boat.
@@ -744,7 +755,7 @@ function createApp({
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
-      u.id AS userId, COALESCE(u.name, k.angler_name) AS angler,
+      u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler,
       t.id AS teamId, t.name AS teamName,
       c.id AS clubId, c.name AS clubName,
       (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
@@ -965,7 +976,7 @@ function createApp({
   // When disputes close: 24 hours after the fish was registered.
   const disputeUntil = (createdAt) => new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + DISPUTE_HOURS * 3600e3).toISOString();
   const disputesFor = db.prepare(`
-    SELECT d.id, d.reason, d.created_at AS createdAt, u.id AS userId, u.name AS author, t.name AS boat
+    SELECT d.id, d.reason, d.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author, t.name AS boat
     FROM disputes d JOIN users u ON u.id = d.user_id LEFT JOIN teams t ON t.id = u.team_id
     WHERE d.catch_id = ? ORDER BY d.id`);
 
@@ -1247,7 +1258,7 @@ function createApp({
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
     `).all(params);
     const anglers = db.prepare(`
-      SELECT u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first,
+      SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first,
         COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
@@ -1304,7 +1315,7 @@ function createApp({
 
   api.get('/club-members', requireMoney, (_req, res) => {
     const season = { start: setting('season_start'), end: setting('season_end') };
-    const people = db.prepare(`SELECT u.id, u.name, u.email, u.role, t.name AS teamName,
+    const people = db.prepare(`SELECT u.id, u.name, u.nickname, u.email, u.role, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 ORDER BY u.name COLLATE NOCASE`).all(season.start)
       .map((p) => ({ ...p, paid: !!p.paid, isAdmin: isAdminUser(p) }));
@@ -1516,7 +1527,7 @@ function createApp({
     const item = id && getCatch(id, req.user);
     if (!item) return res.status(404).json({ error: 'Catch not found.' });
     const comments = db.prepare(`
-      SELECT m.id, m.body, m.created_at AS createdAt, u.id AS userId, u.name AS author
+      SELECT m.id, m.body, m.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author
       FROM comments m JOIN users u ON u.id = m.user_id
       WHERE m.catch_id = ? ORDER BY m.id
     `).all(id);
@@ -1563,7 +1574,7 @@ function createApp({
       .prepare('INSERT INTO comments (catch_id, user_id, body) VALUES (?, ?, ?)')
       .run(id, req.user.id, body);
     res.status(201).json({
-      comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.name },
+      comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.nickname || req.user.name },
     });
   });
 
@@ -1590,7 +1601,7 @@ function createApp({
     const best = db.prepare(`
       SELECT * FROM (
         SELECT k.species_id AS speciesId, k.line_class AS lineClass, k.id AS catchId, k.weight_kg AS weightKg,
-          k.caught_on AS caughtOn, u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
+          k.caught_on AS caughtOn, u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
         FROM catches k LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
@@ -1626,7 +1637,7 @@ function createApp({
   function recordBook() {
     const approved = db.prepare(`
       SELECT k.id AS catchId, s.name AS species, k.weight_kg AS weightKg, k.line_class AS lineClass, k.caught_on AS caughtOn,
-        u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS boat
+        u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS boat
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'approved' AND k.club_id = ? AND k.weight_kg IS NOT NULL ORDER BY k.weight_kg DESC
     `).all(homeClubId());
@@ -1672,7 +1683,7 @@ function createApp({
     const records = db.prepare(`
       SELECT * FROM (
         SELECT s.name AS species, s.category, k.id, k.weight_kg AS weightKg, k.caught_on AS caughtOn,
-          u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
+          u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS rn
         FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
         LEFT JOIN teams t ON t.id = k.team_id
@@ -1693,7 +1704,7 @@ function createApp({
     `).all(params);
 
     const anglers = db.prepare(`
-      SELECT u.id AS userId, COALESCE(u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first, ${tally}
+      SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first, ${tally}
       FROM catches k LEFT JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
       LEFT JOIN teams t ON t.id = COALESCE(u.team_id, k.team_id)
       WHERE ${filter}
@@ -1715,7 +1726,7 @@ function createApp({
   api.get('/users/:id', (req, res) => {
     const id = intId(req.params.id);
     const user = id && db.prepare(`
-      SELECT u.id, u.name, u.country, u.bio, u.photo, u.created_at AS joinedAt, t.id AS teamId, t.name AS teamName
+      SELECT u.id, ${SHOWN} AS name, u.country, u.bio, u.photo, u.created_at AS joinedAt, t.id AS teamId, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     if (!user) return res.status(404).json({ error: 'Angler not found.' });

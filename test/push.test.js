@@ -44,13 +44,13 @@ test('the secretary gets a phone notification when fish are registered', async (
   const settle = () => new Promise((r) => setTimeout(r, 50));
   try {
     const boss = as();
-    await boss('POST', '/auth/register', { name: 'Boss', email: 'boss@example.com', password: 'password1' });
+    await boss('POST', '/auth/register', { name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
     const sec = as();
-    await sec('POST', '/auth/register', { name: 'Robert', email: 'sec@example.com', password: 'password1' });
+    await sec('POST', '/auth/register', { name: 'Robert Khoueiry', nickname: 'Robert', email: 'sec@example.com', password: 'password1' });
     const crew = as();
     await crew('POST', '/auth/register', { name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
     const cap = as();
-    await cap('POST', '/auth/register', { name: 'Moses', email: 'cap@example.com', password: 'password1' });
+    await cap('POST', '/auth/register', { name: 'Moses Doe', nickname: 'Moses', email: 'cap@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
     await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { jhmmc: true, role: 'secretary' });
@@ -91,7 +91,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.deepEqual(sent.map((s) => s.endpoint).sort(), [sub('boss-phone'), sub('sec-old-phone-gone'), sub('sec-phone')].map((s) => s.endpoint).sort(),
       'the secretary and the admin, not the captain or crews');
     const note = sent.find((s) => s.endpoint.endsWith('sec-phone'));
-    assert.deepEqual([note.title, note.body, note.url], ['Fish to review', 'Sea Hunter: 2 fish registered by Moses. 2 waiting in total.', '/#/review']);
+    assert.deepEqual([note.title, note.body, note.url], ['Fish to review', 'Sea Hunter: 2 fish registered by Moses Doe. 2 waiting in total.', '/#/review']);
     assert.equal((await sec('GET', '/officials/pending')).body.count, 2);
 
     // The phone that was gone is forgotten; switching off stops the rest.
@@ -103,7 +103,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     one.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'c.png');
     assert.equal((await cap('POST', '/weigh', one)).status, 201);
     await settle();
-    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.body]), [['boss-phone', 'Sea Hunter: 1 fish registered by Moses. 3 waiting in total.']]);
+    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.body]), [['boss-phone', 'Sea Hunter: 1 fish registered by Moses Doe. 3 waiting in total.']]);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });
