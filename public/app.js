@@ -465,15 +465,6 @@ async function renderFeed(container, query = {}) {
 
 // ---- the JHMMC feed (members only) -----------------------------------------
 
-// A tap anywhere else closes the feed picker.
-document.addEventListener('click', (e) => {
-  if (e.target.closest('.feed-pick')) return;
-  for (const menu of document.querySelectorAll('.feed-pick-menu:not([hidden])')) {
-    menu.hidden = true;
-    menu.parentElement.querySelector('.feed-pick-btn')?.setAttribute('aria-expanded', 'false');
-  }
-});
-
 // Which feed a JHMMC member last chose ('club' or 'wa'); kept on this phone only.
 const FEED_KEY = 'jhmmc-feed';
 const feedPref = () => {
@@ -783,29 +774,7 @@ const pagesFor = (view) => ({
     if (member && FEED_NAMES[which]) setFeedPref(which);
     const club = member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')
       && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k));
-    // One button names the feed you're on; it opens the choice of the two.
-    const feedTabs = member ? `<div class="feed-pick">
-      <button type="button" class="feed-pick-btn" aria-expanded="false" aria-haspopup="true">
-        <span class="feed-pick-label">${club ? 'JHMMC feed' : 'West Africa feed'}</span> ${icon('chevron', 'icon small')}</button>
-      <div class="card menu feed-pick-menu" hidden>
-        <a class="menu-item" href="#/?feed=club" aria-current="${club}"><span class="mi-text"><b>JHMMC</b><span>Members only: the club's day on the water</span></span>${club ? '<span class="mi-go">✓</span>' : ''}</a>
-        <a class="menu-item" href="#/?feed=wa" aria-current="${!club}"><span class="mi-text"><b>West Africa</b><span>Everyone's catches: show off a fish</span></span>${club ? '' : '<span class="mi-go">✓</span>'}</a>
-      </div></div>` : '';
-    const wirePick = () => {
-      const btn = view.querySelector('.feed-pick-btn');
-      if (!btn) return;
-      const menu = view.querySelector('.feed-pick-menu');
-      const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        menu.hidden = !menu.hidden;
-        btn.setAttribute('aria-expanded', String(!menu.hidden));
-      });
-      menu.addEventListener('click', close);
-    };
     if (club) {
-      view.innerHTML = feedTabs;
-      wirePick();
       return clubFeed(view, rest);
     }
     delete filters.feed;
@@ -826,7 +795,6 @@ const pagesFor = (view) => ({
       return `#/${p.size ? `?${p}` : ''}`;
     };
     view.innerHTML = html`
-      ${raw(feedTabs)}
       ${raw(noBoatBanner())}
       <div class="filter-bar">
         <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="filter-panel">
@@ -843,7 +811,6 @@ const pagesFor = (view) => ({
       </form>
       ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
       <div id="feed"></div>`;
-    wirePick();
     // All the filters sit behind one Filter button; they apply together.
     const panel = view.querySelector('#filter-panel');
     const toggle = view.querySelector('.filter-toggle');
