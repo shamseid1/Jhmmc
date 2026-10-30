@@ -1747,9 +1747,12 @@ const pagesFor = (view) => ({
     try { lastSpecies = localStorage.getItem('fishon-species') || ''; } catch {}
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
       <h1>${live ? 'Fish on' : `Trip of ${fmtDate(day)}`}</h1>
-      <p class="small muted">${state.me.teamName || 'Your boat'} · ${live ? 'today' : fmtDate(day)}. Each fish goes on your boat's line in the regional log. The exact spot is only for your crew and your catch map; the log shows the counts.</p>
+      <p class="small muted">${state.me.teamName || 'Your boat'} · ${live ? 'today' : fmtDate(day)}. Each fish goes on your boat's line in the regional log. Each fish is listed on its own; its exact spot is only for your crew and your catch map.</p>
       ${live ? raw(html`<div class="card pad stack fishon">
-        <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
+        <div class="row">
+          <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
+          <label>Estimated weight (kg) <input id="fo-weight" type="number" min="0" step="0.5" inputmode="decimal" placeholder="optional"></label>
+        </div>
         <div class="fates">
           <button type="button" class="fate released" data-fate="released">Released</button>
           <button type="button" class="fate kept" data-fate="kept">Kept</button>
@@ -1771,10 +1774,12 @@ const pagesFor = (view) => ({
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
-      list.innerHTML = [...landed.map((l) => html`<li><b>${l.species}</b> <span class="pill ${l.fate}">${l.fate}</span>
+      const est = (w) => (Number(w) > 0 ? ` · ~${fmtWeight(Number(w))}` : '');
+      list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${est(l.weightKg)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${time(l.landedAt)} · ${spotText(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
+            · <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change weight' : 'Add weight'}</button>
             · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button></div></li>`),
-        ...waiting.map((x) => html`<li><b>${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
+        ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b>${est(x.weightKg)} <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${time(x.landedAt)} · ${spotText(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
         || `<li class="muted">${live ? 'No fish yet today. Pick the species and tap Released, Kept or Lost when one is landed.' : 'No fish logged that day.'}</li>`;
@@ -1833,6 +1838,18 @@ const pagesFor = (view) => ({
       }
     }
     list.addEventListener('click', async (e) => {
+      const weigh = e.target.closest('[data-weigh]');
+      if (weigh) {
+        const kg = prompt('Estimated weight (kg)', weigh.dataset.kg);
+        if (kg === null) return;
+        try {
+          trip = (await api(`/outings/fish/${weigh.dataset.weigh}`, { method: 'PATCH', body: { weightKg: kg.trim().replace(',', '.') } })).trip;
+          draw();
+        } catch (err) {
+          toast(err.message);
+        }
+        return;
+      }
       const undo = e.target.closest('[data-undo]');
       const drop = e.target.closest('[data-drop]');
       if (drop) {
@@ -1889,15 +1906,22 @@ const pagesFor = (view) => ({
         return;
       }
       try { localStorage.setItem('fishon-species', sel.value); } catch {}
+      const weight = view.querySelector('#fo-weight');
+      if (weight.value && !(Number(weight.value) > 0)) {
+        err.textContent = 'The estimated weight must be in kilograms.';
+        return;
+      }
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
       const spot = fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(8000);
       const now = new Date();
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
         speciesId: sel.value, species: sel.selectedOptions[0].textContent, fate: btn.dataset.fate,
+        weightKg: weight.value.replace(',', '.'),
         lat: spot?.lat ?? '', lng: spot?.lng ?? '', landedAt: now.toISOString(), date: day,
       }]);
       toast(`${sel.selectedOptions[0].textContent} ${btn.dataset.fate}${spot ? ', spot taken' : ''}.`);
+      weight.value = '';
       draw();
       flush();
     });
@@ -2045,7 +2069,7 @@ const pagesFor = (view) => ({
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '), o.waterC != null ? `${o.waterC}°C` : '', o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
         ${state.me?.teamId && o.teamId === state.me.teamId ? raw(html`<a href="#/fishon?date=${o.date}">Open</a>`) : ''}

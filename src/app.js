@@ -1794,9 +1794,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       o.no_catch AS noCatch, o.technique, o.area, o.depth_m AS depthM, o.water_c AS waterC, o.created_at AS createdAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outings o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN teams t ON t.id = o.team_id`;
+  // Each fish logged at sea, for everyone: no spots here.
+  const fishLanded = db.prepare(`SELECT l.id, s.name AS species, l.fate, l.weight_kg AS weightKg, l.landed_at AS landedAt
+    FROM outing_landings l JOIN species s ON s.id = l.species_id WHERE l.outing_id = ? ORDER BY l.id`);
   const presentOuting = (o, viewer) => ({
     ...o, noCatch: !!o.noCatch, technique: o.technique ? o.technique.split('|') : [],
-    fish: outingFish.all(o.id), canDelete: !!viewer && (o.userId === viewer.id || isAdminUser(viewer)),
+    fish: outingFish.all(o.id), landings: fishLanded.all(o.id),
+    canDelete: !!viewer && (o.userId === viewer.id || isAdminUser(viewer)),
   });
   // The outing as one line, in the agreed format.
   const outingLine = (o) => [
@@ -1893,7 +1897,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
-  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, s.name AS species, l.fate, l.lat, l.lng, l.landed_at AS landedAt,
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, s.name AS species, l.fate, l.weight_kg AS weightKg, l.lat, l.lng, l.landed_at AS landedAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
@@ -1912,6 +1916,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('DELETE FROM outing_fish WHERE outing_id = ? AND released + kept + lost = 0').run(outingId);
   };
 
+  // An estimated weight: optional, in kilograms; NaN if it makes no sense.
+  const estimate = (v) => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 && n <= 1500 ? Math.round(n * 10) / 10 : NaN;
+  };
+
   api.post('/outings/fish', auth.requireUser, (req, res) => {
     const b = req.body;
     const u = req.user;
@@ -1926,6 +1937,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!FATES.includes(b.fate)) return res.status(400).json({ error: 'Released, kept or lost?' });
     const spot = readSpot(b);
     if (spot.error) return res.status(400).json({ error: spot.error });
+    const weightKg = estimate(b.weightKg);
+    if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
     // When it was landed, by the phone's clock (it may arrive hours later, once there's signal).
     const at = Date.parse(b.landedAt);
     if (b.landedAt && (Number.isNaN(at) || at > Date.now() + 864e5)) return res.status(400).json({ error: "The time it was landed isn't valid." });
@@ -1942,8 +1955,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       }
       db.prepare('UPDATE outings SET no_catch = 0 WHERE id = ?').run(outing.id);
       bump(outing.id, speciesId, b.fate, 1);
-      db.prepare(`INSERT INTO outing_landings (outing_id, user_id, species_id, fate, lat, lng, landed_at, client_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, spot.lat, spot.lng, landedAt, clientId || null);
+      db.prepare(`INSERT INTO outing_landings (outing_id, user_id, species_id, fate, weight_kg, lat, lng, landed_at, client_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, weightKg, spot.lat, spot.lng, landedAt, clientId || null);
       db.exec('COMMIT');
       res.status(201).json({ trip: tripFor(outing.id, u) });
     } catch (err) {
@@ -1957,6 +1970,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? '') ? req.query.date : new Date().toISOString().slice(0, 10);
     const o = req.user.teamId && db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(req.user.teamId, date);
     res.json({ trip: o ? tripFor(o.id, req.user) : null });
+  });
+
+  // The estimated weight, given or changed after the fish was logged.
+  api.patch('/outings/fish/:id', auth.requireUser, (req, res) => {
+    const l = db.prepare(`SELECT l.id, l.outing_id, o.user_id, o.team_id
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
+    if (!l) return res.status(404).json({ error: 'Fish not found.' });
+    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    const weightKg = estimate(req.body.weightKg);
+    if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
+    db.prepare('UPDATE outing_landings SET weight_kg = ? WHERE id = ?').run(weightKg, l.id);
+    res.json({ trip: tripFor(l.outing_id, req.user) });
   });
 
   // Logged by mistake: take the fish back off the line.

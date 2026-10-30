@@ -91,7 +91,9 @@ test('the regional log: one line per outing, blank days too, and the season at a
     r = await land(marwan, { clientId: 'a1' });
     assert.equal(r.status, 201);
     assert.equal((await land(marwan, { clientId: 'a1' })).body.trip.landings.length, 1, 'sent twice without signal: counted once');
-    r = await land(deckhand, { fate: 'kept', speciesId: sp.Wahoo, lat: 9.41, lng: -13.88 });
+    r = await land(deckhand, { fate: 'kept', speciesId: sp.Wahoo, lat: 9.41, lng: -13.88, weightKg: '18.5' });
+    assert.equal(r.body.trip.landings[1].weightKg, 18.5, 'estimated weight');
+    assert.match((await land(deckhand, { weightKg: '-2' })).body.error, /kilograms/);
     r = await land(deckhand, {});
     let trip = r.body.trip;
     assert.equal(trip.boat, 'Exocet');
@@ -100,9 +102,15 @@ test('the regional log: one line per outing, blank days too, and the season at a
       [['Atlantic sailfish', 'released', 9.4, 'Marwan Abdalkareem'], ['Wahoo', 'kept', 9.41, 'Kofi Mensah'], ['Atlantic sailfish', 'released', 9.4, 'Kofi Mensah']]);
     assert.match((await land(visitor, {})).body.error, /boat/, 'on a boat to log fish');
     assert.match((await land(marwan, { fate: 'eaten' })).body.error, /Released, kept or lost/);
-    // The log shows the counts only, never the spots.
+    // A weight guessed after the fish is in.
+    r = await deckhand('PATCH', `/outings/fish/${trip.landings[0].id}`, { weightKg: 30 });
+    assert.equal(r.body.trip.landings[0].weightKg, 30);
+    assert.equal((await bob('PATCH', `/outings/fish/${trip.landings[0].id}`, { weightKg: 1 })).status, 403);
+    // The log shows each fish, never the spots.
     const pub = (await as()('GET', '/outings')).body.outings.find((o) => o.id === trip.id);
     assert.equal(pub.fish.length, 2);
+    assert.deepEqual(pub.landings.map((l) => [l.species, l.fate, l.weightKg]),
+      [['Atlantic sailfish', 'released', 30], ['Wahoo', 'kept', 18.5], ['Atlantic sailfish', 'released', null]]);
     assert.equal(JSON.stringify(pub).includes('9.41'), false);
     // A mistap comes back off; the crew finishes the trip at the end of the day.
     r = await deckhand('DELETE', `/outings/fish/${trip.landings[1].id}`);
