@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v2';
+const CACHE = 'app-v3';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/logo.svg', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
@@ -24,13 +24,16 @@ self.addEventListener('activate', (event) => {
 
 // The app's own files: from the network when there is one (so updates show at
 // once) and kept for later; from the copy when there isn't. Pages of the app
-// all load index.html. Everything else (the API, photos) goes straight through.
+// all load index.html. The species list and who's signed in are kept the same
+// way, so the app (and Fish on) still opens at sea. Everything else (the API,
+// photos) goes straight through.
+const KEEP_API = ['/api/meta', '/api/me'];
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   const page = req.mode === 'navigate';
-  if (!page && !APP_FILES.includes(url.pathname)) return;
+  if (!page && !APP_FILES.includes(url.pathname) && !KEEP_API.includes(url.pathname)) return;
   const key = page ? '/index.html' : url.pathname;
   event.respondWith((async () => {
     try {

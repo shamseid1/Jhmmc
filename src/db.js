@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 30;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -355,6 +355,20 @@ CREATE TABLE IF NOT EXISTS outing_fish (
   lost INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS outing_fish_outing ON outing_fish(outing_id);
+-- Each fish as it was landed ("Fish on"), with the phone's spot and time.
+-- The spot is for the boat's crew only; the log shows the counts.
+CREATE TABLE IF NOT EXISTS outing_landings (
+  id INTEGER PRIMARY KEY,
+  outing_id INTEGER NOT NULL REFERENCES outings(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  species_id INTEGER NOT NULL REFERENCES species(id),
+  fate TEXT NOT NULL CHECK (fate IN ('released', 'kept', 'lost')),
+  lat REAL,
+  lng REAL,
+  landed_at TEXT NOT NULL,
+  client_id TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS outing_landings_outing ON outing_landings(outing_id, id);
 
 CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY,

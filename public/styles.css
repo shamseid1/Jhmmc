@@ -733,4 +733,11 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .drill-list a { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
 .drill-list a > span { display: grid; }
 .drill-pts { white-space: nowrap; color: var(--accent); }
-.draft-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent, #f5a524) 14%, transparent); }
+
+.fates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.fate { padding: 18px 6px; font-size: 17px; font-weight: 800; border-radius: 14px; border: 1px solid transparent; cursor: pointer; }
+.fate.released { background: rgba(63, 207, 142, .16); color: var(--good); border-color: rgba(63, 207, 142, .45); }
+.fate.kept { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.fate.lost { background: rgba(255, 107, 107, .12); color: var(--danger); border-color: rgba(255, 107, 107, .4); }
+.fate:active { transform: scale(.97); }
+.log-buttons { display: flex; gap: 8px; flex-wrap: wrap; }

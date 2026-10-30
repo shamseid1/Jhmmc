@@ -1803,6 +1803,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     o.waterC != null ? `${o.waterC}°C` : '',
   ].join(' | ');
 
+  // Depth and water temperature: optional, but sensible when given.
+  function outingDetails(b) {
+    const number = (v, lo, hi) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= lo && n <= hi ? n : NaN;
+    };
+    const depth = number(b.depthM, 0, 11000);
+    const water = number(b.waterC, 10, 40);
+    if (Number.isNaN(depth)) return { error: 'Depth must be in metres.' };
+    if (Number.isNaN(water)) return { error: 'Water temperature must be in °C (10 to 40).' };
+    return { depth, water, techniques: (Array.isArray(b.technique) ? b.technique : []).filter((t) => TECHNIQUES.includes(t)) };
+  }
+
   api.post('/outings', (req, res) => {
     const b = req.body;
     const u = req.user;
@@ -1815,20 +1829,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (Date.parse(date) > Date.now() + 864e5) return res.status(400).json({ error: "The date can't be in the future." });
     const country = str(b.country, 60) || team.country || null;
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
-    const number = (v, lo, hi, what) => {
-      if (v === undefined || v === null || v === '') return null;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < lo || n > hi) throw Object.assign(new Error(what), { status: 400 });
-      return n;
-    };
-    let depth; let water;
-    try {
-      depth = number(b.depthM, 0, 11000, 'Depth must be in metres.');
-      water = number(b.waterC, 10, 40, 'Water temperature must be in °C (10 to 40).');
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    const techniques = (Array.isArray(b.technique) ? b.technique : []).filter((t) => TECHNIQUES.includes(t));
+    const details = outingDetails(b);
+    if (details.error) return res.status(400).json({ error: details.error });
+    const { depth, water, techniques } = details;
     const noCatch = bool(b.noCatch);
     const fish = [];
     if (!noCatch) {
@@ -1840,6 +1843,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         fish.push([speciesId, ...counts]);
       }
       if (!fish.length) return res.status(400).json({ error: 'Add the fish, or choose No catch.' });
+    }
+    // One line per boat per day: fish logged at sea already started it.
+    if (db.prepare('SELECT 1 FROM outings WHERE team_id = ? AND date = ?').get(team.id, date)) {
+      return res.status(409).json({ error: `${boat} already has a line for that day in the log. Open it from the log to add to it.` });
     }
     db.exec('BEGIN');
     const { lastInsertRowid } = db.prepare(`INSERT INTO outings (user_id, team_id, boat, country, date, no_catch, technique, area, depth_m, water_c)
@@ -1875,6 +1882,103 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       o.noCatch ? 'No catch' : outingLine(o).split(' | ')[3], o.technique.join(', '), o.area, o.depthM, o.waterC].map(cell).join(','));
     res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="regional-log.csv"' });
     res.send('\ufeff' + [head.map(cell).join(','), ...rows].join('\r\n'));
+  });
+
+  // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
+  // The fish join that boat's line for the day, created on the first one.
+  const FATES = ['released', 'kept', 'lost'];
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, s.name AS species, l.fate, l.lat, l.lng, l.landed_at AS landedAt,
+      COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
+    FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
+    WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
+  const tripFor = (outingId, viewer) => {
+    const o = db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(outingId);
+    if (!o) return null;
+    const out = presentOuting(o, viewer);
+    return { ...out, line: outingLine(out), landings: landingsOf(outingId) };
+  };
+  // The crew of the boat (and whoever logged the line, and the admin) work on the trip.
+  const onTrip = (user, o) => isAdminUser(user) || o.user_id === user.id || (o.team_id != null && o.team_id === user.teamId);
+  const bump = (outingId, speciesId, fate, by) => {
+    const row = db.prepare('SELECT id FROM outing_fish WHERE outing_id = ? AND species_id = ?').get(outingId, speciesId);
+    if (row) db.prepare(`UPDATE outing_fish SET ${fate} = MAX(0, ${fate} + ?) WHERE id = ?`).run(by, row.id);
+    else if (by > 0) db.prepare(`INSERT INTO outing_fish (outing_id, species_id, ${fate}) VALUES (?, ?, 1)`).run(outingId, speciesId);
+    db.prepare('DELETE FROM outing_fish WHERE outing_id = ? AND released + kept + lost = 0').run(outingId);
+  };
+
+  api.post('/outings/fish', auth.requireUser, (req, res) => {
+    const b = req.body;
+    const u = req.user;
+    const clientId = str(b.clientId, 64);
+    // Sent again after a lost connection: already in.
+    const again = clientId && db.prepare('SELECT outing_id FROM outing_landings WHERE client_id = ?').get(clientId);
+    if (again) return res.json({ trip: tripFor(again.outing_id, u) });
+    const team = db.prepare('SELECT id, name, country FROM teams WHERE id = ?').get(u.teamId || 0);
+    if (!team) return res.status(400).json({ error: 'Join or register your boat to log fish.' });
+    const speciesId = intId(b.speciesId);
+    if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return res.status(400).json({ error: 'Choose the species.' });
+    if (!FATES.includes(b.fate)) return res.status(400).json({ error: 'Released, kept or lost?' });
+    const spot = readSpot(b);
+    if (spot.error) return res.status(400).json({ error: spot.error });
+    // When it was landed, by the phone's clock (it may arrive hours later, once there's signal).
+    const at = Date.parse(b.landedAt);
+    if (b.landedAt && (Number.isNaN(at) || at > Date.now() + 864e5)) return res.status(400).json({ error: "The time it was landed isn't valid." });
+    const landedAt = b.landedAt ? new Date(at).toISOString() : new Date().toISOString();
+    // The day is the phone's own day, so a fish at 23:30 doesn't land on tomorrow's line.
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date ?? '') ? b.date : landedAt.slice(0, 10);
+    db.exec('BEGIN');
+    try {
+      let outing = db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(team.id, date);
+      if (!outing) {
+        const { lastInsertRowid } = db.prepare('INSERT INTO outings (user_id, team_id, boat, country, date) VALUES (?, ?, ?, ?, ?)')
+          .run(u.id, team.id, team.name, team.country || null, date);
+        outing = { id: Number(lastInsertRowid) };
+      }
+      db.prepare('UPDATE outings SET no_catch = 0 WHERE id = ?').run(outing.id);
+      bump(outing.id, speciesId, b.fate, 1);
+      db.prepare(`INSERT INTO outing_landings (outing_id, user_id, species_id, fate, lat, lng, landed_at, client_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, spot.lat, spot.lng, landedAt, clientId || null);
+      db.exec('COMMIT');
+      res.status(201).json({ trip: tripFor(outing.id, u) });
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  });
+
+  // Your boat's trip for a day (the phone's today by default), with each fish and its spot.
+  api.get('/outings/trip', auth.requireUser, (req, res) => {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? '') ? req.query.date : new Date().toISOString().slice(0, 10);
+    const o = req.user.teamId && db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(req.user.teamId, date);
+    res.json({ trip: o ? tripFor(o.id, req.user) : null });
+  });
+
+  // Logged by mistake: take the fish back off the line.
+  api.delete('/outings/fish/:id', auth.requireUser, (req, res) => {
+    const l = db.prepare(`SELECT l.id, l.outing_id, l.species_id, l.fate, o.user_id, o.team_id
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
+    if (!l) return res.status(404).json({ error: 'Fish not found.' });
+    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    db.exec('BEGIN');
+    db.prepare('DELETE FROM outing_landings WHERE id = ?').run(l.id);
+    bump(l.outing_id, l.species_id, l.fate, -1);
+    db.exec('COMMIT');
+    res.json({ trip: tripFor(l.outing_id, req.user) });
+  });
+
+  // Finish the trip: technique, rough area, depth and water temperature.
+  api.patch('/outings/:id', auth.requireUser, (req, res) => {
+    const o = db.prepare('SELECT id, user_id, team_id, country FROM outings WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!o) return res.status(404).json({ error: 'Outing not found.' });
+    if (!onTrip(req.user, o)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    const b = req.body;
+    const details = outingDetails(b);
+    if (details.error) return res.status(400).json({ error: details.error });
+    const country = 'country' in b ? str(b.country, 60) : o.country;
+    if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
+    db.prepare('UPDATE outings SET technique = ?, area = ?, depth_m = ?, water_c = ?, country = ? WHERE id = ?')
+      .run(details.techniques.join('|') || null, str(b.area, 80), details.depth, details.water, country, o.id);
+    res.json({ trip: tripFor(o.id, req.user) });
   });
 
   api.delete('/outings/:id', (req, res) => {
@@ -1937,11 +2041,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo
       FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
       WHERE p.lat IS NOT NULL AND p.user_id = :me
-      ORDER BY date DESC, kind`).all({ me: u.id, boat: captainOf });
+      UNION ALL
+      SELECT 'log', l.id, s.name, NULL, l.fate = 'released', o.date, l.lat, l.lng, NULL,
+        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
+        LEFT JOIN users au ON au.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
+      WHERE l.lat IS NOT NULL AND l.fate <> 'lost' AND (l.user_id = :me OR (:crew IS NOT NULL AND o.team_id = :crew))
+      ORDER BY date DESC, kind`).all({ me: u.id, boat: captainOf, crew: u.teamId ?? null });
     // A fish shared from the JHMMC feed to West Africa is one fish: keep the public post.
     const seen = new Set();
     const spots = posts.filter((x) => {
-      const key = `${x.species}|${x.date}|${x.lat}|${x.lng}|${x.weightKg}`;
+      const key = x.kind === 'log' ? `log${x.id}` : `${x.species}|${x.date}|${x.lat}|${x.lng}|${x.weightKg}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
