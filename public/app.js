@@ -1829,7 +1829,7 @@ const pagesFor = (view) => ({
           <span class="spot-head">Technique</span>
           <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}" ${trip.technique.includes(t) ? 'checked' : ''}> ${t}</label>`))}</div>
           <div class="three">
-            <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry" value="${trip.area || ''}"></label>
+            <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Marshall" value="${trip.area || ''}"></label>
             <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional" value="${trip.depthM == null ? '' : Math.round(toUnit('depth', trip.depthM))}"></label>
             <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional" value="${toUnit('temp', trip.waterC)}"></label>
           </div>
@@ -1997,7 +1997,7 @@ const pagesFor = (view) => ({
         <span class="spot-head">Technique</span>
         <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
         <div class="three">
-          <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry"></label>
+          <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Marshall"></label>
           <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
           <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional"></label>
         </div>
