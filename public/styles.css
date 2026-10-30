@@ -739,13 +739,18 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .fate:active { transform: scale(.97); }
 .log-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .notes.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 6px 0 0; }
-/* New post: a + in the header on the feed, like Instagram. */
-.topbar-post { display: inline-grid; place-items: center; width: 40px; height: 40px; color: var(--text); border-radius: 50%; flex: none; }
+/* New post: a "+ Post" button in the header on the feed. */
+.topbar-post { display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px 7px 10px; border-radius: 999px; flex: none;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 15px; text-decoration: none; }
 .topbar-post[hidden] { display: none; }
-.topbar-post svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.topbar-post:active { background: var(--surface-2); }
-@media (max-width: 640px) { .topbar-post { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); } }
-@media (min-width: 641px) { .topbar .brand { margin-right: auto; } .topbar-post { margin-left: -8px; } }
+.topbar-post svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+.topbar-post:active { opacity: .85; }
+/* On phones the logo moves to the left to make room for it on the right. */
+@media (max-width: 640px) {
+  .topbar:has(.topbar-post:not([hidden])) { justify-content: space-between; padding-left: 16px; padding-right: 16px; }
+  .topbar-post { order: 2; padding: 6px 12px 6px 8px; font-size: 14px; }
+}
+@media (min-width: 641px) { .topbar .brand { margin-right: auto; } .topbar-post { order: 2; margin-right: 8px; } }
 .units { display: grid; gap: 10px; }
 fieldset.units { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.units legend { font-weight: 600; margin-bottom: 4px; }
