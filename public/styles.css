@@ -733,3 +733,4 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .drill-list a { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
 .drill-list a > span { display: grid; }
 .drill-pts { white-space: nowrap; color: var(--accent); }
+.draft-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent, #f5a524) 14%, transparent); }

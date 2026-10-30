@@ -951,7 +951,7 @@ const pagesFor = (view) => ({
         </div>`;
     view.innerHTML = html`<h1>Post a catch</h1>
       <p class="muted">For <b>${team.name}</b>${team.clubName ? ` · ${team.clubName}` : ''}.
-        This goes on the West Africa feed. A photo or video and the species are enough; add the weight and details to show it off.
+        This goes on the West Africa feed. Landed one? Post it right away: the spot is taken as soon as this page opens, and the species is enough. Add photos and the weight later with Edit.
         ${jhmmc ? 'For JHMMC points the captain still registers the fish at the weigh station.' : ''}</p>
       <form class="card pad stack" id="f">
         <div class="photo-pick">
@@ -967,7 +967,8 @@ const pagesFor = (view) => ({
         <div class="stack spot">
           <label>Where <span class="muted small">(optional)</span><input name="location" maxlength="120" placeholder="e.g. Banana Islands, off Mesurado"></label>
           <div class="spot-row">
-            <button type="button" id="locate">${raw(icon('locate'))} Use my location</button>
+            <button type="button" id="locate">${raw(icon('locate'))} <span>Use my location</span></button>
+            <button type="button" class="link small" id="unspot" hidden>Remove the spot</button>
             <span class="small muted">or type the coordinates</span>
           </div>
           <label class="sr-only" for="coords">Coordinates</label>
@@ -990,36 +991,91 @@ const pagesFor = (view) => ({
       form.anglerName.required = !nameBox.hidden;
       if (!nameBox.hidden) form.anglerName.focus();
     });
-    // Phone GPS works at sea without signal; the post uploads when there's a connection.
-    view.querySelector('#locate').addEventListener('click', () => {
-      const status = view.querySelector('#spot-status');
+    // Landed one? The spot is taken the moment Post opens, while the boat is
+    // still there. GPS works at sea without signal.
+    const status = view.querySelector('#spot-status');
+    const locate = view.querySelector('#locate');
+    const unspot = view.querySelector('#unspot');
+    let autoSpot = false;
+    const setSpot = (lat, lng, note) => {
+      form.lat.value = lat;
+      form.lng.value = lng;
+      form.coords.value = lat === '' ? '' : `${lat}, ${lng}`;
+      status.textContent = note;
+      view.querySelector('#spot-share').hidden = lat === '';
+      unspot.hidden = lat === '';
+      locate.querySelector('span').textContent = lat === '' ? 'Use my location' : 'Take it again';
+      saveDraft();
+    };
+    const takeSpot = (auto) => {
       if (!navigator.geolocation) {
         status.textContent = 'This phone or browser can\'t share its location.';
         return;
       }
-      status.textContent = 'Finding you…';
+      status.textContent = 'Taking the spot…';
       navigator.geolocation.getCurrentPosition((pos) => {
-        form.lat.value = pos.coords.latitude.toFixed(5);
-        form.lng.value = pos.coords.longitude.toFixed(5);
-        form.coords.value = `${form.lat.value}, ${form.lng.value}`;
-        status.textContent = `${fmtCoords(pos.coords.latitude, pos.coords.longitude)} (±${Math.round(pos.coords.accuracy)} m)`;
-        view.querySelector('#spot-share').hidden = false;
+        autoSpot = auto;
+        const [lat, lng] = [pos.coords.latitude.toFixed(5), pos.coords.longitude.toFixed(5)];
+        setSpot(lat, lng, `${auto ? 'Spot taken here, now' : 'Spot taken'}: ${fmtCoords(+lat, +lng)} (±${Math.round(pos.coords.accuracy)} m).${auto ? ' Posting a fish from earlier? Remove it or type the real one.' : ''}`);
       }, (err) => {
         status.textContent = err.code === 1
           ? 'Location is blocked. Allow it for this site in your phone settings, or type the place instead.'
           : 'Couldn\'t get a GPS fix. Try again in the open, or type the place instead.';
-      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
-    });
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 });
+    };
+    locate.addEventListener('click', () => takeSpot(false));
+    unspot.addEventListener('click', () => { autoSpot = false; setSpot('', '', ''); });
     // Typed coordinates: read them as you type and say what was understood.
     form.coords.addEventListener('input', () => {
-      const status = view.querySelector('#spot-status');
+      autoSpot = false;
       const text = form.coords.value.trim();
       const spot = text ? parseCoords(text) : null;
       form.lat.value = spot ? spot.lat : '';
       form.lng.value = spot ? spot.lng : '';
       view.querySelector('#spot-share').hidden = !spot;
+      unspot.hidden = !spot;
       status.textContent = !text ? '' : spot ? `Reads as ${fmtCoords(spot.lat, spot.lng)}` : "Can't read those coordinates yet. Use N/S and E/W, or a comma between the two.";
     });
+    // A fish from an earlier day wasn't caught where the phone is now.
+    form.caughtOn.addEventListener('change', () => {
+      if (autoSpot && form.caughtOn.value && form.caughtOn.value !== today()) {
+        autoSpot = false;
+        setSpot('', '', 'Spot removed: it was where you are now, not where that fish was caught.');
+      }
+    });
+    // Out at sea there's often no signal: everything typed (and the spot) is
+    // kept on the phone until the post goes through. Photos have to be re-added.
+    const DRAFT = 'post-draft';
+    const FIELDS = ['speciesId', 'anglerId', 'anglerName', 'weightKg', 'lengthCm', 'lineClass', 'released', 'tagged', 'notes', 'location', 'coords', 'lat', 'lng', 'spotPublic', 'caughtOn', 'country'];
+    function saveDraft() {
+      const d = Object.fromEntries(FIELDS.map((n) => [n, form[n].type === 'checkbox' ? form[n].checked : form[n].value]));
+      d.caughtOn ||= today();
+      try { localStorage.setItem(DRAFT, JSON.stringify({ teamId: team.id, ...d })); } catch {}
+    }
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(DRAFT) || 'null'); } catch {}
+    if (draft?.teamId === team.id && draft.speciesId) {
+      for (const n of FIELDS) {
+        if (form[n].type === 'checkbox') form[n].checked = !!draft[n];
+        else if (draft[n] != null) form[n].value = draft[n];
+      }
+      form.anglerId.dispatchEvent(new Event('change'));
+      const hasSpot = draft.lat !== '' && draft.lat != null;
+      view.querySelector('#spot-share').hidden = !hasSpot;
+      unspot.hidden = !hasSpot;
+      if (hasSpot) locate.querySelector('span').textContent = 'Take it again';
+      status.textContent = hasSpot ? `Spot kept from before: ${fmtCoords(+draft.lat, +draft.lng)}.` : '';
+      form.insertAdjacentHTML('afterbegin', html`<p class="draft-note small">Your unsent fish was kept on this phone${hasSpot ? ', spot included' : ''}. Add the photos again and post when you have signal.
+        <button type="button" class="link small" id="drop-draft">Start over</button></p>`);
+      view.querySelector('#drop-draft').addEventListener('click', () => {
+        try { localStorage.removeItem(DRAFT); } catch {}
+        route();
+      });
+    } else {
+      takeSpot(true);
+    }
+    form.addEventListener('input', saveDraft);
+    form.addEventListener('change', saveDraft);
     const media = wireMediaPick(form);
     bindForm(form, async () => {
       const btn = form.querySelector('button[type=submit]');
@@ -1027,6 +1083,7 @@ const pagesFor = (view) => ({
       try {
         const fd = await media.addTo(new FormData(form));
         const { catch: c } = await api('/catches', { method: 'POST', form: fd });
+        try { localStorage.removeItem(DRAFT); } catch {}
         toast('Posted. Tight lines!');
         location.hash = `#/catch/${c.id}`;
       } finally {
