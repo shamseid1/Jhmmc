@@ -2261,7 +2261,6 @@ const pagesFor = (view) => ({
         ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
         ${raw(item('#/records', 'medal', 'Club records'))}
         ${raw(item('#/clubs', 'clubs', 'Clubs'))}
-        ${raw(me?.canWeigh ? item('#/participants', 'participants', 'Participants', 'Every angler and boat') : '')}
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
@@ -3161,18 +3160,17 @@ async function renderNotify(el) {
 function renderNav(active = state.navActive) {
   state.navActive = active;
   syncHeader();
-  // One bar for everyone. JHMMC captains and officials get Register in
-  // place of Participants (which moves to More for them).
+  // One bar for everyone. JHMMC captains and officials register fish from More.
   const me0 = state.me;
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
     ...(me0?.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish', 'cta']] : []),
-    me0?.canWeigh ? ['#/weigh', 'Register', 'weigh', 'weight'] : ['#/participants', 'Participants', 'participants', 'participants'],
+    ['#/participants', 'Participants', 'participants', 'participants'],
   ];
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
-    boat: me0?.canWeigh ? 'more' : 'participants', user: me0?.canWeigh ? 'more' : 'participants', participants: me0?.canWeigh ? 'more' : 'participants',
+    boat: 'participants', user: 'participants', weigh: 'more',
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
