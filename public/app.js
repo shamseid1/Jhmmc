@@ -737,239 +737,6 @@ async function renderFeed(container, query = {}) {
   await page();
 }
 
-// ---- the JHMMC feed (members only) -----------------------------------------
-
-// Which feed a JHMMC member last chose ('club' or 'wa'); kept on this phone only.
-const FEED_KEY = 'jhmmc-feed';
-const feedPref = () => {
-  try {
-    return localStorage.getItem(FEED_KEY) === 'wa' ? 'wa' : 'club';
-  } catch {
-    return 'club';
-  }
-};
-const setFeedPref = (which) => {
-  try {
-    localStorage.setItem(FEED_KEY, which);
-  } catch {
-    // Private browsing: the choice just isn't remembered.
-  }
-};
-const FEED_NAMES = { club: 'JHMMC', wa: 'West Africa' };
-// On the JHMMC side, a small JHMMC tag sits in the header on every page.
-const syncClubChip = () => {
-  document.getElementById('club-chip').hidden = !(state.me?.jhmmc && feedPref() === 'club');
-};
-
-// The club feed's filters, as they appear in the address (#/?show=verified&boat=3).
-const CLUB_FILTERS = ['show', 'boat'];
-const CLUB_SHOW = [['verified', 'Approved catches'], ['fish', 'All fish'], ['photos', 'Photos'], ['posts', "Members' posts"]];
-
-function clubComment(postId, m) {
-  return html`<div class="comment" data-cid="${m.id}">
-    <a href="#/user/${m.userId}"><b>${m.author}</b></a> ${m.body}
-    ${m.canDelete ? raw('<button type="button" data-act="del-comment" class="link danger small">Remove</button>') : ''}</div>`;
-}
-
-function clubItem(i) {
-  const photo = mediaHtml(i);
-  if (i.kind === 'verified') {
-    return html`<article class="card club-item verified">
-      ${i.videoUrl ? raw(photo) : i.photoUrl ? raw(html`<a href="#/catch/${i.id}">${raw(photo)}</a>`) : ''}
-      <div class="pad">
-        <p class="club-who"><span class="badge status ok">${raw(icon('check', 'icon tiny'))} Verified</span> <span class="muted small">${fmtWhen(i.createdAt)}</span></p>
-        <h3 class="catch-title"><a href="#/catch/${i.id}">${i.species}</a>${i.released ? ' released' : ''}
-          ${i.weightKg ? raw(html` <span class="weight">${fmtWeight(i.weightKg)}</span>`) : ''}</h3>
-        <p class="meta"><a href="${anglerHref(i.userId, i.angler)}">${i.angler}</a>${i.teamName ? raw(html` · <a href="#/boat/${i.teamId}">${i.teamName}</a>`) : ''}
-          · <b>${fmtPoints(i.points)}</b></p>
-        <div class="actions"><a class="btn" href="#/catch/${i.id}">${raw(icon('heart'))} ${i.likes} · ${raw(icon('comment'))} ${i.comments}</a></div>
-      </div></article>`;
-  }
-  return html`<article class="card club-item" data-post="${i.id}">
-    <div class="pad">
-      <p class="club-who"><a href="#/user/${i.userId}"><b>${i.author}</b></a>${i.teamName ? raw(html` <span class="muted small">· ${i.teamName}</span>`) : ''}
-        <span class="muted small">· ${fmtWhen(i.createdAt)}</span>
-        ${i.canEdit ? raw(html`<a class="small edit-link" href="#/club-edit/${i.id}">Edit</a>`) : ''}
-        ${i.canDelete ? raw('<button type="button" data-act="del-post" class="link danger small">Remove</button>') : ''}</p>
-      ${i.body ? raw(html`<p class="club-body">${i.body}</p>`) : ''}
-    </div>
-    ${raw(photo)}
-    <div class="pad">
-      ${i.species ? raw(html`<p class="club-fish">${raw(icon('fish'))} <b>${i.species}</b>${i.weightKg ? ` · ${fmtWeight(i.weightKg)}` : ''}${i.released ? raw(' <span class="badge release">Released</span>') : ''}</p>`) : ''}
-      ${i.lat != null ? raw(html`<p class="small muted club-spot">${raw(icon('pin'))} <a href="#/spots">Spot saved on your catch map</a> (only you see it)</p>`) : ''}
-      <div class="actions">
-        <button type="button" data-act="like" class="${i.liked ? 'liked' : ''}" aria-pressed="${i.liked}" aria-label="Like">${raw(icon('heart'))} <span>${i.likes}</span></button>
-      </div>
-      <div class="club-comments">${raw(i.comments.map((m) => clubComment(i.id, m)).join(''))}</div>
-      <form class="club-reply"><input name="body" maxlength="1000" placeholder="Reply…" autocomplete="off" required><button type="submit">Send</button></form>
-    </div></article>`;
-}
-
-async function clubFeed(view, filters = {}, { compose = false } = {}) {
-  const boats = (await api('/teams')).teams.filter((t) => isJhmmc(t.clubId));
-  const label = {
-    show: (v) => CLUB_SHOW.find(([k]) => k === v)?.[1],
-    boat: (v) => boats.find((t) => String(t.id) === v)?.name,
-  };
-  const active = CLUB_FILTERS.filter((k) => filters[k] && label[k](filters[k]));
-  const without = (key) => {
-    const p = new URLSearchParams(filters);
-    p.delete(key);
-    return `#/${p.size ? `?${p}` : ''}`;
-  };
-  const box = document.createElement('div');
-  box.innerHTML = html`<div class="filter-bar">
-      <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="club-filter">
-        ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
-      ${active.map((k) => raw(html`<span class="chip">${label[k](filters[k])} <a href="${without(k)}" aria-label="Remove ${label[k](filters[k])}">✕</a></span>`))}
-    </div>
-    <form class="card pad filter-panel stack" id="club-filter" hidden>
-      <label>Show <select name="show">${raw(options(CLUB_SHOW, filters.show, 'Everything'))}</select></label>
-      <label>Boat <select name="boat">${raw(options(boats.map((t) => [t.id, t.name]), filters.boat, 'All boats'))}</select></label>
-      <div class="actions"><button type="submit" class="primary">Show</button> <a class="btn" href="#/">Clear all</a></div>
-    </form>
-    <form class="card pad stack composer" id="club-post">
-      <textarea name="body" rows="2" maxlength="2000" placeholder="What's happening on the water?"></textarea>
-      <div class="photo-pick">
-        ${raw(MEDIA_PREVIEWS)}
-        <div class="composer-tools">
-          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Photo / video</span></button>
-          <button type="button" data-act="add-fish" aria-expanded="false">${raw(icon('fish'))} Fish</button>
-        </div>
-        <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
-      </div>
-      <div class="stack fish-fields" hidden>
-        <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Choose species…'))}</select></label>
-        <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional"></label>
-          <label class="check"><input type="checkbox" name="released" value="true"> Released</label></div>
-        ${raw(spotFields())}
-      </div>
-      <label class="check share-wa"><input type="checkbox" name="shareWa" value="true"> Also post on the West Africa feed</label>
-      <p class="error"></p>
-      <div><button type="submit" class="primary">Post</button></div>
-    </form>
-    <p class="small muted center">Only JHMMC members see this feed. Fish the secretary approves appear here too.</p>
-    <div class="feed" id="club-items"></div>
-    <button class="more" hidden>Load more</button>`;
-  view.append(...box.childNodes);
-  const panel = view.querySelector('#club-filter');
-  const toggle = view.querySelector('.filter-toggle');
-  toggle.addEventListener('click', () => {
-    panel.hidden = !panel.hidden;
-    toggle.setAttribute('aria-expanded', String(!panel.hidden));
-  });
-  panel.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const p = new URLSearchParams();
-    for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
-    location.hash = `#/${p.size ? `?${p}` : ''}`;
-  });
-  const form = view.querySelector('#club-post');
-  const list = view.querySelector('#club-items');
-  const moreBtn = view.querySelector('button.more');
-  const items = new Map();
-  let before = null;
-
-  const media = wireMediaPick(form);
-  const spot = wireSpot(form);
-  const fishBtn = form.querySelector('[data-act=add-fish]');
-  const fishFields = form.querySelector('.fish-fields');
-  // The West Africa feed is catches: ticking it brings up the fish.
-  form.shareWa.addEventListener('change', () => {
-    if (form.shareWa.checked && fishFields.hidden) fishBtn.click();
-  });
-  fishBtn.addEventListener('click', () => {
-    fishFields.hidden = !fishFields.hidden;
-    fishBtn.setAttribute('aria-expanded', String(!fishFields.hidden));
-    if (fishFields.hidden) fishFields.querySelectorAll('select, input[type=number]').forEach((el) => { el.value = ''; });
-  });
-
-  async function page(reset) {
-    if (reset) {
-      before = null;
-      items.clear();
-      list.innerHTML = '';
-    }
-    const q = new URLSearchParams({ ...(filters.show && { show: filters.show }), ...(filters.boat && { team: filters.boat }), ...(before && { before }) });
-    const { items: got, nextBefore } = await api(`/club-feed${q.size ? `?${q}` : ''}`);
-    for (const i of got) if (i.kind === 'post') items.set(String(i.id), i);
-    list.insertAdjacentHTML('beforeend', got.map(clubItem).join(''));
-    before = nextBefore;
-    moreBtn.hidden = !nextBefore;
-    if (!list.children.length) {
-      list.innerHTML = active.length ? '<div class="card pad empty">Nothing matches these filters yet.</div>'
-        : '<div class="card pad empty">Nothing yet today. Say hello to the club!</div>';
-    }
-  }
-  moreBtn.addEventListener('click', () => page());
-
-  bindForm(form, async () => {
-    const fd = new FormData(form);
-    if (fishFields.hidden) ['speciesId', 'weightKg', 'released', 'lat', 'lng'].forEach((k) => fd.delete(k));
-    fd.delete('coords');
-    if (form.shareWa.checked && !fd.get('speciesId')) throw new Error('Choose the species to post it on the West Africa feed.');
-    if (!fd.get('body')?.trim() && !media.picked.photo && !media.picked.video && !fd.get('speciesId')) {
-      throw new Error('Write something, add a photo, a video or a fish.');
-    }
-    const btn = form.querySelector('button[type=submit]');
-    btn.textContent = 'Posting…';
-    try {
-      const { catchId } = await api('/club-feed', { method: 'POST', form: await media.addTo(fd) });
-      if (catchId) toast('Posted here and on the West Africa feed.');
-    } finally {
-      btn.textContent = 'Post';
-    }
-    form.reset();
-    media.reset();
-    spot.reset();
-    fishFields.hidden = true;
-    fishBtn.setAttribute('aria-expanded', 'false');
-    await page(true);
-  });
-
-  list.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-act]');
-    const card = btn?.closest('[data-post]');
-    if (!card) return;
-    const id = card.dataset.post;
-    try {
-      if (btn.dataset.act === 'like') {
-        const r = await api(`/club-feed/${id}/like`, { method: 'POST' });
-        btn.classList.toggle('liked', r.liked);
-        btn.setAttribute('aria-pressed', r.liked);
-        btn.querySelector('span').textContent = r.likes;
-      } else if (btn.dataset.act === 'del-post' && confirm('Remove this post?')) {
-        await api(`/club-feed/${id}`, { method: 'DELETE' });
-        card.remove();
-      } else if (btn.dataset.act === 'del-comment' && confirm('Remove this comment?')) {
-        const row = btn.closest('[data-cid]');
-        await api(`/club-feed/${id}/comments/${row.dataset.cid}`, { method: 'DELETE' });
-        row.remove();
-      }
-    } catch (ex) {
-      toast(ex.message);
-    }
-  });
-  list.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const reply = e.target;
-    const card = reply.closest('[data-post]');
-    try {
-      const { comment } = await api(`/club-feed/${card.dataset.post}/comments`, { method: 'POST', body: formData(reply) });
-      card.querySelector('.club-comments').insertAdjacentHTML('beforeend', clubComment(card.dataset.post, comment));
-      reply.reset();
-    } catch (ex) {
-      toast(ex.message);
-    }
-  });
-  await page(true);
-  // From the Post button: straight to writing.
-  if (compose) {
-    form.scrollIntoView({ block: 'start' });
-    form.body.focus();
-  }
-}
-
 // Sends a visitor to sign in, then back to where they were.
 function askToSignIn(msg = 'Sign in to do that.') {
   state.afterLogin = location.hash;
@@ -1042,19 +809,6 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
-    // JHMMC members have two feeds: the club's own (members only) and West Africa's.
-    const member = !!state.me?.jhmmc;
-    const { feed: which, ...rest } = filters;
-    if (member && FEED_NAMES[which]) {
-      setFeedPref(which);
-      renderNav(); // the JHMMC tag and where Post goes follow the side
-    }
-    const club = member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')
-      && Object.keys(rest).every((k) => CLUB_FILTERS.includes(k) || k === 'compose');
-    if (club) {
-      const { compose, ...clubFilters } = rest;
-      return clubFeed(view, clubFilters, { compose: !!compose });
-    }
     delete filters.feed;
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
     // The filters in use, as chips that each remove one.
@@ -1069,7 +823,6 @@ const pagesFor = (view) => ({
     const without = (key) => {
       const p = new URLSearchParams(filters);
       p.delete(key);
-      if (member) p.set('feed', 'wa');
       return `#/${p.size ? `?${p}` : ''}`;
     };
     view.innerHTML = html`
@@ -1099,12 +852,11 @@ const pagesFor = (view) => ({
     panel.addEventListener('submit', (e) => {
       e.preventDefault();
       const p = new URLSearchParams(filters.angler ? { angler: filters.angler } : {});
-      if (member) p.set('feed', 'wa');
       for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
       location.hash = '#/?' + p;
     });
     panel.querySelector('[data-act=clear-filters]').addEventListener('click', () => {
-      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : member ? '#/?feed=wa' : '#/';
+      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : '#/';
     });
     await renderFeed(view.querySelector('#feed'), filters);
   },
@@ -1196,7 +948,6 @@ const pagesFor = (view) => ({
           <label>Date <span class="muted small">(today if empty)</span><input name="caughtOn" type="date" max="${today()}"></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country || state.me.country, 'Choose…'))}</select></label>
         </div>
-        ${state.me.jhmmc ? raw('<label class="check share-wa"><input type="checkbox" name="shareClub" value="true"> Also post on the JHMMC feed</label>') : ''}
         <p class="error"></p>
         <div><button type="submit" class="primary">Post</button></div>
       </form>`;
@@ -1243,8 +994,8 @@ const pagesFor = (view) => ({
       btn.textContent = 'Posting…';
       try {
         const fd = await media.addTo(new FormData(form));
-        const { catch: c, sharedClub } = await api('/catches', { method: 'POST', form: fd });
-        toast(sharedClub ? 'Posted here and on the JHMMC feed. Tight lines!' : 'Posted. Tight lines!');
+        const { catch: c } = await api('/catches', { method: 'POST', form: fd });
+        toast('Posted. Tight lines!');
         location.hash = `#/catch/${c.id}`;
       } finally {
         btn.textContent = 'Post';
@@ -2132,236 +1883,6 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Edit your own JHMMC feed post.
-  async 'club-edit'(id) {
-    if (!state.me?.jhmmc) return needLogin(view, 'edit a JHMMC feed post (JHMMC members)');
-    let item = null;
-    for (let before = null; !item; ) {
-      const q = before ? `?before=${encodeURIComponent(before)}` : '';
-      const pageOf = await api(`/club-feed${q}`);
-      item = pageOf.items.find((i) => i.kind === 'post' && String(i.id) === String(id));
-      if (!pageOf.nextBefore) break;
-      before = pageOf.nextBefore;
-    }
-    if (!item?.canEdit) {
-      view.innerHTML = '<div class="card pad empty">Only whoever posted it can edit this post.</div>';
-      return;
-    }
-    const speciesId = state.meta.species.find((x) => x.name === item.species)?.id;
-    view.innerHTML = html`<p class="back"><a href="#/?feed=club">‹ JHMMC feed</a></p>
-      <h1>Edit post</h1>
-      <form class="card pad stack" id="f">
-        <label>Your post <textarea name="body" rows="3" maxlength="2000">${item.body || ''}</textarea></label>
-        ${raw(photoManager(item))}
-        <label>Fish <select name="speciesId">${raw(speciesOptions(speciesId ? String(speciesId) : '', 'No fish'))}</select></label>
-        <div class="row"><label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Optional" value="${item.weightKg ?? ''}"></label>
-          <label class="check"><input type="checkbox" name="released" ${item.released ? 'checked' : ''}> Released</label></div>
-        ${raw(spotFields())}
-        <p class="small muted">Changes here don't change a copy posted on the West Africa feed; edit that one there.</p>
-        <p class="error"></p>
-        <div><button type="submit" class="primary">Save changes</button></div>
-      </form>`;
-    const form = view.querySelector('#f');
-    wireSpot(form);
-    if (item.lat != null) {
-      form.lat.value = item.lat;
-      form.lng.value = item.lng;
-      form.coords.value = `${item.lat}, ${item.lng}`;
-    }
-    const pm = wirePhotoManager(form);
-    bindForm(form, async () => {
-      const btn = form.querySelector('button[type=submit]');
-      btn.textContent = 'Saving…';
-      try {
-        const fd = new FormData(form);
-        fd.set('released', form.released.checked ? 'true' : '');
-        fd.delete('coords');
-        await api(`/club-feed/${item.id}`, { method: 'PATCH', form: await pm.addTo(fd) });
-        toast('Saved.');
-        location.hash = '#/?feed=club';
-      } finally {
-        btn.textContent = 'Save changes';
-      }
-    });
-  },
-
-  // Log an outing: one line per trip, blank days included, rough areas only.
-  async outing() {
-    if (!state.me) return needLogin(view, 'log an outing');
-    const [{ teams }, { techniques }] = await Promise.all([api('/teams'), api('/outings?country=__none__')]);
-    const team = teams.find((t) => t.id === state.me.teamId);
-    if (!teams.length) {
-      view.innerHTML = '<div class="card pad empty">Boats have to be on the app to be logged. <a href="#/crew">Register your boat</a> first.</div>';
-      return;
-    }
-    const fishRow = () => html`<div class="fishrow">
-      <div class="fishrow-head"><select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select>
-        <button type="button" class="link danger small" data-act="drop-fish" aria-label="Remove this species">✕</button></div>
-      <div class="counts">${['released', 'kept', 'lost'].map((k) => raw(html`<div class="count" data-k="${k}">
-        <button type="button" data-step="-1" aria-label="One fewer ${k}">−</button><b>0</b><button type="button" data-step="1" aria-label="One more ${k}">+</button>
-        <small>${k}</small></div>`))}</div></div>`;
-    view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
-      <h1>Log an outing</h1>
-      <p class="small muted">One line per trip, the same for every boat. No fish? Log it anyway: blank days tell us as much about the season. Rough areas only, never exact spots.</p>
-      <form class="card pad stack" id="f">
-        <label>Date <input name="date" type="date" required max="${today()}" value="${today()}"></label>
-        <div class="row">
-          <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, t.name]), team?.id, 'Choose the boat…'))}</select></label>
-          <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
-        </div>
-        <div class="seg2" role="radiogroup">
-          <button type="button" class="on" data-mode="fish" aria-pressed="true">Fish</button>
-          <button type="button" data-mode="none" aria-pressed="false">No catch</button>
-        </div>
-        <div class="stack fish-list">${raw(fishRow())}</div>
-        <button type="button" class="add-species" data-act="add-fish">+ Add species</button>
-        <span class="spot-head">Technique</span>
-        <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
-        <div class="three">
-          <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry"></label>
-          <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
-          <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="optional"></label>
-        </div>
-        <p class="small muted">Rough area only: nobody sees exact spots. Depth and water temperature are optional.</p>
-        <p class="error"></p>
-        <div><button type="submit" class="primary">Post outing</button></div>
-      </form>`;
-    const form = view.querySelector('#f');
-    form.teamId.addEventListener('change', () => {
-      const t = teams.find((x) => String(x.id) === form.teamId.value);
-      if (t?.country) form.country.value = t.country;
-    });
-    const list = form.querySelector('.fish-list');
-    const addBtn = form.querySelector('[data-act=add-fish]');
-    let noCatch = false;
-    form.addEventListener('click', (e) => {
-      const mode = e.target.closest('[data-mode]');
-      if (mode) {
-        noCatch = mode.dataset.mode === 'none';
-        for (const b of form.querySelectorAll('[data-mode]')) {
-          b.classList.toggle('on', b === mode);
-          b.setAttribute('aria-pressed', String(b === mode));
-        }
-        list.hidden = noCatch;
-        addBtn.hidden = noCatch;
-        for (const sel of list.querySelectorAll('select')) sel.required = !noCatch;
-      }
-      const step = e.target.closest('[data-step]');
-      if (step) {
-        const out = step.parentElement.querySelector('b');
-        out.textContent = Math.max(0, Number(out.textContent) + Number(step.dataset.step));
-      }
-      if (e.target.closest('[data-act=add-fish]')) list.insertAdjacentHTML('beforeend', fishRow());
-      if (e.target.closest('[data-act=drop-fish]') && list.children.length > 1) e.target.closest('.fishrow').remove();
-    });
-    bindForm(form, async () => {
-      const fd = formData(form);
-      const body = {
-        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
-        technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value), noCatch,
-        fish: noCatch ? [] : [...list.querySelectorAll('.fishrow')].map((row) => ({
-          speciesId: row.querySelector('select').value,
-          ...Object.fromEntries([...row.querySelectorAll('.count')].map((c) => [c.dataset.k, Number(c.querySelector('b').textContent)])),
-        })),
-      };
-      await api('/outings', { method: 'POST', body });
-      toast('Outing logged. Thanks!');
-      location.hash = '#/log';
-    });
-  },
-
-  // The regional log: everyone's outings, and the season at a glance.
-  async log() {
-    const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const tab = q.get('tab') === 'season' ? 'season' : 'outings';
-    const country = q.get('country') || '';
-    const link = (changes) => {
-      const p = new URLSearchParams(q);
-      for (const [k, v] of Object.entries(changes)) (v ? p.set(k, v) : p.delete(k));
-      return `#/log${p.size ? `?${p}` : ''}`;
-    };
-    const head = html`<h1>Regional log</h1>
-      <div class="seg" role="tablist">
-        <a role="tab" href="${link({ tab: '' })}" aria-selected="${tab === 'outings'}">Outings</a>
-        <a role="tab" href="${link({ tab: 'season' })}" aria-selected="${tab === 'season'}">Season</a>
-      </div>`;
-    const { outings, countries, nextBefore } = await api(`/outings${country ? `?country=${encodeURIComponent(country)}` : ''}`);
-    const chips = html`<div class="chips log-chips">
-      <a class="chip2 ${country ? '' : 'on'}" href="${link({ country: '' })}">All countries</a>
-      ${countries.map((c) => raw(html`<a class="chip2 ${c === country ? 'on' : ''}" href="${link({ country: c })}">${c}</a>`))}</div>`;
-    if (tab === 'season') {
-      const year = q.get('year') || '';
-      const species = q.get('species') || '';
-      const sq = new URLSearchParams({ ...(year && { year }), ...(country && { country }), ...(species && { species }) });
-      const sz = await api(`/outings/season?${sq}`);
-      const max = Math.max(...sz.months.map((m) => m.perDay || 0), 0.01);
-      const short = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
-      const span = ([lo, hi]) => (lo === hi ? `${lo}` : `${lo}–${hi}`);
-      view.innerHTML = html`${raw(head)}${raw(chips)}
-        ${sz.years.length > 1 ? raw(html`<div class="chips">${sz.years.map((y) => raw(html`<a class="chip2 ${y === sz.year ? 'on' : ''}" href="${link({ year: y })}">${y}</a>`))}</div>`) : ''}
-        <div class="stats3">
-          <div class="card s"><b>${sz.outings}</b><span>outings</span></div>
-          <div class="card s"><b>${sz.blank}</b><span>no catch</span></div>
-          <div class="card s"><b>${short(sz.billfishPerDay)}</b><span>billfish / day</span></div>
-        </div>
-        ${sz.species ? raw(html`<div class="card pad">
-          <label class="season-species">${sz.species} per day fished, by month
-            <select id="season-species">${raw(options(sz.speciesList.map((x) => [x, x]), sz.species))}</select></label>
-          <div class="month-bars">${sz.months.map((m) => raw(html`<div class="mb" title="${m.outings} outings">
-            <i style="height:${m.perDay == null ? 0 : Math.max(3, (m.perDay / max) * 100)}%"></i></div>`))}</div>
-          <div class="month-names">${'JFMAMJJASOND'.split('').map((l) => raw(`<span>${l}</span>`))}</div>
-          <p class="small muted">Fish caught (released or kept) per outing that month. Empty: no outings logged.</p>
-        </div>`) : ''}
-        <div class="card pad best-card">
-          <b>Best conditions so far</b>
-          ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water)}°C`, sz.best.depth && `${span(sz.best.depth)} m`,
-            sz.best.techniques.join(' and ')].filter(Boolean).join(' · ')}</span>
-            <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, all boats.</span>`)
-            : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
-        </div>
-        <p><a class="btn" href="/api/outings.csv">${raw(icon('download'))} Download the whole log (spreadsheet)</a></p>`;
-      view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
-      return;
-    }
-    const tag = (n, kind) => (n ? html` <span class="pill ${kind}">${n} ${kind}</span>` : '');
-    const item = (o) => html`<li data-id="${o.id}">
-      <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
-      <div class="small muted">${[o.country, [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '), o.waterC != null ? `${o.waterC}°C` : '', o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
-      <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
-        <button type="button" class="link" data-act="copy">Copy as one line</button>
-        ${o.canDelete ? raw('<button type="button" class="link danger" data-act="remove">Remove</button>') : ''}</div>
-    </li>`;
-    view.innerHTML = html`${raw(head)}
-      <p><a class="btn primary" href="#/outing" data-return>+ Log an outing</a></p>
-      ${raw(chips)}
-      ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
-        ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
-        : raw('<div class="card pad empty">No outings logged yet. Be the first: tap Log an outing after your next trip.</div>')}`;
-    const byId = new Map(outings.map((o) => [String(o.id), o]));
-    view.querySelector('.log')?.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-act]');
-      if (!btn) return;
-      const o = byId.get(btn.closest('[data-id]').dataset.id);
-      if (btn.dataset.act === 'copy') {
-        try {
-          await navigator.clipboard.writeText(o.line);
-          toast('Copied. Paste it in WhatsApp or a spreadsheet.');
-        } catch {
-          prompt('Copy this line:', o.line);
-        }
-      }
-      if (btn.dataset.act === 'remove' && confirm('Remove this outing from the log?')) {
-        try {
-          await api(`/outings/${o.id}`, { method: 'DELETE' });
-          btn.closest('li').remove();
-        } catch (ex) {
-          toast(ex.message);
-        }
-      }
-    });
-  },
-
   // My catch map: every fish you logged with a spot, on a map, by year.
   async spots() {
     if (!state.me) return needLogin(view, 'see your catch map');
@@ -2443,10 +1964,7 @@ const pagesFor = (view) => ({
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
           <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
-          ${me.jhmmc ? raw(html`<a class="btn feed-switch" href="#/?feed=${feedPref() === 'club' ? 'wa' : 'club'}" aria-label="Switch to the ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']} feed">${raw(icon('switch', 'icon small'))}
-            ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']}</a>`) : ''}
-        </div>
-        ${me.jhmmc ? raw(html`<p class="small muted feed-now">You're on the ${FEED_NAMES[feedPref()]} feed. Tip: double-tap More to switch.</p>`) : ''}`)
+        </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${isInstalled() ? '' : raw(`<div class="card pad install-card">
@@ -3370,15 +2888,11 @@ async function renderNotify(el) {
 
 function renderNav(active = state.navActive) {
   state.navActive = active;
-  syncClubChip();
   const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/points', 'Leaderboard', 'points', 'leaderboard'],
   ];
-  // On the JHMMC side, Post opens the JHMMC feed's post box (which can also post
-  // to West Africa); elsewhere, the West Africa Post a catch form.
-  if (state.me?.jhmmc && feedPref() === 'club') links.push(['#/?feed=club&compose=1', 'Post', 'compose', 'catch', 'cta']);
-  else if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
+  if (state.me?.teamId) links.push(['#/new', 'Post', 'new', 'catch', 'cta']);
   links.push(['#/participants', 'Participants', 'participants', 'participants']);
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
@@ -3515,22 +3029,6 @@ window.addEventListener('appinstalled', () => {
   toast('Installed. Open West Africa Big Game from your home screen.');
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-
-// Like Instagram's profile tab: a JHMMC member double-taps More to switch feeds.
-let lastMoreTap = 0;
-document.getElementById('nav').addEventListener('click', (e) => {
-  if (!e.target.closest('[data-nav=more]') || !state.me?.jhmmc) return;
-  const now = Date.now();
-  if (now - lastMoreTap < 400) {
-    e.preventDefault();
-    lastMoreTap = 0;
-    const next = feedPref() === 'club' ? 'wa' : 'club';
-    location.hash = `#/?feed=${next}`;
-    toast(`${FEED_NAMES[next]} feed`);
-    return;
-  }
-  lastMoreTap = now;
-});
 
 // "Sign in" links inside a page come back to that page afterwards.
 document.addEventListener('click', (e) => {
