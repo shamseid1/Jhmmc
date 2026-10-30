@@ -120,7 +120,9 @@ h2 { font-size: 1.15rem; margin: 24px 0 8px; }
 .feed { display: grid; gap: 16px; }
 .catch-photo { aspect-ratio: 4 / 3; object-fit: cover; width: 100%; background: var(--line); }
 /* Photos keep their own shape, landscape or portrait; only very tall ones are trimmed. */
-img.catch-photo { display: block; aspect-ratio: auto; height: auto; max-height: min(80vh, 680px); }
+/* The whole photo always shows: a tall (portrait) one fits within the height,
+   with a neutral band either side on wide screens, instead of being cropped. */
+img.catch-photo { display: block; aspect-ratio: auto; height: auto; max-height: min(80vh, 680px); object-fit: contain; background: var(--surface-2); }
 .catch-photo.placeholder {
   display: grid;
   place-items: center;
