@@ -554,9 +554,16 @@ function syncDivision(form) {
   if (port) port.hidden = jhmmc;
 }
 
-// 6.31°N 10.81°W, the way charts and GPS units show it.
-const fmtCoords = (lat, lng) =>
-  `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
+// N 06° 18.630' W 010° 48.444': degrees and decimal minutes, the way Garmin
+// and other plotters show it, so a spot can be typed straight into one.
+const dm = (v, width) => {
+  const a = Math.abs(v);
+  let deg = Math.floor(a);
+  let min = Math.round((a - deg) * 60 * 1000) / 1000;
+  if (min >= 60) { deg += 1; min = 0; }
+  return `${String(deg).padStart(width, '0')}° ${min.toFixed(3).padStart(6, '0')}'`;
+};
+const fmtCoords = (lat, lng) => `${lat >= 0 ? 'N' : 'S'} ${dm(lat, 2)} ${lng >= 0 ? 'E' : 'W'} ${dm(lng, 3)}`;
 
 function spotMap(c) {
   if (c.lat == null) return '';
