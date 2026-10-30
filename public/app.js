@@ -1763,6 +1763,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       <h2>The fish</h2>
       <div class="card"><ul class="list" id="fo-list"></ul></div>
+      <p><a class="btn" href="#/spots">${raw(icon('pin'))} See them on my catch map</a></p>
       <div id="fo-finish"></div>`;
     const list = view.querySelector('#fo-list');
     const finish = view.querySelector('#fo-finish');
@@ -2113,7 +2114,9 @@ const pagesFor = (view) => ({
     const year = new URLSearchParams(location.hash.split('?')[1] || '').get('year') || '';
     const [{ years, spots }, L] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null)]);
     const chip = (y, label) => html`<a role="tab" href="#/spots${y ? `?year=${y}` : ''}" aria-selected="${y === year}">${label}</a>`;
-    const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : null);
+    const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
+    // Weights logged at sea are estimates.
+    const kg = (x) => (x.weightKg ? ` · ${x.kind === 'log' ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
     const when = (x) => fmtDate(x.date);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>My catch map</h1>
@@ -2122,7 +2125,7 @@ const pagesFor = (view) => ({
       ${spots.length ? raw(html`<div class="card catch-map" id="catch-map"></div>
         <p class="small muted">${plural(spots.length, 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
-          <b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
+          <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
           <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
             ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
         : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Tap <b>Fish on</b> in the regional log when a fish is landed, and its spot appears here.</div>`)}`;
@@ -2133,8 +2136,8 @@ const pagesFor = (view) => ({
     }
     const map = L.map('catch-map', { zoomControl: true });
     addSatellite(L, map);
-    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${x.weightKg ? ` · ${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}<br>
-      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">Open the catch</a>`) : ''}`));
+    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${kg(x)}${x.released ? ' · released' : ''}<br>
+      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
     view.querySelector('.spot-list').addEventListener('click', (e) => {
       const li = e.target.closest('li[data-n]');

@@ -2073,7 +2073,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
       WHERE p.lat IS NOT NULL AND p.user_id = :me
       UNION ALL
-      SELECT 'log', l.id, s.name, NULL, l.fate = 'released', o.date, l.lat, l.lng, NULL,
+      SELECT 'log', l.id, s.name, l.weight_kg, l.fate = 'released', o.date, l.lat, l.lng, NULL,
         COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
         LEFT JOIN users au ON au.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
