@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 33;
+const SCHEMA_VERSION = 34;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS users (
   first_name TEXT,
   last_name TEXT,
   nickname TEXT,
+  -- Units the person sees and types in: {"weight":"kg|lb","depth":"m|ft","temp":"°C|°F"}.
+  units TEXT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   country TEXT,
@@ -546,6 +548,9 @@ function openDb(file) {
   const landingCols = db.prepare('PRAGMA table_info(outing_landings)').all();
   if (landingCols.length && !landingCols.some((c) => c.name === 'weight_kg')) {
     db.exec('ALTER TABLE outing_landings ADD COLUMN weight_kg REAL');
+  }
+  if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'units')) {
+    db.exec('ALTER TABLE users ADD COLUMN units TEXT');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

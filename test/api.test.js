@@ -56,6 +56,9 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   let r = await awa('POST', '/auth/register', { name: 'Awa Diop', email: 'awa@example.com', password: 'marlin123', country: 'Senegal' });
   assert.equal(r.status, 201);
   assert.equal(r.body.user.teamId, null);
+  assert.equal(r.body.user.units, null, 'no units picked: the defaults');
+  r = await awa('PATCH', '/me', { units: { weight: 'kg', depth: 'ft', temp: '°F', speed: 'knots' } });
+  assert.deepEqual(r.body.user.units, { weight: 'kg', depth: 'ft', temp: '°F' }, 'unknown choices left out');
 
   r = await awa('POST', '/clubs', { name: 'Dakar Offshore Club', country: 'Senegal', city: 'Dakar' });
   const clubId = r.body.club.id;

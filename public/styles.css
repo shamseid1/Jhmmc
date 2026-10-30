@@ -746,3 +746,10 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .topbar-post:active { background: var(--surface-2); }
 @media (max-width: 640px) { .topbar-post { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); } }
 @media (min-width: 641px) { .topbar .brand { margin-right: auto; } .topbar-post { margin-left: -8px; } }
+.units { display: grid; gap: 10px; }
+fieldset.units { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.units legend { font-weight: 600; margin-bottom: 4px; }
+.unit-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.unit-row .chips { margin: 0; }
+.unit-row input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
+.unit-row .chip2 { position: relative; }

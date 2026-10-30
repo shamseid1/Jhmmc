@@ -73,7 +73,41 @@ function toast(msg) {
 }
 
 const kgToLb = (kg) => Math.round(kg * 2.20462);
-const fmtWeight = (kg) => (kg == null ? '' : `${+kg.toFixed(1)} kg · ${kgToLb(kg)} lb`);
+// Units, chosen on More (kg or lb, metres or feet, °C or °F) and kept on this
+// phone. Everything is stored metric; only what's shown and typed changes.
+const UNIT_KEY = 'units';
+const UNIT_CHOICES = { weight: ['kg', 'lb'], depth: ['m', 'ft'], temp: ['°C', '°F'] };
+function unitPrefs() {
+  // Signed in: the account's choice (picked when it was made, or on More); else this phone's.
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(UNIT_KEY) || '{}'); } catch {}
+  saved = { ...saved, ...(state.me?.units || {}) };
+  return Object.fromEntries(Object.entries(UNIT_CHOICES).map(([k, [first, ...rest]]) => [k, rest.includes(saved[k]) ? saved[k] : first]));
+}
+const round1 = (n) => Math.round(n * 10) / 10;
+// To what's shown, and from what was typed back to metric (empty stays empty).
+const UNIT_MATH = {
+  lb: [(kg) => kg * 2.20462, (lb) => lb / 2.20462],
+  ft: [(m) => m * 3.28084, (ft) => ft / 3.28084],
+  '°F': [(c) => (c * 9) / 5 + 32, (f) => ((f - 32) * 5) / 9],
+};
+const toUnit = (kind, v) => (v == null || v === '' ? '' : round1((UNIT_MATH[unitPrefs()[kind]]?.[0] ?? Number)(Number(v))));
+const fromUnit = (kind, v) => (v == null || String(v).trim() === '' ? '' : round1((UNIT_MATH[unitPrefs()[kind]]?.[1] ?? Number)(Number(String(v).replace(',', '.')))));
+const unit = (kind) => unitPrefs()[kind];
+// The three choices as tap-to-pick chips, for Create account and More.
+const UNIT_LABELS = { weight: ['Weight', { kg: 'kg', lb: 'lb' }], depth: ['Depth', { m: 'metres', ft: 'feet' }], temp: ['Water temperature', { '°C': '°C', '°F': '°F' }] };
+const unitFields = () => {
+  const now = unitPrefs();
+  return Object.entries(UNIT_LABELS).map(([k, [label, names]]) => `<div class="unit-row"><span>${label}</span><div class="chips">${
+    UNIT_CHOICES[k].map((u) => `<label class="chip2"><input type="radio" name="unit_${k}" value="${esc(u)}"${now[k] === u ? ' checked' : ''}> ${esc(names[u])}</label>`).join('')}</div></div>`).join('');
+};
+const unitsFrom = (form) => Object.fromEntries(Object.keys(UNIT_CHOICES).map((k) => [k, form.querySelector(`[name=unit_${k}]:checked`)?.value]));
+function saveUnitsHere(units) {
+  try { localStorage.setItem(UNIT_KEY, JSON.stringify(units)); } catch {}
+}
+const fmtWeight = (kg) => (kg == null ? '' : unit('weight') === 'lb' ? `${kgToLb(kg)} lb` : `${+kg.toFixed(1)} kg`);
+const fmtDepth = (m) => (m == null ? '' : `${Math.round(toUnit('depth', m))} ${unit('depth')}`);
+const fmtTemp = (c) => (c == null ? '' : `${toUnit('temp', c)}${unit('temp')}`);
 // Stored times look like "2026-10-28 14:05:00" (UTC); iPhones only read them with a "T".
 const parseTime = (d) => new Date(d.length === 10 ? `${d}T12:00:00` : `${d.replace(' ', 'T')}${/Z|[+-]\d\d:\d\d$/.test(d) ? '' : 'Z'}`);
 const fmtDate = (d) => parseTime(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -816,7 +850,7 @@ const pagesFor = (view) => ({
     const { team } = await api(`/teams/${state.me.teamId}`);
     const crew = team.members;
     // Like Instagram: the photo or video and a caption. The fish's details are
-    // there to add, never required. Fish with their spots go in the log (Fish on).
+    // there to add, never required. Fish with their spots go in the log (Log fish).
     view.innerHTML = html`<h1>New post</h1>
       <form class="card pad stack" id="f">
         <div class="photo-pick">
@@ -829,10 +863,10 @@ const pagesFor = (view) => ({
         <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], '', 'Optional'))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
+          <label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
           <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Optional'))}</select></label>
         </div>
-        <p class="small muted">Logging fish at sea with the spot? Use <b>Fish on</b> in the bottom bar.</p>
+        <p class="small muted">Logging fish at sea with the spot? Use <b>Log fish</b> in the bottom bar.</p>
         <p class="error"></p>
         <div><button type="submit" class="primary">Share</button></div>
       </form>`;
@@ -846,6 +880,7 @@ const pagesFor = (view) => ({
     const media = wireMediaPick(form);
     bindForm(form, async () => {
       const fd = await media.addTo(new FormData(form));
+      fd.set('weightKg', fromUnit('weight', fd.get('weightKg')));
       if (!fd.getAll('photo').some((f) => f.size) && !fd.get('video')?.size) throw new Error('Add a photo or video to share.');
       const btn = form.querySelector('button[type=submit]');
       btn.textContent = 'Sharing…';
@@ -1703,7 +1738,7 @@ const pagesFor = (view) => ({
         <label>Caption <textarea name="notes" maxlength="2000" rows="3">${c.notes || ''}</textarea></label>
         <label>Species <select name="speciesId">${raw(speciesOptions(c.speciesId ?? '', 'Optional'))}</select></label>
         <div class="row">
-          <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional" value="${c.weightKg ?? ''}"></label>
+          <label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional" value="${toUnit('weight', c.weightKg)}"></label>
           <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, c.lineClass, 'Optional'))}</select></label>
         </div>
         <p class="error"></p>
@@ -1716,6 +1751,7 @@ const pagesFor = (view) => ({
       btn.textContent = 'Saving…';
       try {
         const fd = new FormData(form);
+        fd.set('weightKg', fromUnit('weight', fd.get('weightKg')));
         await api(`/catches/${c.id}`, { method: 'PATCH', form: await pm.addTo(fd) });
         toast('Saved.');
         location.hash = `#/catch/${c.id}`;
@@ -1725,12 +1761,12 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Fish on: log each fish as it's landed, the phone's spot taken there and
+  // Log fish: each fish as it's landed, the phone's spot taken there and
   // then. Works without signal: fish wait on the phone and go when it's back.
   async fishon() {
     if (!state.me) return needLogin(view, 'log fish');
     if (!state.me.teamId) {
-      view.innerHTML = html`<h1>Fish on</h1>${raw(noBoatBanner())}`;
+      view.innerHTML = html`<h1>Log fish</h1>${raw(noBoatBanner())}`;
       return;
     }
     const day = new URLSearchParams(location.hash.split('?')[1] || '').get('date') || today();
@@ -1746,12 +1782,12 @@ const pagesFor = (view) => ({
     let lastSpecies = '';
     try { lastSpecies = localStorage.getItem('fishon-species') || ''; } catch {}
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
-      <h1>${live ? 'Fish on' : `Trip of ${fmtDate(day)}`}</h1>
+      <h1>${live ? 'Log fish' : `Trip of ${fmtDate(day)}`}</h1>
       <p class="small muted">${state.me.teamName || 'Your boat'} · ${live ? 'today' : fmtDate(day)}. Each fish goes on your boat's line in the regional log. Each fish is listed on its own; its exact spot is only for your crew and your catch map.</p>
       ${live ? raw(html`<div class="card pad stack fishon">
         <div class="row">
           <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
-          <label>Estimated weight (kg) <input id="fo-weight" type="number" min="0" step="0.5" inputmode="decimal" placeholder="optional"></label>
+          <label>Estimated weight (${unit('weight')}) <input id="fo-weight" type="number" min="0" step="0.5" inputmode="decimal" placeholder="optional"></label>
         </div>
         <div class="fates">
           <button type="button" class="fate released" data-fate="released">Released</button>
@@ -1794,8 +1830,8 @@ const pagesFor = (view) => ({
           <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}" ${trip.technique.includes(t) ? 'checked' : ''}> ${t}</label>`))}</div>
           <div class="three">
             <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry" value="${trip.area || ''}"></label>
-            <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional" value="${trip.depthM ?? ''}"></label>
-            <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="optional" value="${trip.waterC ?? ''}"></label>
+            <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional" value="${trip.depthM == null ? '' : Math.round(toUnit('depth', trip.depthM))}"></label>
+            <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional" value="${toUnit('temp', trip.waterC)}"></label>
           </div>
           <p class="small muted">In the log: ${trip.line}</p>
           <p class="error"></p>
@@ -1805,7 +1841,7 @@ const pagesFor = (view) => ({
       bindForm(form, async () => {
         const fd = formData(form);
         trip = (await api(`/outings/${trip.id}`, { method: 'PATCH', body: {
-          area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
+          area: fd.area, depthM: fromUnit('depth', fd.depthM), waterC: fromUnit('temp', fd.waterC),
           technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value),
         } })).trip;
         toast('Trip saved to the log.');
@@ -1841,10 +1877,10 @@ const pagesFor = (view) => ({
     list.addEventListener('click', async (e) => {
       const weigh = e.target.closest('[data-weigh]');
       if (weigh) {
-        const kg = prompt('Estimated weight (kg)', weigh.dataset.kg);
-        if (kg === null) return;
+        const typed = prompt(`Estimated weight (${unit('weight')})`, toUnit('weight', weigh.dataset.kg || null));
+        if (typed === null) return;
         try {
-          trip = (await api(`/outings/fish/${weigh.dataset.weigh}`, { method: 'PATCH', body: { weightKg: kg.trim().replace(',', '.') } })).trip;
+          trip = (await api(`/outings/fish/${weigh.dataset.weigh}`, { method: 'PATCH', body: { weightKg: fromUnit('weight', typed) } })).trip;
           draw();
         } catch (err) {
           toast(err.message);
@@ -1909,7 +1945,7 @@ const pagesFor = (view) => ({
       try { localStorage.setItem('fishon-species', sel.value); } catch {}
       const weight = view.querySelector('#fo-weight');
       if (weight.value && !(Number(weight.value) > 0)) {
-        err.textContent = 'The estimated weight must be in kilograms.';
+        err.textContent = 'Check the estimated weight.';
         return;
       }
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
@@ -1918,7 +1954,7 @@ const pagesFor = (view) => ({
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
         speciesId: sel.value, species: sel.selectedOptions[0].textContent, fate: btn.dataset.fate,
-        weightKg: weight.value.replace(',', '.'),
+        weightKg: fromUnit('weight', weight.value),
         lat: spot?.lat ?? '', lng: spot?.lng ?? '', landedAt: now.toISOString(), date: day,
       }]);
       toast(`${sel.selectedOptions[0].textContent} ${btn.dataset.fate}${spot ? ', spot taken' : ''}.`);
@@ -1962,8 +1998,8 @@ const pagesFor = (view) => ({
         <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
         <div class="three">
           <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry"></label>
-          <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
-          <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="optional"></label>
+          <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
+          <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional"></label>
         </div>
         <p class="small muted">Rough area only: nobody sees exact spots. Depth and water temperature are optional.</p>
         <p class="error"></p>
@@ -2000,7 +2036,7 @@ const pagesFor = (view) => ({
     bindForm(form, async () => {
       const fd = formData(form);
       const body = {
-        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
+        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fromUnit('depth', fd.depthM), waterC: fromUnit('temp', fd.waterC),
         technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value), noCatch,
         fish: noCatch ? [] : [...list.querySelectorAll('.fishrow')].map((row) => ({
           speciesId: row.querySelector('select').value,
@@ -2057,7 +2093,7 @@ const pagesFor = (view) => ({
         </div>`) : ''}
         <div class="card pad best-card">
           <b>Best conditions so far</b>
-          ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water)}°C`, sz.best.depth && `${span(sz.best.depth)} m`,
+          ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,
             sz.best.techniques.join(' and ')].filter(Boolean).join(' · ')}</span>
             <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, all boats.</span>`)
             : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
@@ -2069,7 +2105,7 @@ const pagesFor = (view) => ({
     const tag = (n, kind) => (n ? html` <span class="pill ${kind}">${n} ${kind}</span>` : '');
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
-      <div class="small muted">${[o.country, [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '), o.waterC != null ? `${o.waterC}°C` : '', o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
+      <div class="small muted">${[o.country, [o.area, fmtDepth(o.depthM)].filter(Boolean).join(', '), fmtTemp(o.waterC), o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
       <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
@@ -2077,13 +2113,13 @@ const pagesFor = (view) => ({
         ${o.canDelete ? raw('<button type="button" class="link danger" data-act="remove">Remove</button>') : ''}</div>
     </li>`;
     view.innerHTML = html`${raw(head)}
-      <p class="log-buttons">${state.me?.teamId ? raw(html`<a class="btn primary" href="#/fishon">${raw(icon('catch'))} Fish on</a>`) : ''}
+      <p class="log-buttons">${state.me?.teamId ? raw(html`<a class="btn primary" href="#/fishon">${raw(icon('catch'))} Log fish</a>`) : ''}
         <a class="btn ${state.me?.teamId ? '' : 'primary'}" href="#/outing" data-return>+ Log a whole trip</a></p>
-      ${state.me?.teamId ? raw('<p class="small muted">At sea, tap <b>Fish on</b> as each fish is landed: its spot is taken there and then. Back on land, or for a blank day, log the whole trip in one go.</p>') : ''}
+      ${state.me?.teamId ? raw('<p class="small muted">At sea, tap <b>Log fish</b> as each fish is landed: its spot is taken there and then. Back on land, or for a blank day, log the whole trip in one go.</p>') : ''}
       ${raw(chips)}
       ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
         ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
-        : raw('<div class="card pad empty">No outings logged yet. Be the first: tap Fish on at sea, or log a whole trip after it.</div>')}`;
+        : raw('<div class="card pad empty">No outings logged yet. Be the first: tap Log fish at sea, or log a whole trip after it.</div>')}`;
     const byId = new Map(outings.map((o) => [String(o.id), o]));
     view.querySelector('.log')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-act]');
@@ -2120,7 +2156,7 @@ const pagesFor = (view) => ({
     const when = (x) => fmtDate(x.date);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>My catch map</h1>
-      <p class="small muted">Every fish logged with a spot: what you and your crew logged with Fish on${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
+      <p class="small muted">Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
       ${spots.length ? raw(html`<div class="card catch-map" id="catch-map"></div>
         <p class="small muted">${plural(spots.length, 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
@@ -2128,7 +2164,7 @@ const pagesFor = (view) => ({
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
           <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
             ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
-        : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Tap <b>Fish on</b> in the regional log when a fish is landed, and its spot appears here.</div>`)}`;
+        : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Tap <b>Log fish</b> in the regional log when a fish is landed, and its spot appears here.</div>`)}`;
     if (!spots.length) return;
     if (!L) {
       view.querySelector('#catch-map').outerHTML = '<div class="card pad empty">The map couldn\'t load just now. Your catches are listed below.</div>';
@@ -2226,8 +2262,10 @@ const pagesFor = (view) => ({
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
+      <h2>Units</h2>
+      <form class="card pad units" id="units">${raw(unitFields())}</form>
       <h2>Regional log</h2><div class="card menu">
-        ${raw(me?.teamId ? item('#/fishon', 'catch', 'Fish on', 'Log each fish as it\'s landed, with the spot') : '')}
+        ${raw(me?.teamId ? item('#/fishon', 'catch', 'Log fish', 'Each fish as it\'s landed, with the spot') : '')}
         ${raw(me ? item('#/outing', 'edit', 'Log a whole trip', 'One line per trip, blank days too') : '')}
         ${raw(item('#/log', 'history', 'Regional log', "Every boat's outings, and the season at a glance"))}
       </div>
@@ -2246,6 +2284,20 @@ const pagesFor = (view) => ({
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
+    // Units: saved on this phone at once, and on the account when signed in.
+    view.querySelector('#units').addEventListener('change', async (e) => {
+      const units = unitsFrom(e.currentTarget);
+      saveUnitsHere(units);
+      if (state.me) {
+        try {
+          state.me = (await api('/me', { method: 'PATCH', body: { units } })).user;
+        } catch (err) {
+          toast(err.message);
+          return;
+        }
+      }
+      toast('Units saved.');
+    });
     view.querySelector('#logout')?.addEventListener('click', async () => {
       await api('/auth/logout', { method: 'POST' });
       state.me = null;
@@ -2957,13 +3009,17 @@ const pagesFor = (view) => ({
         <label>Email <input name="email" type="email" required autocomplete="email"></label>
         <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, null, 'Choose…'))}</select></label>
+        <fieldset class="units"><legend>Units</legend>${raw(unitFields())}
+          <span class="small muted">How weights, depths and water temperatures show for you. You can change them on More.</span></fieldset>
         <p class="error"></p>
         <div><button type="submit" class="primary">Create account</button></div>
       </form>
       <p>Already a member? <a href="#/login">Sign in</a>.</p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {
-      state.me = (await api('/auth/register', { method: 'POST', body: formData(form) })).user;
+      const units = unitsFrom(form);
+      saveUnitsHere(units);
+      state.me = (await api('/auth/register', { method: 'POST', body: { ...formData(form), units } })).user;
       toast('Welcome aboard!');
       location.hash = '#/crew';
     });
@@ -3134,7 +3190,7 @@ function renderNav(active = state.navActive) {
   ] : [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
-    ...(state.me?.teamId ? [['#/fishon', 'Fish on', 'fishon', 'fish', 'cta']] : []),
+    ...(state.me?.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish', 'cta']] : []),
     ['#/participants', 'Participants', 'participants', 'participants'],
   ];
   links.push(['#/more', 'More', 'more', 'more']);

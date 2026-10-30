@@ -195,6 +195,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   }
   const namesGiven = (body) => ['firstName', 'lastName', 'name'].some((k) => k in body);
 
+  // Units someone sees and types in; stored metric either way. Unknown values are left out.
+  const UNIT_CHOICES = { weight: ['kg', 'lb'], depth: ['m', 'ft'], temp: ['°C', '°F'] };
+  const readUnits = (v) => {
+    const picked = Object.fromEntries(Object.entries(UNIT_CHOICES).filter(([k, ok]) => ok.includes(v?.[k])).map(([k]) => [k, v[k]]));
+    return Object.keys(picked).length ? JSON.stringify(picked) : null;
+  };
+
   api.post('/auth/register', registerLimit, (req, res) => {
     const { first, last } = namesFrom(req.body);
     const nickname = str(req.body.nickname, 40);
@@ -213,8 +220,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
 
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (name, first_name, last_name, nickname, email, password_hash, country) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(`${first} ${last}`, first, last, nickname, email, auth.hashPassword(password), country);
+      .prepare('INSERT INTO users (name, first_name, last_name, nickname, email, password_hash, country, units) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(`${first} ${last}`, first, last, nickname, email, auth.hashPassword(password), country, readUnits(req.body.units));
     markAdminMember();
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
     res.status(201).json({ user: getMe(Number(lastInsertRowid)) });
@@ -306,12 +313,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const me = db.prepare(`
       SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
-        t.weigh_station AS weighStation
+        t.weigh_station AS weighStation, u.units
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
-    const { photo, ...rest } = me;
+    const { photo, units, ...rest } = me;
     return {
-      ...rest, photoUrl: photoUrl(photo), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
+      ...rest, photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
       isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }
@@ -380,6 +387,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const name = namesGiven(req.body) ? `${first} ${last}` : u.name;
     db.prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, nickname = ?, country = ?, bio = ? WHERE id = ?')
       .run(name, first, last, nickname, country, bio, u.id);
+    if ('units' in req.body) db.prepare('UPDATE users SET units = ? WHERE id = ?').run(readUnits(req.body.units), u.id);
     res.json({ user: getMe(u.id) });
   });
 
