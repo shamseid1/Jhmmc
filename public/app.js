@@ -2219,10 +2219,10 @@ const pagesFor = (view) => ({
         <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
         <div class="three">
           <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry"></label>
-          <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="60"></label>
-          <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="29"></label>
+          <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
+          <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="optional"></label>
         </div>
-        <p class="small muted">Rough area only: nobody sees exact spots.</p>
+        <p class="small muted">Rough area only: nobody sees exact spots. Depth and water temperature are optional.</p>
         <p class="error"></p>
         <div><button type="submit" class="primary">Post outing</button></div>
       </form>`;
