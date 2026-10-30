@@ -468,6 +468,7 @@ function shareText(c) {
   const w = c.weightKg != null ? ` ${+c.weightKg.toFixed(1)} kg` : '';
   const how = c.released ? ' (released)' : '';
   const boat = c.teamName ? ` aboard ${c.teamName}` : '';
+  if (!c.species) return `${c.angler}${boat} on West Africa Big Game`;
   return `${c.angler} landed a${w} ${c.species}${how}${boat}${c.location ? ' off ' + c.location : ''}!`;
 }
 
@@ -536,22 +537,22 @@ function statusBadge(c) {
 }
 
 function catchCard(c, { full = false } = {}) {
+  // A post without a species (the crew, the sunset) goes by who posted it.
+  const alt = c.species ? `${c.species} caught by ${c.angler}` : `Posted by ${c.angler}`;
   const photo = c.photoUrl
-    ? html`<img class="catch-photo" src="${c.photoUrl}" alt="${c.species} caught by ${c.angler}" loading="lazy">`
+    ? html`<img class="catch-photo" src="${c.photoUrl}" alt="${alt}" loading="lazy">`
     : `<div class="catch-photo placeholder" aria-hidden="true">${MARLIN}</div>`;
   const details = [c.location, c.country].filter(Boolean).join(', ');
   return html`<article class="card" data-id="${c.id}">
-    ${c.videoUrl || c.photos?.length > 1 ? raw(mediaHtml(c, `${c.species} caught by ${c.angler}`)) : full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
+    ${c.videoUrl || c.photos?.length > 1 ? raw(mediaHtml(c, alt)) : full ? raw(photo) : raw(`<a href="#/catch/${c.id}">${photo}</a>`)}
     <div class="pad">
       <div class="catch-head">
-        <h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
+        <h3 class="catch-title"><a href="#/catch/${c.id}">${c.species || c.angler}</a></h3>
         <span class="weight">${fmtWeight(c.weightKg)}</span>
       </div>
       <p class="meta">
-        <a href="${anglerHref(c.userId, c.angler)}">${c.angler}</a>
-        ${c.teamName ? raw(html` · <a href="#/boat/${c.teamId}">${c.teamName}</a>`) : ''}
-        ${c.clubName ? raw(html` · <a href="#/club/${c.clubId}">${c.clubName}</a>`) : ''}
-        · ${fmtDate(c.caughtOn)}${details ? ' · ' + details : ''}
+        ${c.species ? raw(html`<a href="${anglerHref(c.userId, c.angler)}">${c.angler}</a> · `) : ''}${c.teamName ? raw(html`<a href="#/boat/${c.teamId}">${c.teamName}</a> · `) : ''}
+        ${c.clubName ? raw(html`<a href="#/club/${c.clubId}">${c.clubName}</a> · `) : ''}${fmtDate(c.caughtOn)}${details ? ' · ' + details : ''}
       </p>
       <div class="badges">
         ${raw(statusBadge(c))}
@@ -561,7 +562,7 @@ function catchCard(c, { full = false } = {}) {
         ${c.lineClass ? raw(html`<span class="badge">${c.lineClass} line</span>`) : ''}
       </div>
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
-      ${full && c.notes ? raw(html`<p class="notes">${c.notes}</p>`) : ''}
+      ${c.notes ? raw(html`<p class="notes${full ? '' : ' clamp'}">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
       ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl || c.scaleVideoUrl) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
@@ -761,6 +762,7 @@ const pagesFor = (view) => ({
     view.innerHTML = html`
       ${raw(noBoatBanner())}
       <div class="filter-bar">
+        ${state.me?.teamId ? raw(html`<a class="btn primary new-post" href="#/new">${raw(icon('camera'))} New post</a>`) : ''}
         <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="filter-panel">
           ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
         ${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}
@@ -851,14 +853,14 @@ const pagesFor = (view) => ({
           <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
         </div>
         <label>Caption <textarea name="notes" maxlength="2000" rows="3" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
-        <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select></label>
+        <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Optional'))}</select></label>
         <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <div class="row">
           <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
           <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Optional'))}</select></label>
         </div>
-        <p class="small muted">Logging fish at sea with the spot? Use <a href="#/fishon">Fish on</a> in the regional log.</p>
+        <p class="small muted">Logging fish at sea with the spot? Use <b>Fish on</b> in the bottom bar.</p>
         <p class="error"></p>
         <div><button type="submit" class="primary">Share</button></div>
       </form>`;
@@ -1727,7 +1729,7 @@ const pagesFor = (view) => ({
       <form class="card pad stack" id="f">
         ${raw(photoManager(c))}
         <label>Caption <textarea name="notes" maxlength="2000" rows="3">${c.notes || ''}</textarea></label>
-        <label>Species <select name="speciesId" required>${raw(speciesOptions(String(c.speciesId), 'Choose species…'))}</select></label>
+        <label>Species <select name="speciesId">${raw(speciesOptions(c.speciesId ?? '', 'Optional'))}</select></label>
         <div class="row">
           <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional" value="${c.weightKg ?? ''}"></label>
           <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, c.lineClass, 'Optional'))}</select></label>
@@ -3133,7 +3135,7 @@ function renderNav(active = state.navActive) {
   ] : [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
-    ...(state.me?.teamId ? [['#/new', 'Post', 'new', 'catch', 'cta']] : []),
+    ...(state.me?.teamId ? [['#/fishon', 'Fish on', 'fishon', 'fish', 'cta']] : []),
     ['#/participants', 'Participants', 'participants', 'participants'],
   ];
   links.push(['#/more', 'More', 'more', 'more']);
@@ -3141,7 +3143,7 @@ function renderNav(active = state.navActive) {
     leaderboard: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
     boat: 'participants', user: 'participants', records: 'more', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
-    rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

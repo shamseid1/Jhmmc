@@ -787,7 +787,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       (SELECT COUNT(*) FROM comments m WHERE m.catch_id = k.id) AS comments,
       EXISTS (SELECT 1 FROM likes l WHERE l.catch_id = k.id AND l.user_id = :viewer) AS liked
     FROM catches k
-    JOIN species s ON s.id = k.species_id
+    LEFT JOIN species s ON s.id = k.species_id
     LEFT JOIN users u ON u.id = k.user_id
     LEFT JOIN teams t ON t.id = k.team_id
     LEFT JOIN clubs c ON c.id = k.club_id
@@ -895,8 +895,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const jhmmcBoat = team.club_id === homeClubId();
     if (official && !jhmmcBoat) return { error: 'Only JHMMC boats are registered for points.' };
     if (official && !canReview(user) && team.captain_id !== user.id) return { error: "Captains register their own boat's fish only." };
+    // A feed post can be any photo; a registration is always a fish.
     const speciesId = intId(b.speciesId);
-    if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) {
+    if (speciesId ? !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId) : official) {
       return { error: 'Choose a species.' };
     }
     // The angler is a crew member of that boat, or anyone else by name
@@ -2076,7 +2077,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
         FROM catches k LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
-        WHERE k.weight_kg IS NOT NULL AND k.status = :book ${club ? 'AND k.club_id = :club' : ''}
+        WHERE k.weight_kg IS NOT NULL AND k.species_id IS NOT NULL AND k.status = :book ${club ? 'AND k.club_id = :club' : ''}
       ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
     `).all(club ? { club: club.id, book: clubBook(club.id) } : { book: 'unofficial' });
     const species = db.prepare('SELECT id, name, category FROM species ORDER BY category, name').all();

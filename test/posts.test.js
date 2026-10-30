@@ -77,6 +77,11 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const undated = (await cap('POST', '/catches', form({ speciesId: sp.Wahoo }))).body.catch;
     assert.equal(undated.caughtOn, today);
     await cap('DELETE', `/catches/${undated.id}`);
+    // Any photo can be a post: no species needed (registrations still need one).
+    const crewShot = (await cap('POST', '/catches', form({ notes: 'Sunset run home' }))).body.catch;
+    assert.deepEqual([crewShot.species, crewShot.notes], [null, 'Sunset run home']);
+    assert.equal((await cap('GET', '/records')).status, 200, 'records skip posts without a species');
+    await cap('DELETE', `/catches/${crewShot.id}`);
 
     // Editing, back on land: the weight, the spot and more photos...
     const quick = (await cap('POST', '/catches', form({ speciesId: sp.Wahoo }))).body.catch;
