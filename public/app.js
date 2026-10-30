@@ -409,15 +409,14 @@ function phoneSpot(timeout = 8000) {
   });
 }
 
-// Points and the record book, one tab each: under Leaderboard on the West
-// Africa side (for the chosen club), under Points on the JHMMC side.
+// Leaderboard: points, tournaments and the record book, one tab each.
 // A dropdown chip whose choices are pages: picking one goes there.
 document.addEventListener('change', (e) => {
   if (e.target.matches('select[data-go]')) location.hash = e.target.value.replace(/^#/, '');
 });
-const clubSideNow = () => !!state.me?.jhmmc && feedPref() === 'club';
-const boardTabs = (on, club) => html`<div class="line-tabs" role="tablist">
-  <a role="tab" href="${clubSideNow() ? '#/points' : `#/leaderboard?club=${club}`}" aria-selected="${on === 'board'}">Points</a>
+const boardTabs = (on, club = state.meta.homeClubId) => html`<div class="line-tabs" role="tablist">
+  <a role="tab" href="#/leaderboard?club=${club}" aria-selected="${on === 'board'}">Points</a>
+  <a role="tab" href="#/tournaments" aria-selected="${on === 'tournaments'}">Tournaments</a>
   <a role="tab" href="#/records?club=${club}" aria-selected="${on === 'records'}">Records</a></div>`;
 
 // JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
@@ -685,28 +684,9 @@ async function renderFeed(container, query = {}) {
   await page();
 }
 
-// ---- the two sides: West Africa and JHMMC -----------------------------------
-
-// Which side a JHMMC member last chose ('club' or 'wa'); kept on this phone only.
-const FEED_KEY = 'jhmmc-feed';
-const feedPref = () => {
-  try {
-    return localStorage.getItem(FEED_KEY) === 'wa' ? 'wa' : 'club';
-  } catch {
-    return 'club';
-  }
-};
-const setFeedPref = (which) => {
-  try {
-    localStorage.setItem(FEED_KEY, which);
-  } catch {
-    // Private browsing: the choice just isn't remembered.
-  }
-};
-const FEED_NAMES = { club: 'JHMMC', wa: 'West Africa' };
-// On the JHMMC side, a small JHMMC tag sits in the header on every page.
-const syncClubChip = () => {
-  document.getElementById('club-chip').hidden = !(state.me?.jhmmc && feedPref() === 'club');
+// JHMMC members carry the club's logo in the header, on every page.
+const syncHeader = () => {
+  document.getElementById('club-chip').hidden = !state.me?.jhmmc;
   // Like Instagram: + at the top left of the feed to post, there however far you scroll.
   document.getElementById('topbar-post').hidden = !(state.navActive === 'home' && state.me?.teamId);
 };
@@ -777,19 +757,7 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
-    // JHMMC members have two sides: West Africa (this feed) and JHMMC (the club's tabs).
-    const member = !!state.me?.jhmmc;
-    const { feed: which } = filters;
-    if (member && FEED_NAMES[which]) {
-      setFeedPref(which);
-      renderNav(); // the JHMMC tag and where Post goes follow the side
-    }
-    // The JHMMC side has no feed: it opens on the points.
-    if (member && (FEED_NAMES[which] ? which === 'club' : feedPref() === 'club')) {
-      location.replace('#/points');
-      return;
-    }
-    delete filters.feed;
+    delete filters.feed; // old links from when JHMMC had its own side
     const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
     // The filters in use, as chips that each remove one.
     const nameOf = {
@@ -803,7 +771,6 @@ const pagesFor = (view) => ({
     const without = (key) => {
       const p = new URLSearchParams(filters);
       p.delete(key);
-      if (member) p.set('feed', 'wa');
       return `#/${p.size ? `?${p}` : ''}`;
     };
     view.innerHTML = html`
@@ -1251,6 +1218,11 @@ const pagesFor = (view) => ({
 
   async points(_arg, { base = '#/points', top = '' } = {}) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    // Old #/points links (from the JHMMC side) open the leaderboard.
+    if (!top) {
+      location.replace(`#/leaderboard?club=${state.meta.homeClubId}${q.size ? `&${q}` : ''}`);
+      return;
+    }
     const link = (params) => `${base}${base.includes('?') ? '&' : '?'}${params}`;
     // Tap a number: the fish behind it.
     const drill = (who) => `#/points-fish?${new URLSearchParams({ scope: q.get('scope') || 'overall', division: q.get('division') || 'ocean', ...who })}`;
@@ -1259,7 +1231,7 @@ const pagesFor = (view) => ({
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
-    view.innerHTML = html`${raw(top || html`<h1>Points</h1>${raw(boardTabs('board', state.meta.homeClubId))}`)}
+    view.innerHTML = html`${raw(top)}
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Trophy">${raw(options([[link(`scope=overall&division=${division}`), 'Overall'], [link(`scope=tournaments&division=${division}`), 'Tournaments']], link(`scope=${scope}&division=${division}`)))}</select>
         <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`scope=${scope}&division=${key}`), label]), link(`scope=${scope}&division=${division}`)))}</select>
@@ -1299,7 +1271,7 @@ const pagesFor = (view) => ({
     // Each tab lists only its own division's boats.
     const entries = allEntries.filter((e) => e.division === division);
     const side = division === 'river' ? 'River' : 'Ocean';
-    view.innerHTML = html`<p class="back"><a href="#/points?division=${division}">‹ Points</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/leaderboard?division=${division}">‹ Leaderboard</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)}</p>
       ${raw(divisionTabs(`#/tournament/${id}`, division))}
@@ -1320,7 +1292,7 @@ const pagesFor = (view) => ({
     const editable = !!state.me?.canReview;
     const meta = await api('/meta');
     state.meta = meta;
-    view.innerHTML = html`<p class="back"><a href="#/points">‹ Points</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/leaderboard">‹ Leaderboard</a></p>
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
@@ -2240,10 +2212,7 @@ const pagesFor = (view) => ({
       ${me ? raw(html`<div class="card pad me-card">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
           <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
-          ${me.jhmmc ? raw(html`<a class="btn feed-switch" href="#/?feed=${feedPref() === 'club' ? 'wa' : 'club'}" aria-label="Switch to the ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']} side">${raw(icon('switch', 'icon small'))}
-            ${FEED_NAMES[feedPref() === 'club' ? 'wa' : 'club']}</a>`) : ''}
-        </div>
-        ${me.jhmmc ? raw(html`<p class="small muted feed-now">You're on the ${FEED_NAMES[feedPref()]} side. Tip: double-tap More to switch.</p>`) : ''}`)
+        </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${isInstalled() ? '' : raw(`<div class="card pad install-card">
@@ -2292,6 +2261,7 @@ const pagesFor = (view) => ({
         ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
         ${raw(item('#/records', 'medal', 'Club records'))}
         ${raw(item('#/clubs', 'clubs', 'Clubs'))}
+        ${raw(me?.canWeigh ? item('#/participants', 'participants', 'Participants', 'Every angler and boat') : '')}
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
@@ -2428,7 +2398,7 @@ const pagesFor = (view) => ({
     const captain = !!state.me?.canWeigh && !official;
     const { tournaments, fee } = await api('/tournaments');
     const go = (t) => (official ? `#/sheet/${t.id}` : captain ? `#/enter/${t.id}` : `#/tournament/${t.id}`);
-    view.innerHTML = html`<h1>Tournaments</h1>
+    view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}
       <p class="small muted">${official
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
         : captain ? `Enter your boat and say who's fishing on it. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
@@ -2854,8 +2824,7 @@ const pagesFor = (view) => ({
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }
-    // The records sit beside the points, on both sides.
-    view.innerHTML = html`<h1>${clubSideNow() ? 'Points' : 'Leaderboard'}</h1>${raw(boardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}${raw(picker)}${raw(body)}`;
+    view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}${raw(picker)}${raw(body)}`;
     view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });
@@ -3191,27 +3160,23 @@ async function renderNotify(el) {
 
 function renderNav(active = state.navActive) {
   state.navActive = active;
-  syncClubChip();
-  // The JHMMC side: the club's own tabs (no feed). Captains and officials get
-  // Register in the middle; crews get Log fish. Records sit under Points.
-  const clubSide = state.me?.jhmmc && feedPref() === 'club';
-  const links = clubSide ? [
-    ['#/points', 'Points', 'points', 'leaderboard'],
-    ['#/tournaments', 'Tournaments', 'tournaments', 'trophy'],
-    ...(state.me.canWeigh ? [['#/weigh', 'Register', 'weigh', 'weight', 'cta']] : []),
-    ...(state.me.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish']] : []),
-  ] : [
+  syncHeader();
+  // One bar for everyone. JHMMC captains and officials get Register in
+  // place of Participants (which moves to More for them).
+  const me0 = state.me;
+  const links = [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
-    ...(state.me?.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish', 'cta']] : []),
-    ['#/participants', 'Participants', 'participants', 'participants'],
+    ...(me0?.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish', 'cta']] : []),
+    me0?.canWeigh ? ['#/weigh', 'Register', 'weigh', 'weight'] : ['#/participants', 'Participants', 'participants', 'participants'],
   ];
   links.push(['#/more', 'More', 'more', 'more']);
-  const current = clubSide ? ({
-    leaderboard: 'points', records: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
-  }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
-    boat: 'participants', user: 'participants', records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
-    new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+  const current = {
+    boat: me0?.canWeigh ? 'more' : 'participants', user: me0?.canWeigh ? 'more' : 'participants', participants: me0?.canWeigh ? 'more' : 'participants',
+    records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
+    'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
+    clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
+    'admin-boats': 'more', 'club-members': 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;
@@ -3249,6 +3214,7 @@ const THEME_COLORS = { dark: '#1d1e21', light: '#f3f8fc' };
 const THEME_KEY = 'appearance';
 try {
   localStorage.removeItem('theme');
+  localStorage.removeItem('jhmmc-feed'); // the two sides are one now
 } catch {
   // Nothing saved, nothing to clear.
 }
@@ -3343,22 +3309,6 @@ window.addEventListener('appinstalled', () => {
   toast('Installed. Open West Africa Big Game from your home screen.');
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-
-// Like Instagram's profile tab: a JHMMC member double-taps More to switch sides.
-let lastMoreTap = 0;
-document.getElementById('nav').addEventListener('click', (e) => {
-  if (!e.target.closest('[data-nav=more]') || !state.me?.jhmmc) return;
-  const now = Date.now();
-  if (now - lastMoreTap < 400) {
-    e.preventDefault();
-    lastMoreTap = 0;
-    const next = feedPref() === 'club' ? 'wa' : 'club';
-    location.hash = `#/?feed=${next}`;
-    toast(`${FEED_NAMES[next]} side`);
-    return;
-  }
-  lastMoreTap = now;
-});
 
 // "Sign in" links inside a page come back to that page afterwards.
 document.addEventListener('click', (e) => {
