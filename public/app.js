@@ -761,39 +761,10 @@ const pagesFor = (view) => ({
     };
     view.innerHTML = html`
       ${raw(noBoatBanner())}
-      <div class="filter-bar">
-        ${state.me?.teamId ? raw(html`<a class="btn primary new-post" href="#/new">${raw(icon('camera'))} New post</a>`) : ''}
-        <button type="button" class="filter-toggle${active.length ? ' on' : ''}" aria-expanded="false" aria-controls="filter-panel">
-          ${raw(icon('filter'))} Filter${active.length ? raw(html` <span class="tab-count">${active.length}</span>`) : ''}</button>
-        ${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}
-      </div>
-      <form class="card pad filter-panel stack" id="filter-panel" hidden>
-        <label>Species <select name="species">${raw(speciesOptions(filters.species, 'All species'))}</select></label>
-        <label>Boat <select name="team">${raw(options(teams.map((t) => [t.id, t.name]), filters.team, 'All boats'))}</select></label>
-        <label>Club <select name="club">${raw(options(clubs.map((c) => [c.id, c.name]), filters.club, 'All clubs'))}</select></label>
-        <label>Country <select name="country">${raw(options(state.meta.countries, filters.country, 'All countries'))}</select></label>
-        <label>Kept or released <select name="released">${raw(options([['true', 'Released only']], filters.released, 'Kept & released'))}</select></label>
-        <div class="actions"><button type="submit" class="primary">Show catches</button> <button type="button" data-act="clear-filters">Clear all</button></div>
-      </form>
+      ${active.length ? raw(html`<div class="filter-bar">${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}</div>`) : ''}
       ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
+      ${state.me?.teamId ? raw(html`<a class="fab" href="#/new" aria-label="New post">${raw(icon('camera'))}<span>Post</span></a>`) : ''}
       <div id="feed"></div>`;
-    // All the filters sit behind one Filter button; they apply together.
-    const panel = view.querySelector('#filter-panel');
-    const toggle = view.querySelector('.filter-toggle');
-    toggle.addEventListener('click', () => {
-      panel.hidden = !panel.hidden;
-      toggle.setAttribute('aria-expanded', String(!panel.hidden));
-    });
-    panel.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const p = new URLSearchParams(filters.angler ? { angler: filters.angler } : {});
-      if (member) p.set('feed', 'wa');
-      for (const [k, v] of new FormData(panel)) if (v) p.set(k, v);
-      location.hash = '#/?' + p;
-    });
-    panel.querySelector('[data-act=clear-filters]').addEventListener('click', () => {
-      location.hash = filters.angler ? '#/?' + new URLSearchParams({ angler: filters.angler }) : member ? '#/?feed=wa' : '#/';
-    });
     await renderFeed(view.querySelector('#feed'), filters);
   },
 

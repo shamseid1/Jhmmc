@@ -49,7 +49,7 @@
 :root[data-theme="light"] .mi-icon { color: #4e99ff; }
 :root[data-theme="light"] h1, :root[data-theme="light"] .menu-item b { font-weight: 700; }
 /* Menus that open over the page stay solid. */
-:root[data-theme="light"] .theme-menu, :root[data-theme="light"] .filter-panel { background: #ffffff; }
+:root[data-theme="light"] .theme-menu { background: #ffffff; }
 :root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
 
 * { box-sizing: border-box; }
@@ -541,13 +541,10 @@ button.link[hidden] { display: none; }
 
 /* ---- feed filters behind one button ---- */
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-.filter-toggle .icon { width: 18px; height: 18px; vertical-align: 0; }
 .filter-toggle.on { background: var(--accent); color: var(--accent-ink); }
 .filter-toggle.on .tab-count { background: rgba(255, 255, 255, .25); color: inherit; }
 .filter-bar .chip { background: var(--surface); border-color: var(--line); color: var(--text); padding: 6px 12px; }
 .filter-bar .chip a { color: var(--muted); }
-.filter-panel { margin-bottom: 16px; }
-.filter-panel[hidden] { display: none; }
 
 /* ---- JHMMC record book ---- */
 .book-list { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); font-size: 14px; display: grid; gap: 8px; }
@@ -742,4 +739,9 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .fate:active { transform: scale(.97); }
 .log-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .notes.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 6px 0 0; }
-.filter-bar .new-post { margin-right: auto; order: 2; }
+/* New post: always in reach on the feed, wherever you've scrolled to. */
+.fab { position: fixed; z-index: 19; right: 24px; bottom: 24px; display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 20px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700;
+  text-decoration: none; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+.fab .icon, .fab svg { width: 22px; height: 22px; }
+@media (max-width: 640px) { .fab { right: 16px; bottom: calc(100px + env(safe-area-inset-bottom, 0px)); } }
