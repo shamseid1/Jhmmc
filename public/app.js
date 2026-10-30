@@ -662,6 +662,8 @@ const FEED_NAMES = { club: 'JHMMC', wa: 'West Africa' };
 // On the JHMMC side, a small JHMMC tag sits in the header on every page.
 const syncClubChip = () => {
   document.getElementById('club-chip').hidden = !(state.me?.jhmmc && feedPref() === 'club');
+  // Like Instagram: + at the top left of the feed to post, there however far you scroll.
+  document.getElementById('topbar-post').hidden = !(state.navActive === 'home' && state.me?.teamId);
 };
 
 // Sends a visitor to sign in, then back to where they were.
@@ -763,7 +765,6 @@ const pagesFor = (view) => ({
       ${raw(noBoatBanner())}
       ${active.length ? raw(html`<div class="filter-bar">${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}</div>`) : ''}
       ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
-      ${state.me?.teamId ? raw(html`<a class="fab" href="#/new" aria-label="New post">${raw(icon('camera'))}<span>Post</span></a>`) : ''}
       <div id="feed"></div>`;
     await renderFeed(view.querySelector('#feed'), filters);
   },
