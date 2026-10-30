@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 31;
+const SCHEMA_VERSION = 32;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -96,6 +96,8 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   scale_photo TEXT,
   -- Optional: a video of the fish on the scale, recorded there and then.
   scale_video TEXT,
+  -- A post that names no angler: user_id is just who posted it, and it counts as nobody's catch.
+  no_angler INTEGER NOT NULL DEFAULT 0,
   reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at TEXT,
   points REAL,
@@ -536,6 +538,9 @@ function openDb(file) {
       ALTER TABLE catches_v31 RENAME TO catches;
       COMMIT;`);
     db.exec('PRAGMA foreign_keys = ON');
+  }
+  if (hasTables && !db.prepare('PRAGMA table_info(catches)').all().some((c) => c.name === 'no_angler')) {
+    db.exec('ALTER TABLE catches ADD COLUMN no_angler INTEGER NOT NULL DEFAULT 0');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

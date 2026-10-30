@@ -468,7 +468,7 @@ function shareText(c) {
   const w = c.weightKg != null ? ` ${+c.weightKg.toFixed(1)} kg` : '';
   const how = c.released ? ' (released)' : '';
   const boat = c.teamName ? ` aboard ${c.teamName}` : '';
-  if (!c.species) return `${c.angler}${boat} on West Africa Big Game`;
+  if (!c.species || c.noAngler) return `${c.species ? `A ${c.species}` : c.angler}${boat} on West Africa Big Game`;
   return `${c.angler} landed a${w} ${c.species}${how}${boat}${c.location ? ' off ' + c.location : ''}!`;
 }
 
@@ -538,7 +538,7 @@ function statusBadge(c) {
 
 function catchCard(c, { full = false } = {}) {
   // A post without a species (the crew, the sunset) goes by who posted it.
-  const alt = c.species ? `${c.species} caught by ${c.angler}` : `Posted by ${c.angler}`;
+  const alt = c.species && !c.noAngler ? `${c.species} caught by ${c.angler}` : `Posted by ${c.angler}`;
   const photo = c.photoUrl
     ? html`<img class="catch-photo" src="${c.photoUrl}" alt="${alt}" loading="lazy">`
     : `<div class="catch-photo placeholder" aria-hidden="true">${MARLIN}</div>`;
@@ -826,7 +826,7 @@ const pagesFor = (view) => ({
         </div>
         <label>Caption <textarea name="notes" maxlength="2000" rows="3" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
         <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Optional'))}</select></label>
-        <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], state.me.id))}</select></label>
+        <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], '', 'Optional'))}</select></label>
         <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
         <div class="row">
           <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>

@@ -551,7 +551,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/anglers', (_req, res) => {
     const anglers = db.prepare(`
       SELECT u.id, ${SHOWN} AS name, u.country, u.photo, t.id AS teamId, t.name AS teamName, t.photo AS teamPhoto, ${TALLY}
-      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'unofficial'
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'unofficial' AND k.no_angler = 0
       GROUP BY u.id ORDER BY 2 COLLATE NOCASE
     `).all();
     // Anglers without an account, known only by the name typed on their catches.
@@ -776,7 +776,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     SELECT k.id, k.weight_kg AS weightKg, k.length_cm AS lengthCm, k.released, k.tagged,
       k.caught_on AS caughtOn, k.country, k.location, k.line_class AS lineClass,
       k.notes, k.photo, k.video, k.scale_video AS scaleVideo, k.created_at AS createdAt, k.logged_by AS loggedBy,
-      k.lat, k.lng, k.spot_public AS spotPublic,
+      k.lat, k.lng, k.spot_public AS spotPublic, k.no_angler AS noAngler,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
@@ -827,6 +827,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       released: !!row.released,
       tagged: !!row.tagged,
       liked: !!row.liked,
+      noAngler: !!row.noAngler,
       photoUrl: photoUrl(row.photo),
       photos: postPhotos('catch', row.id, row.photo),
       videoUrl: photoUrl(row.video),
@@ -902,6 +903,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     // The angler is a crew member of that boat, or anyone else by name
     // (guests don't need an account).
+    // A post may name no angler (chosen as blank): it's simply the poster's.
+    const noAngler = !official && b.anglerId === '';
     const anglerName = b.anglerId === 'other' ? str(b.anglerName, 80) : null;
     if (b.anglerId === 'other' && !anglerName) return { error: "Type the angler's name." };
     const anglerId = anglerName ? null : intId(b.anglerId) || (official ? null : user.id);
@@ -946,6 +949,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const weighed = official && !released;
     // Crew posts are for the feed only; registrations go to the secretary.
     return {
+      noAngler,
       values: [
         anglerId, anglerName, user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
         bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
@@ -973,6 +977,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       return res.status(400).json({ error: checked.error });
     }
     const id = insertCatchRow(checked.values);
+    if (checked.noAngler) db.prepare('UPDATE catches SET no_angler = 1 WHERE id = ?').run(id);
     if (opts.official) {
       scoreRegistration(id);
       logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
@@ -2150,7 +2155,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     delete user.photo;
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE user_id = ? AND status = 'unofficial'
+      FROM catches WHERE user_id = ? AND status = 'unofficial' AND no_angler = 0
     `).get(id);
     res.json({ user, stats });
   });

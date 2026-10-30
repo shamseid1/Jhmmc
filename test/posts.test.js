@@ -82,6 +82,12 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.deepEqual([crewShot.species, crewShot.notes], [null, 'Sunset run home']);
     assert.equal((await cap('GET', '/records')).status, 200, 'records skip posts without a species');
     await cap('DELETE', `/catches/${crewShot.id}`);
+    // Nor an angler: it's the poster's post, and nobody's catch.
+    const before = (await cap('GET', `/users/${crewShot.userId}`)).body.stats.catches;
+    const untagged = (await cap('POST', '/catches', form({ speciesId: sp.Wahoo, anglerId: '' }))).body.catch;
+    assert.equal(untagged.noAngler, true);
+    assert.equal((await cap('GET', `/users/${crewShot.userId}`)).body.stats.catches, before);
+    await cap('DELETE', `/catches/${untagged.id}`);
 
     // Editing, back on land: the weight, the spot and more photos...
     const quick = (await cap('POST', '/catches', form({ speciesId: sp.Wahoo }))).body.catch;
