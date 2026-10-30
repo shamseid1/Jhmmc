@@ -96,6 +96,17 @@ test('the JHMMC feed: members post through the day, approved fish join it verifi
     assert.deepEqual([items[0].kind, items[0].species, items[0].teamName, items[0].points, items[0].angler], ['verified', 'Wahoo', 'Liberian Girl', 100, 'Guest']);
     assert.match(items[0].photoUrl, /^\/uploads\//, 'with the scale photo');
 
+    // Behind the numbers on the points tables: the boat's and the angler's fish.
+    const board = (await as()('GET', '/points?division=ocean')).body;
+    const row = board.boats.find((b) => b.teamId === boat.id);
+    const drill = (await as()('GET', `/points/fish?division=ocean&team=${boat.id}`)).body;
+    assert.deepEqual([drill.title, drill.fish.length, drill.total, drill.fish[0].species], ['Liberian Girl', row.catches, row.points, 'Wahoo']);
+    const guestRow = board.anglers.find((a) => a.angler === 'Guest');
+    const byAngler = (await as()('GET', `/points/fish?division=ocean&angler=${encodeURIComponent(guestRow.anglerKey)}`)).body;
+    assert.deepEqual([byAngler.fish.length, byAngler.total], [guestRow.catches, guestRow.points]);
+    assert.equal((await as()('GET', `/points/fish?division=ocean&scope=tournaments&team=${boat.id}`)).body.fish.length, 0, 'no tournament entered');
+    assert.equal((await as()('GET', '/points/fish')).status, 400);
+
     // Filters: verified fish only, any fish, photos, members' posts, one boat.
     const kinds = async (q) => (await cap('GET', `/club-feed?${q}`)).body.items.map((i) => i.kind === 'verified' ? 'verified' : i.body);
     assert.deepEqual(await kinds('show=verified'), ['verified']);

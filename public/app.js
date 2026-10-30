@@ -1330,6 +1330,32 @@ const pagesFor = (view) => ({
   },
 
   // Official JHMMC standings from approved catches.
+  // Behind a number on the points tables: the boat's or angler's fish that count.
+  async 'points-fish'() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const { title, fish, total, scope, division } = await api(`/points/fish?${q}`);
+    const byBoat = q.has('team');
+    view.innerHTML = html`<p class="back"><a href="#/" data-back>‹ Back</a></p>
+      <h1>${title || 'Fish'}</h1>
+      <p class="muted">${scope === 'tournaments' ? 'Tournament points' : 'Overall points'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
+      <div class="stats3">
+        <div class="card s"><b>${fish.length}</b><span>fish</span></div>
+        <div class="card s"><b>${total}</b><span>points</span></div>
+        <div class="card s"><b>${fish.filter((f) => f.released).length}</b><span>released</span></div>
+      </div>
+      ${fish.length ? raw(html`<div class="card"><ul class="list drill-list">${fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
+        <span><span><b>${f.species}</b>${f.weightKg ? ` · ${fmtWeight(f.weightKg)}` : f.released ? ' · released' : ''}</span>
+          <span class="small muted">${fmtDate(f.caughtOn)} · ${byBoat ? f.angler : f.teamName}${f.pointsNote ? ` · ${f.pointsNote}` : ''}</span></span>
+        <b class="drill-pts">${fmtPoints(f.points)}</b></a></li>`))}</ul></div>`)
+        : raw('<div class="card pad empty">No fish count here yet.</div>')}`;
+    view.querySelector('[data-back]').addEventListener('click', (e) => {
+      if (history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+  },
+
   // The club leaderboard (West Africa side): choose a club and see its points
   // leaderboard, laid out like JHMMC's. Only JHMMC keeps points in the app so far.
   async leaderboard() {
@@ -1355,6 +1381,8 @@ const pagesFor = (view) => ({
   async points(_arg, { base = '#/points', top = '' } = {}) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const link = (params) => `${base}${base.includes('?') ? '&' : '?'}${params}`;
+    // Tap a number: the fish behind it.
+    const drill = (who) => `#/points-fish?${new URLSearchParams({ scope: q.get('scope') || 'overall', division: q.get('division') || 'ocean', ...who })}`;
     const division = q.get('division') === 'river' ? 'river' : 'ocean';
     // Two trophies: overall points (every day) and tournament points only.
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
@@ -1375,7 +1403,8 @@ const pagesFor = (view) => ({
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
         <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
-          <td class="num">${b.catches}</td><td class="num"><b>${b.points}</b></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
+          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}">${b.catches}</a></td>
+          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
       </table></div>
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
@@ -1387,7 +1416,8 @@ const pagesFor = (view) => ({
         <thead><tr><th>#</th><th>Angler</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
         <tbody>${anglers.length ? anglers.map((a, i) => raw(html`<tr><td>${i + 1}</td>
           <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName}</div></td>
-          <td class="num">${a.catches}</td><td class="num">${a.points}</td></tr>`)) : empty(4, 'Nothing yet.')}</tbody>
+          <td class="num"><a class="drill" href="${drill({ angler: a.anglerKey })}">${a.catches}</a></td>
+          <td class="num"><a class="drill" href="${drill({ angler: a.anglerKey })}">${a.points}</a></td></tr>`)) : empty(4, 'Nothing yet.')}</tbody>
       </table></div>`;
   },
 
@@ -2919,10 +2949,10 @@ function renderNav(active = state.navActive) {
   ];
   links.push(['#/more', 'More', 'more', 'more']);
   const current = clubSide ? ({
-    leaderboard: 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
+    leaderboard: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
     boat: 'participants', user: 'participants', records: 'more', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
-    rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
+    rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

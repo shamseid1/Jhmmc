@@ -1306,23 +1306,46 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Season standings from approved catches, split by ocean and river boats.
   // Two end-of-season trophies: overall points (every day) and tournament
   // points (only fish caught during the season's tournaments, added up).
-  api.get('/points', (req, res) => {
-    const division = req.query.division === 'river' ? 'river' : 'ocean';
-    const scope = req.query.scope === 'tournaments' ? 'tournaments' : 'overall';
+  // The fish that count for a points table: approved, JHMMC, this division and
+  // season, and for the Tournaments trophy only those caught in a tournament the
+  // boat entered.
+  function pointsFilter(query) {
+    const division = query.division === 'river' ? 'river' : 'ocean';
+    const scope = query.scope === 'tournaments' ? 'tournaments' : 'overall';
     const start = setting('season_start');
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end
       ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e JOIN tournament_entries te ON te.event_id = e.id
         WHERE e.kind = 'tournament' AND te.team_id = k.team_id AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
-    const params = { division, start, end, home: homeClubId() };
+    return { division, scope, start, end, base, params: { division, start, end, home: homeClubId() } };
+  }
+  // Behind a number on the points tables: one boat's or one angler's fish.
+  api.get('/points/fish', (req, res) => {
+    const { division, scope, base, params } = pointsFilter(req.query);
+    const team = intId(req.query.team);
+    const angler = str(req.query.angler, 90);
+    if (!team && !angler) return res.status(400).json({ error: 'Choose a boat or an angler.' });
+    const who = team ? 'AND k.team_id = :team' : "AND COALESCE('u' || k.user_id, 'n' || lower(k.angler_name)) = :angler";
+    const rows = db.prepare(`${CATCH_SELECT} ${base.replace(/^FROM catches k JOIN teams t ON t.id = k.team_id\s+WHERE/, 'WHERE')} ${who}
+      ORDER BY k.caught_on DESC, k.id DESC`).all({ ...params, ...(team ? { team } : { angler }), viewer: req.user?.id ?? 0 });
+    const fish = rows.map((r) => present(r, req.user));
+    res.json({
+      division, scope, fish,
+      total: Math.round(fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10,
+      title: team ? fish[0]?.teamName ?? db.prepare('SELECT name FROM teams WHERE id = ?').get(team)?.name : fish[0]?.angler ?? angler.slice(1),
+    });
+  });
+
+  api.get('/points', (req, res) => {
+    const { division, scope, start, end, base, params } = pointsFilter(req.query);
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
     `).all(params);
     const anglers = db.prepare(`
       SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first,
-        COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
+        COALESCE('u' || u.id, 'n' || lower(k.angler_name)) AS anglerKey, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
     `).all(params).map(({ first, ...a }) => a);
