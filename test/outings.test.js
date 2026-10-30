@@ -44,8 +44,8 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(r.body.outing.line, '2026-10-18 | Exocet | Guinea | Atlantic sailfish: 3 (2 released, 1 lost); Wahoo: 1 (1 kept) | Casting | Off Conakry, 60 m | 29°C');
     // A blank day, on Bob's boat.
-    r = await bob('POST', '/outings', { date: '2026-10-17', noCatch: true, technique: ['Trolling lures'] });
-    assert.equal(r.body.outing.line, '2026-10-17 | Bottom Line | Sierra Leone | No catch | Trolling lures |  | ');
+    r = await bob('POST', '/outings', { date: '2026-10-17', noCatch: true, technique: ['Trolling'] });
+    assert.equal(r.body.outing.line, '2026-10-17 | Bottom Line | Sierra Leone | No catch | Trolling |  | ');
     // What's refused.
     assert.match((await visitor('POST', '/outings', { date: '2026-10-17', noCatch: true })).body.error, /boats have to be on the app/, 'no boat: choose one');
     assert.match((await visitor('POST', '/outings', { date: '2026-10-17', noCatch: true, teamId: 9999 })).body.error, /boat/);
@@ -68,7 +68,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     // As a spreadsheet.
     const csv = await bob('GET', '/outings.csv');
     assert.match(csv.type, /text\/csv/);
-    assert.match(csv.body, /"2026-10-17","Bottom Line","Sierra Leone","No catch","Trolling lures"/);
+    assert.match(csv.body, /"2026-10-17","Bottom Line","Sierra Leone","No catch","Trolling"/);
 
     // The season: 3 outings, 2 blank, 2 billfish caught (released or kept) over 3 days.
     const season = (await as()('GET', '/outings/season?year=2026')).body;
@@ -116,8 +116,8 @@ test('the regional log: one line per outing, blank days too, and the season at a
     r = await deckhand('DELETE', `/outings/fish/${trip.landings[1].id}`);
     assert.deepEqual(r.body.trip.fish.map((f) => [f.species, f.released, f.kept]), [['Atlantic sailfish', 2, 0]]);
     assert.equal((await bob('DELETE', `/outings/fish/${trip.landings[0].id}`)).status, 403, 'not his boat');
-    r = await deckhand('PATCH', `/outings/${trip.id}`, { technique: ['Trolling lures'], area: 'Off Conakry', depthM: 80, waterC: 28.5 });
-    assert.equal(r.body.trip.line, '2026-10-20 | Exocet | Guinea | Atlantic sailfish: 2 (2 released) | Trolling lures | Off Conakry, 80 m | 28.5°C');
+    r = await deckhand('PATCH', `/outings/${trip.id}`, { technique: ['Trolling'], area: 'Off Conakry', depthM: 80, waterC: 28.5 });
+    assert.equal(r.body.trip.line, '2026-10-20 | Exocet | Guinea | Atlantic sailfish: 2 (2 released) | Trolling | Off Conakry, 80 m | 28.5°C');
     assert.equal((await bob('PATCH', `/outings/${trip.id}`, { area: 'x' })).status, 403);
     assert.equal((await marwan('GET', '/outings/trip?date=2026-10-20')).body.trip.id, trip.id);
     assert.match((await marwan('POST', '/outings', { date: '2026-10-20', noCatch: true })).body.error, /already has a line/, 'one line per boat per day');

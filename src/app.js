@@ -1795,7 +1795,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // ---- the regional log: one line per outing ---------------------------------
 
-  const TECHNIQUES = ['Trolling lures', 'Trolling baits', 'Casting', 'Jigging', 'Live bait', 'Bottom fishing'];
+  const TECHNIQUES = ['Trolling', 'Bottom fishing', 'Jigging', 'Casting'];
   const outingFish = db.prepare(`SELECT f.species_id AS speciesId, s.name AS species, s.category, f.released, f.kept, f.lost
     FROM outing_fish f JOIN species s ON s.id = f.species_id WHERE f.outing_id = ? ORDER BY f.id`);
   const OUTING_SELECT = `SELECT o.id, o.user_id AS userId, o.team_id AS teamId, COALESCE(t.name, o.boat) AS boat, o.country, o.date,

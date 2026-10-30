@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 34;
+const SCHEMA_VERSION = 35;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -551,6 +551,13 @@ function openDb(file) {
   }
   if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'units')) {
     db.exec('ALTER TABLE users ADD COLUMN units TEXT');
+  }
+  if (hasTables && version < 35 && db.prepare('PRAGMA table_info(outings)').all().length) {
+    // Techniques are now Trolling, Bottom fishing, Jigging and Casting: both kinds of trolling become Trolling.
+    for (const o of db.prepare("SELECT id, technique FROM outings WHERE technique LIKE '%Trolling %'").all()) {
+      const list = [...new Set(o.technique.split('|').map((t) => (t.startsWith('Trolling') ? 'Trolling' : t)))];
+      db.prepare('UPDATE outings SET technique = ? WHERE id = ?').run(list.join('|'), o.id);
+    }
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
