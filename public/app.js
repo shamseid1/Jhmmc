@@ -2204,10 +2204,7 @@ const pagesFor = (view) => ({
       <h1>Log an outing</h1>
       <p class="small muted">One line per trip, the same for every boat. No fish? Log it anyway: blank days tell us as much about the season. Rough areas only, never exact spots.</p>
       <form class="card pad stack" id="f">
-        <div class="row">
-          <label>Date <input name="date" type="date" required max="${today()}" value="${today()}"></label>
-          <label>Hours fishing <input name="hours" type="number" step="0.5" min="0.5" max="24" inputmode="decimal" placeholder="e.g. 7"></label>
-        </div>
+        <label>Date <input name="date" type="date" required max="${today()}" value="${today()}"></label>
         <div class="row">
           <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, t.name]), team?.id, 'Choose the boat…'))}</select></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
@@ -2260,7 +2257,7 @@ const pagesFor = (view) => ({
     bindForm(form, async () => {
       const fd = formData(form);
       const body = {
-        date: fd.date, hours: fd.hours, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
+        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
         technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value), noCatch,
         fish: noCatch ? [] : [...list.querySelectorAll('.fishrow')].map((row) => ({
           speciesId: row.querySelector('select').value,
@@ -2328,7 +2325,7 @@ const pagesFor = (view) => ({
     }
     const tag = (n, kind) => (n ? html` <span class="pill ${kind}">${n} ${kind}</span>` : '');
     const item = (o) => html`<li data-id="${o.id}">
-      <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span><span>${o.hours != null ? `${o.hours} h` : ''}</span></div>
+      <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '), o.waterC != null ? `${o.waterC}°C` : '', o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
       <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>

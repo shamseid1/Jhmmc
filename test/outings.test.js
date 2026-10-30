@@ -38,14 +38,14 @@ test('the regional log: one line per outing, blank days too, and the season at a
 
     // A good day: two species, mixed results; the boat and country come from Marwan's boat.
     let r = await marwan('POST', '/outings', {
-      date: '2026-10-18', hours: '7', technique: ['Casting', 'Not a technique'], area: 'Off Conakry', depthM: '60', waterC: '29',
+      date: '2026-10-18', technique: ['Casting', 'Not a technique'], area: 'Off Conakry', depthM: '60', waterC: '29',
       fish: [{ speciesId: sp['Atlantic sailfish'], released: 2, lost: 1 }, { speciesId: sp.Wahoo, kept: 1 }],
     });
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    assert.equal(r.body.outing.line, '2026-10-18 | Exocet | Guinea | 7 h | Atlantic sailfish: 3 (2 released, 1 lost); Wahoo: 1 (1 kept) | Casting | Off Conakry, 60 m | 29°C');
+    assert.equal(r.body.outing.line, '2026-10-18 | Exocet | Guinea | Atlantic sailfish: 3 (2 released, 1 lost); Wahoo: 1 (1 kept) | Casting | Off Conakry, 60 m | 29°C');
     // A blank day, on Bob's boat.
-    r = await bob('POST', '/outings', { date: '2026-10-17', hours: 6, noCatch: true, technique: ['Trolling lures'] });
-    assert.equal(r.body.outing.line, '2026-10-17 | Bottom Line | Sierra Leone | 6 h | No catch | Trolling lures |  | ');
+    r = await bob('POST', '/outings', { date: '2026-10-17', noCatch: true, technique: ['Trolling lures'] });
+    assert.equal(r.body.outing.line, '2026-10-17 | Bottom Line | Sierra Leone | No catch | Trolling lures |  | ');
     // What's refused.
     assert.match((await visitor('POST', '/outings', { date: '2026-10-17', noCatch: true })).body.error, /boats have to be on the app/, 'no boat: choose one');
     assert.match((await visitor('POST', '/outings', { date: '2026-10-17', noCatch: true, teamId: 9999 })).body.error, /boat/);
@@ -68,7 +68,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     // As a spreadsheet.
     const csv = await bob('GET', '/outings.csv');
     assert.match(csv.type, /text\/csv/);
-    assert.match(csv.body, /"2026-10-17","Bottom Line","Sierra Leone","6","No catch","Trolling lures"/);
+    assert.match(csv.body, /"2026-10-17","Bottom Line","Sierra Leone","No catch","Trolling lures"/);
 
     // The season: 3 outings, 2 blank, 2 billfish caught (released or kept) over 3 days.
     const season = (await as()('GET', '/outings/season?year=2026')).body;

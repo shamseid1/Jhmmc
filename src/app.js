@@ -1790,7 +1790,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
   // The outing as one line, in the agreed format.
   const outingLine = (o) => [
-    o.date, o.boat, o.country || '', o.hours != null ? `${o.hours} h` : '',
+    o.date, o.boat, o.country || '',
     o.noCatch ? 'No catch' : o.fish.map((f) => {
       const parts = [['released', f.released], ['kept', f.kept], ['lost', f.lost]].filter(([, n]) => n).map(([w, n]) => `${n} ${w}`);
       return `${f.species}: ${f.released + f.kept + f.lost} (${parts.join(', ')})`;
@@ -1817,9 +1817,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (!Number.isFinite(n) || n < lo || n > hi) throw Object.assign(new Error(what), { status: 400 });
       return n;
     };
-    let hours; let depth; let water;
+    let depth; let water;
     try {
-      hours = number(b.hours, 0.25, 24, 'Hours fishing must be between 0.25 and 24.');
       depth = number(b.depthM, 0, 11000, 'Depth must be in metres.');
       water = number(b.waterC, 10, 40, 'Water temperature must be in °C (10 to 40).');
     } catch (err) {
@@ -1840,7 +1839,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     db.exec('BEGIN');
     const { lastInsertRowid } = db.prepare(`INSERT INTO outings (user_id, team_id, boat, country, date, hours, no_catch, technique, area, depth_m, water_c)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, team.id, boat, country, date, hours, noCatch ? 1 : 0,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, team.id, boat, country, date, null, noCatch ? 1 : 0,
       techniques.join('|') || null, str(b.area, 80), depth, water);
     const id = Number(lastInsertRowid);
     const addFish = db.prepare('INSERT INTO outing_fish (outing_id, species_id, released, kept, lost) VALUES (?, ?, ?, ?, ?)');
@@ -1867,9 +1866,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/outings.csv', (req, res) => {
     const all = db.prepare(`${OUTING_SELECT} ORDER BY o.date, o.id`).all().map((o) => presentOuting(o, req.user));
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const head = ['Date', 'Boat', 'Country', 'Hours fishing', 'Catch', 'Technique', 'Rough area', 'Water depth (m)', 'Water temp (°C)'];
-    const rows = all.map((o) => [o.date, o.boat, o.country, o.hours,
-      o.noCatch ? 'No catch' : outingLine(o).split(' | ')[4], o.technique.join(', '), o.area, o.depthM, o.waterC].map(cell).join(','));
+    const head = ['Date', 'Boat', 'Country', 'Catch', 'Technique', 'Rough area', 'Water depth (m)', 'Water temp (°C)'];
+    const rows = all.map((o) => [o.date, o.boat, o.country,
+      o.noCatch ? 'No catch' : outingLine(o).split(' | ')[3], o.technique.join(', '), o.area, o.depthM, o.waterC].map(cell).join(','));
     res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="regional-log.csv"' });
     res.send('\ufeff' + [head.map(cell).join(','), ...rows].join('\r\n'));
   });
