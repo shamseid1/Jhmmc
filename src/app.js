@@ -2221,6 +2221,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       where.push('k.country = :country');
       params.country = country;
     }
+    // One club's leaderboard: its boats' catches.
+    const club = intId(req.query.club);
+    if (club) {
+      where.push('k.club_id = :club');
+      params.club = club;
+    }
     const filter = where.join(' AND ');
 
     // Heaviest weighed fish of each species.

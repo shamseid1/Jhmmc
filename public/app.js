@@ -797,11 +797,16 @@ function noBoatBanner() {
   </div>`;
 }
 
-const boardTabs = (active) => `<div class="seg three" role="tablist">
-  <a role="tab" href="#/points" aria-selected="${active === 'points'}">Points</a>
+// The tabs over the leaderboard pages. JHMMC Points belongs to the JHMMC side
+// (where Points and Records are tabs of their own); West Africa has Leaderboard
+// and Records.
+const boardTabs = (active) => {
+  if (state.me?.jhmmc && feedPref() === 'club') return '';
+  return `<div class="seg" role="tablist">
   <a role="tab" href="#/leaderboard" aria-selected="${active === 'leaderboard'}">Leaderboard</a>
   <a role="tab" href="#/records" aria-selected="${active === 'records'}">Records</a>
 </div>`;
+};
 
 // Ocean / River switch for the points pages, keeping the rest of the address.
 const divisionTabs = (base, division) => `<div class="seg" role="tablist">
@@ -1818,15 +1823,19 @@ const pagesFor = (view) => ({
 
   async leaderboard() {
     const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
-    const { records, teams, anglers, clubs } = await api('/leaderboard?' + new URLSearchParams(q));
+    const [{ records, teams, anglers, clubs }, allClubs] = await Promise.all([api('/leaderboard?' + new URLSearchParams(q)), loadClubs()]);
+    const oneClub = allClubs.find((c) => String(c.id) === q.club);
     const year = new Date().getFullYear();
     const years = Array.from({ length: 6 }, (_, i) => String(year - i));
     const nothing = (cols) => raw(`<tr><td colspan="${cols}" class="muted">Nothing yet.</td></tr>`);
     view.innerHTML = html`${raw(boardTabs('leaderboard'))}
       <div class="filters">
+        <select name="club" aria-label="Club">${raw(options(allClubs.map((c) => [c.id, c.name]), q.club, 'All clubs'))}</select>
         <select name="year" aria-label="Season">${raw(options(years, q.year, 'All time'))}</select>
         <select name="country" aria-label="Country">${raw(options(state.meta.countries, q.country, 'All countries'))}</select>
       </div>
+      ${oneClub ? raw(html`<p class="small muted">${oneClub.name}'s leaderboard: catches posted by its boats.
+        ${isJhmmc(oneClub.id) ? raw(' JHMMC\'s official points (weigh-station registrations) are in <a href="#/points">the points tables</a>.') : ''}</p>`) : ''}
       <h2>Heaviest by species</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>Species</th><th class="num">Weight</th><th>Angler</th><th>Boat</th></tr></thead>
@@ -1848,13 +1857,13 @@ const pagesFor = (view) => ({
           <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName || ''}</div></td>
           <td class="num">${a.billfish}</td><td class="num">${a.catches}</td><td class="num">${a.released}</td></tr>`)) : nothing(5)}</tbody>
       </table></div>
-      <h2>Top clubs</h2>
+      ${oneClub ? '' : raw(html`<h2>Top clubs</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>#</th><th>Club</th><th class="num">Catches</th><th class="num">Released</th><th class="num">Total kg</th></tr></thead>
         <tbody>${clubs.length ? clubs.map((c, i) => raw(html`<tr><td>${i + 1}</td>
           <td><a href="#/club/${c.clubId}">${c.clubName}</a><div class="muted small">${c.country}</div></td>
           <td class="num">${c.catches}</td><td class="num">${c.released}</td><td class="num">${c.totalKg}</td></tr>`)) : nothing(5)}</tbody>
-      </table></div>`;
+      </table></div>`)}`;
     view.querySelector('.filters').addEventListener('change', (e) => {
       const p = new URLSearchParams(q);
       if (e.target.value) p.set(e.target.name, e.target.value);
@@ -2943,7 +2952,7 @@ function renderNav(active = state.navActive) {
     [`#/records?club=${state.meta?.homeClubId ?? ''}`, 'Records', 'records', 'medal'],
   ] : [
     ['#/', 'Feed', 'home', 'feed'],
-    ['#/points', 'Leaderboard', 'points', 'leaderboard'],
+    ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
     ...(state.me?.teamId ? [['#/new', 'Post', 'new', 'catch', 'cta']] : []),
     ['#/participants', 'Participants', 'participants', 'participants'],
   ];
@@ -2951,7 +2960,7 @@ function renderNav(active = state.navActive) {
   const current = clubSide ? ({
     leaderboard: 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
-    boat: 'participants', user: 'participants', records: 'points', leaderboard: 'points', tournament: 'points', scoring: 'points',
+    boat: 'participants', user: 'participants', records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', scoring: 'leaderboard',
     rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
