@@ -750,7 +750,8 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
   .topbar:has(.topbar-post:not([hidden])) { justify-content: space-between; padding-left: 16px; padding-right: 16px; }
   .topbar-post { order: 2; padding: 6px 12px 6px 8px; font-size: 14px; }
 }
-@media (min-width: 641px) { .topbar .brand { margin-right: auto; } .topbar-post { order: 2; margin-right: 8px; } }
+/* On a laptop it sits right next to the logo, left of the menu. */
+@media (min-width: 641px) { .topbar-post { order: 1; margin-right: auto; } #nav { order: 2; } }
 .units { display: grid; gap: 10px; }
 fieldset.units { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.units legend { font-weight: 600; margin-bottom: 4px; }

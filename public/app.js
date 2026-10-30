@@ -2242,7 +2242,7 @@ const pagesFor = (view) => ({
         ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
-        ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo')}
+        ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo, units')}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'JHMMC points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
@@ -2262,8 +2262,6 @@ const pagesFor = (view) => ({
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
-      <h2>Units</h2>
-      <form class="card pad units" id="units">${raw(unitFields())}</form>
       <h2>Regional log</h2><div class="card menu">
         ${raw(me?.teamId ? item('#/fishon', 'catch', 'Log fish', 'Each fish as it\'s landed, with the spot') : '')}
         ${raw(me ? item('#/outing', 'edit', 'Log a whole trip', 'One line per trip, blank days too') : '')}
@@ -2284,20 +2282,6 @@ const pagesFor = (view) => ({
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
-    // Units: saved on this phone at once, and on the account when signed in.
-    view.querySelector('#units').addEventListener('change', async (e) => {
-      const units = unitsFrom(e.currentTarget);
-      saveUnitsHere(units);
-      if (state.me) {
-        try {
-          state.me = (await api('/me', { method: 'PATCH', body: { units } })).user;
-        } catch (err) {
-          toast(err.message);
-          return;
-        }
-      }
-      toast('Units saved.');
-    });
     view.querySelector('#logout')?.addEventListener('click', async () => {
       await api('/auth/logout', { method: 'POST' });
       state.me = null;
@@ -2898,6 +2882,9 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>
+      <h2>Units</h2>
+      <form class="card pad units" id="units">${raw(unitFields())}
+        <span class="small muted">How weights, depths and water temperatures show for you, and what you type them in.</span></form>
       <h2>Change password</h2>
       <form class="card pad stack" id="pw">
         <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
@@ -2906,6 +2893,18 @@ const pagesFor = (view) => ({
         <div><button type="submit">Change password</button></div>
       </form>
       <p><a href="#/more">‹ Back to More</a></p>`;
+    // Units: saved on the account (and this phone) as soon as one is tapped.
+    view.querySelector('#units').addEventListener('change', async (e) => {
+      const units = unitsFrom(e.currentTarget);
+      saveUnitsHere(units);
+      try {
+        state.me = (await api('/me', { method: 'PATCH', body: { units } })).user;
+      } catch (err) {
+        toast(err.message);
+        return;
+      }
+      toast('Units saved.');
+    });
     const pw = view.querySelector('#pw');
     bindForm(pw, async () => {
       await api('/me/password', { method: 'POST', body: formData(pw) });
@@ -3010,7 +3009,7 @@ const pagesFor = (view) => ({
         <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, null, 'Choose…'))}</select></label>
         <fieldset class="units"><legend>Units</legend>${raw(unitFields())}
-          <span class="small muted">How weights, depths and water temperatures show for you. You can change them on More.</span></fieldset>
+          <span class="small muted">How weights, depths and water temperatures show for you. You can change them in your profile.</span></fieldset>
         <p class="error"></p>
         <div><button type="submit" class="primary">Create account</button></div>
       </form>
