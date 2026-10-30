@@ -1921,6 +1921,183 @@ const pagesFor = (view) => ({
     });
   },
 
+  // Log an outing: one line per trip, blank days included, rough areas only.
+  async outing() {
+    if (!state.me) return needLogin(view, 'log an outing');
+    const [{ teams }, { techniques }] = await Promise.all([api('/teams'), api('/outings?country=__none__')]);
+    const team = teams.find((t) => t.id === state.me.teamId);
+    if (!teams.length) {
+      view.innerHTML = '<div class="card pad empty">Boats have to be on the app to be logged. <a href="#/crew">Register your boat</a> first.</div>';
+      return;
+    }
+    const fishRow = () => html`<div class="fishrow">
+      <div class="fishrow-head"><select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select>
+        <button type="button" class="link danger small" data-act="drop-fish" aria-label="Remove this species">✕</button></div>
+      <div class="counts">${['released', 'kept', 'lost'].map((k) => raw(html`<div class="count" data-k="${k}">
+        <button type="button" data-step="-1" aria-label="One fewer ${k}">−</button><b>0</b><button type="button" data-step="1" aria-label="One more ${k}">+</button>
+        <small>${k}</small></div>`))}</div></div>`;
+    view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
+      <h1>Log an outing</h1>
+      <p class="small muted">One line per trip, the same for every boat. No fish? Log it anyway: blank days tell us as much about the season. Rough areas only, never exact spots.</p>
+      <form class="card pad stack" id="f">
+        <label>Date <input name="date" type="date" required max="${today()}" value="${today()}"></label>
+        <div class="row">
+          <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, t.name]), team?.id, 'Choose the boat…'))}</select></label>
+          <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
+        </div>
+        <div class="seg2" role="radiogroup">
+          <button type="button" class="on" data-mode="fish" aria-pressed="true">Fish</button>
+          <button type="button" data-mode="none" aria-pressed="false">No catch</button>
+        </div>
+        <div class="stack fish-list">${raw(fishRow())}</div>
+        <button type="button" class="add-species" data-act="add-fish">+ Add species</button>
+        <span class="spot-head">Technique</span>
+        <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
+        <div class="three">
+          <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Conakry"></label>
+          <label>Depth (m) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
+          <label>Water (°C) <input name="waterC" type="number" min="10" max="40" step="0.5" inputmode="decimal" placeholder="optional"></label>
+        </div>
+        <p class="small muted">Rough area only: nobody sees exact spots. Depth and water temperature are optional.</p>
+        <p class="error"></p>
+        <div><button type="submit" class="primary">Post outing</button></div>
+      </form>`;
+    const form = view.querySelector('#f');
+    form.teamId.addEventListener('change', () => {
+      const t = teams.find((x) => String(x.id) === form.teamId.value);
+      if (t?.country) form.country.value = t.country;
+    });
+    const list = form.querySelector('.fish-list');
+    const addBtn = form.querySelector('[data-act=add-fish]');
+    let noCatch = false;
+    form.addEventListener('click', (e) => {
+      const mode = e.target.closest('[data-mode]');
+      if (mode) {
+        noCatch = mode.dataset.mode === 'none';
+        for (const b of form.querySelectorAll('[data-mode]')) {
+          b.classList.toggle('on', b === mode);
+          b.setAttribute('aria-pressed', String(b === mode));
+        }
+        list.hidden = noCatch;
+        addBtn.hidden = noCatch;
+        for (const sel of list.querySelectorAll('select')) sel.required = !noCatch;
+      }
+      const step = e.target.closest('[data-step]');
+      if (step) {
+        const out = step.parentElement.querySelector('b');
+        out.textContent = Math.max(0, Number(out.textContent) + Number(step.dataset.step));
+      }
+      if (e.target.closest('[data-act=add-fish]')) list.insertAdjacentHTML('beforeend', fishRow());
+      if (e.target.closest('[data-act=drop-fish]') && list.children.length > 1) e.target.closest('.fishrow').remove();
+    });
+    bindForm(form, async () => {
+      const fd = formData(form);
+      const body = {
+        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fd.depthM, waterC: fd.waterC,
+        technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value), noCatch,
+        fish: noCatch ? [] : [...list.querySelectorAll('.fishrow')].map((row) => ({
+          speciesId: row.querySelector('select').value,
+          ...Object.fromEntries([...row.querySelectorAll('.count')].map((c) => [c.dataset.k, Number(c.querySelector('b').textContent)])),
+        })),
+      };
+      await api('/outings', { method: 'POST', body });
+      toast('Outing logged. Thanks!');
+      location.hash = '#/log';
+    });
+  },
+
+  // The regional log: everyone's outings, and the season at a glance.
+  async log() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const tab = q.get('tab') === 'season' ? 'season' : 'outings';
+    const country = q.get('country') || '';
+    const link = (changes) => {
+      const p = new URLSearchParams(q);
+      for (const [k, v] of Object.entries(changes)) (v ? p.set(k, v) : p.delete(k));
+      return `#/log${p.size ? `?${p}` : ''}`;
+    };
+    const head = html`<h1>Regional log</h1>
+      <div class="seg" role="tablist">
+        <a role="tab" href="${link({ tab: '' })}" aria-selected="${tab === 'outings'}">Outings</a>
+        <a role="tab" href="${link({ tab: 'season' })}" aria-selected="${tab === 'season'}">Season</a>
+      </div>`;
+    const { outings, countries, nextBefore } = await api(`/outings${country ? `?country=${encodeURIComponent(country)}` : ''}`);
+    const chips = html`<div class="chips log-chips">
+      <a class="chip2 ${country ? '' : 'on'}" href="${link({ country: '' })}">All countries</a>
+      ${countries.map((c) => raw(html`<a class="chip2 ${c === country ? 'on' : ''}" href="${link({ country: c })}">${c}</a>`))}</div>`;
+    if (tab === 'season') {
+      const year = q.get('year') || '';
+      const species = q.get('species') || '';
+      const sq = new URLSearchParams({ ...(year && { year }), ...(country && { country }), ...(species && { species }) });
+      const sz = await api(`/outings/season?${sq}`);
+      const max = Math.max(...sz.months.map((m) => m.perDay || 0), 0.01);
+      const short = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
+      const span = ([lo, hi]) => (lo === hi ? `${lo}` : `${lo}–${hi}`);
+      view.innerHTML = html`${raw(head)}${raw(chips)}
+        ${sz.years.length > 1 ? raw(html`<div class="chips">${sz.years.map((y) => raw(html`<a class="chip2 ${y === sz.year ? 'on' : ''}" href="${link({ year: y })}">${y}</a>`))}</div>`) : ''}
+        <div class="stats3">
+          <div class="card s"><b>${sz.outings}</b><span>${sz.outings === 1 ? 'outing' : 'outings'}</span></div>
+          <div class="card s"><b>${sz.blank}</b><span>no catch</span></div>
+          <div class="card s"><b>${short(sz.billfishPerDay)}</b><span>billfish / day</span></div>
+        </div>
+        ${sz.species ? raw(html`<div class="card pad">
+          <label class="season-species">${sz.species} per day fished, by month
+            <select id="season-species">${raw(options(sz.speciesList.map((x) => [x, x]), sz.species))}</select></label>
+          <div class="month-bars">${sz.months.map((m) => raw(html`<div class="mb" title="${m.outings} outings">
+            <i style="height:${m.perDay == null ? 0 : Math.max(3, (m.perDay / max) * 100)}%"></i></div>`))}</div>
+          <div class="month-names">${'JFMAMJJASOND'.split('').map((l) => raw(`<span>${l}</span>`))}</div>
+          <p class="small muted">Fish caught (released or kept) per outing that month. Empty: no outings logged.</p>
+        </div>`) : ''}
+        <div class="card pad best-card">
+          <b>Best conditions so far</b>
+          ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water)}°C`, sz.best.depth && `${span(sz.best.depth)} m`,
+            sz.best.techniques.join(' and ')].filter(Boolean).join(' · ')}</span>
+            <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, all boats.</span>`)
+            : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
+        </div>
+        <p><a class="btn" href="/api/outings.csv">${raw(icon('download'))} Download the whole log (spreadsheet)</a></p>`;
+      view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
+      return;
+    }
+    const tag = (n, kind) => (n ? html` <span class="pill ${kind}">${n} ${kind}</span>` : '');
+    const item = (o) => html`<li data-id="${o.id}">
+      <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
+      <div class="small muted">${[o.country, [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '), o.waterC != null ? `${o.waterC}°C` : '', o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
+        <button type="button" class="link" data-act="copy">Copy as one line</button>
+        ${o.canDelete ? raw('<button type="button" class="link danger" data-act="remove">Remove</button>') : ''}</div>
+    </li>`;
+    view.innerHTML = html`${raw(head)}
+      <p><a class="btn primary" href="#/outing" data-return>+ Log an outing</a></p>
+      ${raw(chips)}
+      ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
+        ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
+        : raw('<div class="card pad empty">No outings logged yet. Be the first: tap Log an outing after your next trip.</div>')}`;
+    const byId = new Map(outings.map((o) => [String(o.id), o]));
+    view.querySelector('.log')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const o = byId.get(btn.closest('[data-id]').dataset.id);
+      if (btn.dataset.act === 'copy') {
+        try {
+          await navigator.clipboard.writeText(o.line);
+          toast('Copied. Paste it in WhatsApp or a spreadsheet.');
+        } catch {
+          prompt('Copy this line:', o.line);
+        }
+      }
+      if (btn.dataset.act === 'remove' && confirm('Remove this outing from the log?')) {
+        try {
+          await api(`/outings/${o.id}`, { method: 'DELETE' });
+          btn.closest('li').remove();
+        } catch (ex) {
+          toast(ex.message);
+        }
+      }
+    });
+  },
+
   // My catch map: every fish you logged with a spot, on a map, by year.
   async spots() {
     if (!state.me) return needLogin(view, 'see your catch map');

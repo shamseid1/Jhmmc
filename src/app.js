@@ -119,15 +119,6 @@ function createApp({
 
   const photoUrl = (file) => (file ? `/uploads/${file}` : null);
 
-  // A second copy of an uploaded file, for the same fish posted on both feeds
-  // (so removing one post leaves the other's photo).
-  function copyUpload(f) {
-    if (!f) return undefined;
-    const filename = crypto.randomBytes(12).toString('hex') + path.extname(f.filename);
-    fs.copyFileSync(path.join(uploadDir, f.filename), path.join(uploadDir, filename));
-    return { filename };
-  }
-
   function removeUpload(file) {
     if (file) fs.rm(path.join(uploadDir, path.basename(file)), { force: true }, () => {});
   }
@@ -986,17 +977,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
       notifyReviewers(opts.teamId, 1, req.user);
     }
-    // Ticked "also post on the JHMMC feed" (members): the same fish there too,
-    // with its own copies of the photo and video and its spot (private there too).
-    let sharedClub = false;
-    if (!opts.official && bool(req.body.shareClub) && isClubMember(req.user)) {
-      const v = checked.values;
-      db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released, lat, lng)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, v[14], copyUpload(media.photo)?.filename ?? null,
-        copyUpload(media.video)?.filename ?? null, v[5], v[6], v[8], v[21], v[22]);
-      sharedClub = true;
-    }
-    res.status(201).json({ catch: getCatch(id, req.user), sharedClub });
+    res.status(201).json({ catch: getCatch(id, req.user) });
   }
 
   // ---- the registration record ------------------------------------------
@@ -1803,7 +1784,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const TECHNIQUES = ['Trolling lures', 'Trolling baits', 'Casting', 'Jigging', 'Live bait', 'Bottom fishing'];
   const outingFish = db.prepare(`SELECT f.species_id AS speciesId, s.name AS species, s.category, f.released, f.kept, f.lost
     FROM outing_fish f JOIN species s ON s.id = f.species_id WHERE f.outing_id = ? ORDER BY f.id`);
-  const OUTING_SELECT = `SELECT o.id, o.user_id AS userId, o.team_id AS teamId, COALESCE(t.name, o.boat) AS boat, o.country, o.date, o.hours,
+  const OUTING_SELECT = `SELECT o.id, o.user_id AS userId, o.team_id AS teamId, COALESCE(t.name, o.boat) AS boat, o.country, o.date,
       o.no_catch AS noCatch, o.technique, o.area, o.depth_m AS depthM, o.water_c AS waterC, o.created_at AS createdAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outings o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN teams t ON t.id = o.team_id`;
@@ -1861,8 +1842,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (!fish.length) return res.status(400).json({ error: 'Add the fish, or choose No catch.' });
     }
     db.exec('BEGIN');
-    const { lastInsertRowid } = db.prepare(`INSERT INTO outings (user_id, team_id, boat, country, date, hours, no_catch, technique, area, depth_m, water_c)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, team.id, boat, country, date, null, noCatch ? 1 : 0,
+    const { lastInsertRowid } = db.prepare(`INSERT INTO outings (user_id, team_id, boat, country, date, no_catch, technique, area, depth_m, water_c)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, team.id, boat, country, date, noCatch ? 1 : 0,
       techniques.join('|') || null, str(b.area, 80), depth, water);
     const id = Number(lastInsertRowid);
     const addFish = db.prepare('INSERT INTO outing_fish (outing_id, species_id, released, kept, lost) VALUES (?, ?, ?, ?, ?)');
@@ -1970,193 +1951,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ years, year, spots: year ? spots.filter((x) => x.date.startsWith(year)) : spots });
   });
 
-  // ---- the JHMMC feed (members only) -------------------------------------
-
-  // Members post through the day: messages, photos and fish. Fish the
-  // secretary approves join the feed by themselves, marked verified.
-  const isClubMember = (u) => !!u && (!!u.jhmmc || isAdminUser(u));
-  const requireMember = (req, res, next) => (isClubMember(req.user) ? next()
-    : res.status(req.user ? 403 : 401).json({ error: 'The JHMMC feed is for JHMMC members.' }));
-  const clubPostById = (id) => db.prepare('SELECT id, user_id AS userId, photo, video FROM club_posts WHERE id = ?').get(id ?? 0);
-  const canRemoveClubPost = (u, authorId) => authorId === u.id || isAdminUser(u);
-
-  api.get('/club-feed', requireMember, (req, res) => {
-    const PAGE = 20;
-    // Posts and verified fish in one timeline; the cursor is "time|key".
-    const [bt, bk] = typeof req.query.before === 'string' ? req.query.before.split('|') : [];
-    // Filters: what to show (verified fish, any fish, photos, members' posts) and one boat.
-    const show = ['verified', 'fish', 'photos', 'posts'].includes(req.query.show) ? req.query.show : '';
-    const team = intId(req.query.team);
-    const postsWhere = [show === 'fish' && 'p.species_id IS NOT NULL', show === 'photos' && 'p.photo IS NOT NULL',
-      team && '(SELECT team_id FROM users WHERE id = p.user_id) = :team'].filter(Boolean);
-    const parts = [
-      show !== 'verified' && `SELECT 'post' AS kind, p.id, p.created_at AS ts, printf('p%010d', p.id) AS key FROM club_posts p
-        ${postsWhere.length ? `WHERE ${postsWhere.join(' AND ')}` : ''}`,
-      ['', 'verified', 'fish'].includes(show) && `SELECT 'verified' AS kind, k.id, datetime(k.reviewed_at) AS ts, printf('v%010d', k.id) AS key FROM catches k
-        WHERE k.status = 'approved' AND k.reviewed_at IS NOT NULL${team ? ' AND k.team_id = :team' : ''}`,
-    ].filter(Boolean);
-    const rows = db.prepare(`
-      SELECT * FROM (${parts.join(' UNION ALL ')})
-      WHERE :bt IS NULL OR ts < :bt OR (ts = :bt AND key < :bk)
-      ORDER BY ts DESC, key DESC LIMIT ${PAGE + 1}`).all({ bt: bt || null, bk: bk || '', ...(team && { team }) });
-    const more = rows.length > PAGE;
-    const page = rows.slice(0, PAGE);
-    const post = db.prepare(`
-      SELECT p.id, p.body, p.photo, p.video, p.lat, p.lng, p.weight_kg AS weightKg, p.released, p.created_at AS createdAt,
-        s.name AS species, u.id AS userId, ${SHOWN} AS author, u.photo AS authorPhoto, t.name AS teamName,
-        (SELECT COUNT(*) FROM club_post_likes l WHERE l.post_id = p.id) AS likes,
-        EXISTS (SELECT 1 FROM club_post_likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked
-      FROM club_posts p JOIN users u ON u.id = p.user_id LEFT JOIN teams t ON t.id = u.team_id
-      LEFT JOIN species s ON s.id = p.species_id WHERE p.id = ?`);
-    const comments = db.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author
-      FROM club_post_comments c JOIN users u ON u.id = c.user_id WHERE c.post_id = ? ORDER BY c.id`);
-    const fish = db.prepare(`
-      SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.caught_on AS caughtOn,
-        datetime(k.reviewed_at) AS createdAt, COALESCE(k.photo, k.scale_photo) AS photo, COALESCE(k.video, k.scale_video) AS video,
-        u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
-        (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
-        (SELECT COUNT(*) FROM comments c WHERE c.catch_id = k.id) AS comments
-      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
-      LEFT JOIN teams t ON t.id = k.team_id WHERE k.id = ?`);
-    const items = page.map((r) => {
-      if (r.kind === 'verified') {
-        const { photo, video, ...f } = fish.get(r.id);
-        return { kind: 'verified', ...f, released: !!f.released, photoUrl: photoUrl(photo), videoUrl: photoUrl(video) };
-      }
-      const { photo, video, authorPhoto, lat, lng, ...p } = post.get(req.user.id, r.id);
-      // The spot is the poster's own: others only see that there is one.
-      const mine = p.userId === req.user.id;
-      return {
-        hasSpot: lat != null, lat: mine ? lat : null, lng: mine ? lng : null, canEdit: mine, photos: postPhotos('club', r.id, photo),
-        kind: 'post', ...p, released: !!p.released, liked: !!p.liked, photoUrl: photoUrl(photo), videoUrl: photoUrl(video),
-        authorPhotoUrl: photoUrl(authorPhoto),
-        canDelete: canRemoveClubPost(req.user, p.userId),
-        comments: comments.all(r.id).map((c) => ({ ...c, canDelete: canRemoveClubPost(req.user, c.userId) })),
-      };
-    });
-    const last = page.at(-1);
-    res.json({ items, nextBefore: more ? `${last.ts}|${last.key}` : null });
-  });
-
-  api.post('/club-feed', requireMember, withVideo('photo', 'video'), (req, res) => {
-    const photo = req.files?.photo?.[0];
-    const video = req.files?.video?.[0];
-    const fail = (status, error) => {
-      discardUploads(req);
-      res.status(status).json({ error });
-    };
-    const body = str(req.body.body, 2000);
-    const speciesId = intId(req.body.speciesId);
-    if (speciesId && !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return fail(400, 'Unknown species.');
-    const released = req.body.released === 'true' || req.body.released === 'on';
-    const weight = req.body.weightKg ? Number(req.body.weightKg) : null;
-    if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
-    if (!body && !photo && !video && !speciesId) return fail(400, 'Write something, add a photo, a video or a fish.');
-    const spot = speciesId ? readSpot(req.body) : { lat: null, lng: null };
-    if (spot.error) return fail(400, spot.error);
-    // Ticked "also post on the West Africa feed": the same fish as a public catch.
-    // It has its own copy of the photo and video, so removing one post leaves the other.
-    let shared = null;
-    if (bool(req.body.shareWa)) {
-      if (!speciesId) return fail(400, 'Choose the species to post it on the West Africa feed.');
-      if (!req.user.teamId) return fail(400, 'Join or register a boat to post catches on the West Africa feed.');
-      // The spot goes across too, private to the boat as on any post.
-      const fish = { speciesId, weightKg: req.body.weightKg, released: released ? 'on' : '', notes: body, lat: spot.lat ?? '', lng: spot.lng ?? '' };
-      const opts = { teamId: req.user.teamId, official: false };
-      const checked = checkCatch(req.user, fish, {}, opts);
-      if (checked.error) return fail(400, checked.error);
-      shared = { id: insertCatchRow(checkCatch(req.user, fish, { photo: copyUpload(photo), video: copyUpload(video) }, opts).values) };
-    }
-    const { lastInsertRowid } = db.prepare(`INSERT INTO club_posts (user_id, body, photo, video, species_id, weight_kg, released, lat, lng)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, body, photo?.filename ?? null, video?.filename ?? null,
-      speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0, spot.lat, spot.lng);
-    res.status(201).json({ id: Number(lastInsertRowid), catchId: shared?.id ?? null });
-  });
-
-  // Edit your own JHMMC feed post: the words, the fish, the spot, the photos and video.
-  api.patch('/club-feed/:id', requireMember, editUpload, (req, res) => {
-    const fail = (status, error) => {
-      discardUploads(req);
-      res.status(status).json({ error });
-    };
-    const row = db.prepare('SELECT id, user_id AS userId, body, photo, video, species_id AS speciesId, weight_kg AS weightKg, released, lat, lng FROM club_posts WHERE id = ?')
-      .get(intId(req.params.id) ?? 0);
-    if (!row) return fail(404, 'Post not found.');
-    if (row.userId !== req.user.id) return fail(403, 'Only whoever posted it can edit a post.');
-    const b = req.body;
-    const has = (k) => k in b;
-    const body = has('body') ? str(b.body, 2000) : row.body;
-    const speciesId = has('speciesId') ? intId(b.speciesId) : row.speciesId;
-    if (speciesId && !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return fail(400, 'Unknown species.');
-    const weight = has('weightKg') ? (b.weightKg ? Number(b.weightKg) : null) : row.weightKg;
-    if (weight != null && !(weight > 0 && weight < 2000)) return fail(400, 'Weight must be a number of kg.');
-    const released = has('released') ? bool(b.released) : !!row.released;
-    const spot = has('lat') || has('lng') ? readSpot(b) : { lat: row.lat, lng: row.lng };
-    if (spot.error) return fail(400, spot.error);
-    // Something has to be left: words, a photo, a video or a fish.
-    let remove = [];
-    try {
-      remove = JSON.parse(b.removePhotos || '[]');
-    } catch {
-      return fail(400, 'The photos to remove could not be read.');
-    }
-    const photosLeft = (row.photo && !remove.includes('cover') ? 1 : 0) + (req.files?.photos?.length ?? 0)
-      + extraPhotos.all('club', row.id).filter((x) => !remove.includes(x.id)).length;
-    const videoLeft = !!req.files?.video?.[0] || (!!row.video && !bool(b.removeVideo));
-    if (!body && !speciesId && !photosLeft && !videoLeft) return fail(400, 'Write something, add a photo, a video or a fish.');
-    db.exec('BEGIN');
-    try {
-      const mediaError = editMedia(req, 'club', 'club_posts', row);
-      if (mediaError) throw Object.assign(new Error(mediaError), { status: 400 });
-      db.prepare('UPDATE club_posts SET body = ?, species_id = ?, weight_kg = ?, released = ?, lat = ?, lng = ? WHERE id = ?')
-        .run(body, speciesId || null, speciesId ? weight : null, speciesId && released ? 1 : 0, speciesId ? spot.lat : null, speciesId ? spot.lng : null, row.id);
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      if (err.status === 400) return fail(400, err.message);
-      throw err;
-    }
-    res.json({ ok: true });
-  });
-
-  api.delete('/club-feed/:id', requireMember, (req, res) => {
-    const p = clubPostById(intId(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Post not found.' });
-    if (!canRemoveClubPost(req.user, p.userId)) return res.status(403).json({ error: 'Only whoever posted it or the club admin can remove a post.' });
-    db.prepare('DELETE FROM club_posts WHERE id = ?').run(p.id);
-    removeUpload(p.photo);
-    removeUpload(p.video);
-    dropPostPhotos('club', p.id);
-    res.json({ ok: true });
-  });
-
-  api.post('/club-feed/:id/like', requireMember, (req, res) => {
-    const p = clubPostById(intId(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Post not found.' });
-    const removed = db.prepare('DELETE FROM club_post_likes WHERE user_id = ? AND post_id = ?').run(req.user.id, p.id);
-    if (!removed.changes) db.prepare('INSERT INTO club_post_likes (user_id, post_id) VALUES (?, ?)').run(req.user.id, p.id);
-    const { likes } = db.prepare('SELECT COUNT(*) AS likes FROM club_post_likes WHERE post_id = ?').get(p.id);
-    res.json({ liked: !removed.changes, likes });
-  });
-
-  api.post('/club-feed/:id/comments', requireMember, (req, res) => {
-    const p = clubPostById(intId(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Post not found.' });
-    const body = str(req.body.body, 1000);
-    if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
-    const { lastInsertRowid } = db.prepare('INSERT INTO club_post_comments (post_id, user_id, body) VALUES (?, ?, ?)').run(p.id, req.user.id, body);
-    res.status(201).json({ comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.nickname || req.user.name, canDelete: true } });
-  });
-
-  api.delete('/club-feed/:id/comments/:commentId', requireMember, (req, res) => {
-    const c = db.prepare('SELECT id, user_id AS userId FROM club_post_comments WHERE id = ? AND post_id = ?')
-      .get(intId(req.params.commentId) ?? 0, intId(req.params.id) ?? 0);
-    if (!c) return res.status(404).json({ error: 'Comment not found.' });
-    if (!canRemoveClubPost(req.user, c.userId)) return res.status(403).json({ error: 'Only whoever wrote it or the club admin can remove a comment.' });
-    db.prepare('DELETE FROM club_post_comments WHERE id = ?').run(c.id);
-    res.json({ ok: true });
-  });
-
   // ---- records -----------------------------------------------------------
 
   // IGFA all-tackle world records beside the heaviest fish logged here, plus
@@ -2231,68 +2025,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // ---- leaderboard -------------------------------------------------------
 
-  api.get('/leaderboard', (req, res) => {
-    const year = /^\d{4}$/.test(req.query.year ?? '') ? req.query.year : null;
-    const country = str(req.query.country, 60);
-    const where = ["k.status = 'unofficial'"];
-    const params = {};
-    if (year) {
-      where.push("strftime('%Y', k.caught_on) = :year");
-      params.year = year;
-    }
-    if (country) {
-      where.push('k.country = :country');
-      params.country = country;
-    }
-    // One club's leaderboard: its boats' catches.
-    const club = intId(req.query.club);
-    if (club) {
-      where.push('k.club_id = :club');
-      params.club = club;
-    }
-    const filter = where.join(' AND ');
-
-    // Heaviest weighed fish of each species.
-    const records = db.prepare(`
-      SELECT * FROM (
-        SELECT s.name AS species, s.category, k.id, k.weight_kg AS weightKg, k.caught_on AS caughtOn,
-          u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.id AS teamId, t.name AS teamName,
-          ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS rn
-        FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
-        LEFT JOIN teams t ON t.id = k.team_id
-        WHERE ${filter} AND k.weight_kg IS NOT NULL
-      ) WHERE rn = 1 ORDER BY weightKg DESC
-    `).all(params).map(({ rn, ...r }) => r);
-
-    const tally = `COUNT(*) AS catches, SUM(k.released) AS released,
-      SUM(CASE WHEN s.category = 'Billfish' THEN 1 ELSE 0 END) AS billfish,
-      ROUND(SUM(COALESCE(k.weight_kg, 0)), 1) AS totalKg`;
-
-    const teams = db.prepare(`
-      SELECT t.id AS teamId, t.name AS teamName, c.name AS clubName, ${tally}
-      FROM catches k JOIN teams t ON t.id = k.team_id JOIN species s ON s.id = k.species_id
-      LEFT JOIN clubs c ON c.id = t.club_id
-      WHERE ${filter}
-      GROUP BY t.id ORDER BY billfish DESC, catches DESC LIMIT 20
-    `).all(params);
-
-    const anglers = db.prepare(`
-      SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first, ${tally}
-      FROM catches k LEFT JOIN users u ON u.id = k.user_id JOIN species s ON s.id = k.species_id
-      LEFT JOIN teams t ON t.id = COALESCE(u.team_id, k.team_id)
-      WHERE ${filter}
-      GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY billfish DESC, catches DESC LIMIT 20
-    `).all(params).map(({ first, ...a }) => a);
-
-    const clubs = db.prepare(`
-      SELECT c.id AS clubId, c.name AS clubName, c.country, ${tally}
-      FROM catches k JOIN clubs c ON c.id = k.club_id JOIN species s ON s.id = k.species_id
-      WHERE ${filter}
-      GROUP BY c.id ORDER BY catches DESC LIMIT 20
-    `).all(params);
-
-    res.json({ records, teams, anglers, clubs });
-  });
 
   // ---- profiles ----------------------------------------------------------
 

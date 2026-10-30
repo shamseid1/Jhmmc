@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 28;
+const SCHEMA_VERSION = 29;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -338,7 +338,6 @@ CREATE TABLE IF NOT EXISTS outings (
   boat TEXT NOT NULL,
   country TEXT,
   date TEXT NOT NULL,
-  hours REAL,
   no_catch INTEGER NOT NULL DEFAULT 0,
   technique TEXT,
   area TEXT,
@@ -507,6 +506,10 @@ function openDb(file) {
   if (hasTables && version < 26) {
     const cols = db.prepare('PRAGMA table_info(club_posts)').all();
     if (cols.length && !cols.some((c) => c.name === 'lat')) db.exec('ALTER TABLE club_posts ADD COLUMN lat REAL; ALTER TABLE club_posts ADD COLUMN lng REAL;');
+  }
+  if (hasTables && version < 29 && db.prepare('PRAGMA table_info(outings)').all().some((c) => c.name === 'hours')) {
+    // Hours fishing was dropped from the regional log.
+    db.exec('ALTER TABLE outings DROP COLUMN hours');
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

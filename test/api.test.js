@@ -144,10 +144,6 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal((await ibra('GET', '/records?club=9999')).status, 404);
   assert.equal((await kofi('GET', '/me')).body.user.clubId, clubId);
 
-  r = await ibra('GET', '/leaderboard');
-  assert.equal(r.body.teams[0].teamName, 'Sea Hunter');
-  assert.equal(r.body.anglers[0].angler, 'Awa Diop');
-  assert.equal(r.body.clubs[0].clubName, 'Dakar Offshore Club');
 
   // Captain controls.
   const kofiId = (await kofi('GET', '/me')).body.user.id;
@@ -256,9 +252,6 @@ test('anglers without an account: catches logged under a typed name', async () =
   assert.deepEqual([guest[0].hasAccount, guest[0].teamName, guest[0].catches, guest[0].released, guest[0].weighed], [false, 'Mesurado Queen', 2, 1, 1]);
   r = await anon('GET', '/catches?angler=GUEST%20VARNEY');
   assert.equal(r.body.catches.length, 2);
-  const lb = (await anon('GET', '/leaderboard')).body;
-  assert.ok(lb.anglers.some((a) => a.angler.toLowerCase() === 'guest varney' && a.catches === 2 && a.userId === null));
-  assert.equal(lb.records.find((x) => x.species === 'Wahoo').angler, 'Guest Varney');
   const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
   assert.equal(rec.best.angler, 'Guest Varney');
   assert.equal(guest[0].name, 'Guest Varney', 'shown as first typed');
@@ -290,7 +283,6 @@ test('visitors without an account can look but not act', async () => {
   assert.equal(r.body.catches[0].canDelete, false);
   assert.equal(r.body.catches[0].liked, false);
   assert.equal((await anon('GET', `/catches/${r.body.catches[0].id}`)).status, 200);
-  assert.equal((await anon('GET', '/leaderboard')).status, 200);
   assert.equal((await anon('GET', '/anglers')).status, 200);
   const teams = (await anon('GET', '/teams')).body.teams;
   const t = (await anon('GET', `/teams/${teams[0].id}`)).body.team;
@@ -750,8 +742,6 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.ok(jhBook.groups.every((g) => species.some((x) => x.name === g.species)), 'every record-book species can be registered');
     const jhRecords = (await as()('GET', `/records?club=${jhmmc}`)).body.species;
     assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'from the registration');
-    const lb = (await as()('GET', '/leaderboard')).body;
-    assert.deepEqual(lb.records.filter((x) => x.species === 'Wahoo').map((x) => x.weightKg), [30], 'posts only');
 
     // Scoring table and season dates.
     assert.equal((await sec('PATCH', `/species/${sp('Atlantic sailfish').id}`, { pointsPerKg: 4 })).status, 200);
