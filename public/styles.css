@@ -721,3 +721,41 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .leaflet-tooltip.place-label { background: rgba(11, 61, 92, .85); color: #fff; border: 0; border-radius: 8px; padding: 2px 7px;
   font: 700 12px/1.3 system-ui, sans-serif; box-shadow: none; }
 .leaflet-tooltip.place-label::before { display: none; }
+
+/* The regional log. */
+.seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.seg2 button { border: 0; background: none; padding: 9px; border-radius: 999px; font: inherit; font-weight: 700; color: var(--muted); }
+.seg2 button.on { background: var(--accent); color: var(--accent-ink); }
+.fish-list[hidden], .add-species[hidden] { display: none; }
+.fishrow { border: 1px solid var(--line); border-radius: 16px; padding: 10px; display: grid; gap: 8px; }
+.fishrow-head { display: flex; gap: 8px; align-items: center; }
+.counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.count { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 4px; text-align: center; }
+.count b { font-size: 18px; }
+.count button { padding: 0; height: 30px; border-radius: 9px; font-size: 18px; }
+.count small { grid-column: 1 / -1; color: var(--muted); }
+.add-species { justify-self: start; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip2 { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.chip2.on, .chip2:has(input:checked) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.chip2 input { width: auto; margin: 0; }
+.three { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.log-chips { margin: 4px 0 12px; }
+.log li { display: grid; gap: 3px; }
+.log-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+.log-res { font-size: 15px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 3px; }
+.pill.released { background: rgba(63, 207, 142, .15); color: var(--good); }
+.pill.kept { background: var(--accent-soft); color: var(--accent); }
+.pill.lost { background: rgba(255, 107, 107, .14); color: var(--danger); }
+.log-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.stats3 .s { padding: 10px; text-align: center; display: grid; }
+.stats3 b { font-size: 22px; }
+.stats3 span { font-size: 12px; color: var(--muted); }
+.season-species { font-weight: 700; display: grid; gap: 6px; }
+.month-bars { display: grid; grid-template-columns: repeat(12, 1fr); align-items: end; gap: 4px; height: 90px; margin-top: 10px; }
+.month-bars .mb { height: 100%; display: flex; align-items: flex-end; }
+.month-bars i { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; }
+.month-names { display: grid; grid-template-columns: repeat(12, 1fr); font-size: 11px; color: var(--muted); text-align: center; }
+.best-card { display: grid; gap: 4px; }

@@ -1775,6 +1775,147 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true });
   });
 
+  // ---- the regional log: one line per outing ---------------------------------
+
+  const TECHNIQUES = ['Trolling lures', 'Trolling baits', 'Casting', 'Jigging', 'Live bait', 'Bottom fishing'];
+  const outingFish = db.prepare(`SELECT f.species_id AS speciesId, s.name AS species, s.category, f.released, f.kept, f.lost
+    FROM outing_fish f JOIN species s ON s.id = f.species_id WHERE f.outing_id = ? ORDER BY f.id`);
+  const OUTING_SELECT = `SELECT o.id, o.user_id AS userId, o.team_id AS teamId, COALESCE(t.name, o.boat) AS boat, o.country, o.date, o.hours,
+      o.no_catch AS noCatch, o.technique, o.area, o.depth_m AS depthM, o.water_c AS waterC, o.created_at AS createdAt,
+      COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
+    FROM outings o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN teams t ON t.id = o.team_id`;
+  const presentOuting = (o, viewer) => ({
+    ...o, noCatch: !!o.noCatch, technique: o.technique ? o.technique.split('|') : [],
+    fish: outingFish.all(o.id), canDelete: !!viewer && (o.userId === viewer.id || isAdminUser(viewer)),
+  });
+  // The outing as one line, in the agreed format.
+  const outingLine = (o) => [
+    o.date, o.boat, o.country || '', o.hours != null ? `${o.hours} h` : '',
+    o.noCatch ? 'No catch' : o.fish.map((f) => {
+      const parts = [['released', f.released], ['kept', f.kept], ['lost', f.lost]].filter(([, n]) => n).map(([w, n]) => `${n} ${w}`);
+      return `${f.species}: ${f.released + f.kept + f.lost} (${parts.join(', ')})`;
+    }).join('; '),
+    o.technique.join(', '), [o.area, o.depthM != null ? `${o.depthM} m` : ''].filter(Boolean).join(', '),
+    o.waterC != null ? `${o.waterC}°C` : '',
+  ].join(' | ');
+
+  api.post('/outings', (req, res) => {
+    const b = req.body;
+    const u = req.user;
+    // Boats have to be on the app: yours unless another is chosen.
+    const team = db.prepare('SELECT id, name, country FROM teams WHERE id = ?').get(intId(b.teamId) || u.teamId || 0);
+    if (!team) return res.status(400).json({ error: 'Choose the boat (boats have to be on the app).' });
+    const boat = team.name;
+    const date = str(b.date, 10);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) return res.status(400).json({ error: 'Enter the date.' });
+    if (Date.parse(date) > Date.now() + 864e5) return res.status(400).json({ error: "The date can't be in the future." });
+    const country = str(b.country, 60) || team.country || null;
+    if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
+    const number = (v, lo, hi, what) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < lo || n > hi) throw Object.assign(new Error(what), { status: 400 });
+      return n;
+    };
+    let hours; let depth; let water;
+    try {
+      hours = number(b.hours, 0.25, 24, 'Hours fishing must be between 0.25 and 24.');
+      depth = number(b.depthM, 0, 11000, 'Depth must be in metres.');
+      water = number(b.waterC, 10, 40, 'Water temperature must be in °C (10 to 40).');
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    const techniques = (Array.isArray(b.technique) ? b.technique : []).filter((t) => TECHNIQUES.includes(t));
+    const noCatch = bool(b.noCatch);
+    const fish = [];
+    if (!noCatch) {
+      for (const f of Array.isArray(b.fish) ? b.fish : []) {
+        const speciesId = intId(f?.speciesId);
+        const counts = ['released', 'kept', 'lost'].map((k) => Math.max(0, Math.min(500, Math.floor(Number(f?.[k]) || 0))));
+        if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return res.status(400).json({ error: 'Choose each species.' });
+        if (!counts.some((n) => n > 0)) return res.status(400).json({ error: 'Give at least one released, kept or lost for each species.' });
+        fish.push([speciesId, ...counts]);
+      }
+      if (!fish.length) return res.status(400).json({ error: 'Add the fish, or choose No catch.' });
+    }
+    db.exec('BEGIN');
+    const { lastInsertRowid } = db.prepare(`INSERT INTO outings (user_id, team_id, boat, country, date, hours, no_catch, technique, area, depth_m, water_c)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(u.id, team.id, boat, country, date, hours, noCatch ? 1 : 0,
+      techniques.join('|') || null, str(b.area, 80), depth, water);
+    const id = Number(lastInsertRowid);
+    const addFish = db.prepare('INSERT INTO outing_fish (outing_id, species_id, released, kept, lost) VALUES (?, ?, ?, ?, ?)');
+    for (const f of fish) addFish.run(id, ...f);
+    db.exec('COMMIT');
+    const o = presentOuting(db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(id), u);
+    res.status(201).json({ outing: { ...o, line: outingLine(o) } });
+  });
+
+  // Everyone's outings, newest first; ?country= to narrow, ?before=id to page.
+  // Open to anyone, like the rest of the app (rough areas only).
+  api.get('/outings', (req, res) => {
+    const country = str(req.query.country, 60);
+    const before = intId(req.query.before);
+    const rows = db.prepare(`${OUTING_SELECT}
+      WHERE (:country IS NULL OR o.country = :country) AND (:before IS NULL OR o.id < :before)
+      ORDER BY o.date DESC, o.id DESC LIMIT 31`).all({ country, before });
+    const list = rows.slice(0, 30).map((o) => presentOuting(o, req.user)).map((o) => ({ ...o, line: outingLine(o) }));
+    const countries = db.prepare('SELECT DISTINCT country FROM outings WHERE country IS NOT NULL ORDER BY country').all().map((r) => r.country);
+    res.json({ outings: list, countries, techniques: TECHNIQUES, nextBefore: rows.length > 30 ? list.at(-1).id : null });
+  });
+
+  // The whole log as a spreadsheet (one line per outing), for keeping or merging.
+  api.get('/outings.csv', (req, res) => {
+    const all = db.prepare(`${OUTING_SELECT} ORDER BY o.date, o.id`).all().map((o) => presentOuting(o, req.user));
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['Date', 'Boat', 'Country', 'Hours fishing', 'Catch', 'Technique', 'Rough area', 'Water depth (m)', 'Water temp (°C)'];
+    const rows = all.map((o) => [o.date, o.boat, o.country, o.hours,
+      o.noCatch ? 'No catch' : outingLine(o).split(' | ')[4], o.technique.join(', '), o.area, o.depthM, o.waterC].map(cell).join(','));
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="regional-log.csv"' });
+    res.send('\ufeff' + [head.map(cell).join(','), ...rows].join('\r\n'));
+  });
+
+  api.delete('/outings/:id', (req, res) => {
+    const o = db.prepare('SELECT id, user_id AS userId FROM outings WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!o) return res.status(404).json({ error: 'Outing not found.' });
+    if (o.userId !== req.user.id && !isAdminUser(req.user)) return res.status(403).json({ error: 'Only whoever logged it can remove an outing.' });
+    db.prepare('DELETE FROM outings WHERE id = ?').run(o.id);
+    res.json({ ok: true });
+  });
+
+  // A year at a glance: outings, blank days, billfish per day fished, a chosen
+  // species per day fished each month, and the conditions on billfish days.
+  api.get('/outings/season', (req, res) => {
+    const years = db.prepare("SELECT DISTINCT substr(date, 1, 4) AS y FROM outings ORDER BY y DESC").all().map((r) => r.y);
+    const year = years.includes(req.query.year) ? req.query.year : years[0] ?? String(new Date().getUTCFullYear());
+    const country = str(req.query.country, 60);
+    const outings = db.prepare(`${OUTING_SELECT} WHERE substr(o.date, 1, 4) = :year AND (:country IS NULL OR o.country = :country)`)
+      .all({ year, country }).map((o) => presentOuting(o, req.user));
+    const caught = (o, pick) => o.fish.filter(pick).reduce((n, f) => n + f.released + f.kept, 0);
+    const billfish = (f) => f.category === 'Billfish';
+    const speciesList = [...new Set(outings.flatMap((o) => o.fish.map((f) => f.species)))].sort();
+    const species = speciesList.includes(req.query.species) ? req.query.species : speciesList.includes('Atlantic sailfish') ? 'Atlantic sailfish' : speciesList[0] ?? null;
+    const months = Array.from({ length: 12 }, (_, m) => {
+      const inMonth = outings.filter((o) => Number(o.date.slice(5, 7)) === m + 1);
+      return { month: m + 1, outings: inMonth.length, perDay: inMonth.length ? caught({ fish: inMonth.flatMap((o) => o.fish) }, (f) => f.species === species) / inMonth.length : null };
+    });
+    const range = (vals) => (vals.length ? [Math.min(...vals), Math.max(...vals)] : null);
+    const good = outings.filter((o) => caught(o, billfish) > 0);
+    const techniqueCount = {};
+    for (const o of good) for (const t of o.technique) techniqueCount[t] = (techniqueCount[t] || 0) + 1;
+    res.json({
+      years: years.length ? years : [year], year, species, speciesList,
+      outings: outings.length, blank: outings.filter((o) => o.noCatch || !caught(o, () => true)).length,
+      billfishPerDay: outings.length ? outings.reduce((n, o) => n + caught(o, billfish), 0) / outings.length : 0,
+      months,
+      best: good.length ? {
+        days: good.length,
+        water: range(good.map((o) => o.waterC).filter((v) => v != null)),
+        depth: range(good.map((o) => o.depthM).filter((v) => v != null)),
+        techniques: Object.entries(techniqueCount).sort((a, b2) => b2[1] - a[1]).slice(0, 2).map(([t]) => t),
+      } : null,
+    });
+  });
+
   // ---- my catch map ---------------------------------------------------------
 
   // Every fish you caught or logged with its spot (and, for a captain, the

@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 27;
+const SCHEMA_VERSION = 28;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -328,6 +328,34 @@ CREATE TABLE IF NOT EXISTS post_photos (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS post_photos_post ON post_photos(kind, post_id, id);
+
+-- The regional log: one line per outing, blank days included, same format for
+-- everyone. Rough areas only, never exact spots.
+CREATE TABLE IF NOT EXISTS outings (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+  boat TEXT NOT NULL,
+  country TEXT,
+  date TEXT NOT NULL,
+  hours REAL,
+  no_catch INTEGER NOT NULL DEFAULT 0,
+  technique TEXT,
+  area TEXT,
+  depth_m REAL,
+  water_c REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS outings_date ON outings(date DESC, id DESC);
+CREATE TABLE IF NOT EXISTS outing_fish (
+  id INTEGER PRIMARY KEY,
+  outing_id INTEGER NOT NULL REFERENCES outings(id) ON DELETE CASCADE,
+  species_id INTEGER NOT NULL REFERENCES species(id),
+  released INTEGER NOT NULL DEFAULT 0,
+  kept INTEGER NOT NULL DEFAULT 0,
+  lost INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS outing_fish_outing ON outing_fish(outing_id);
 
 CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY,
