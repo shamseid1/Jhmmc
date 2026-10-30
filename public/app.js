@@ -411,8 +411,12 @@ function phoneSpot(timeout = 8000) {
 
 // Points and the record book, one tab each: under Leaderboard on the West
 // Africa side (for the chosen club), under Points on the JHMMC side.
+// A dropdown chip whose choices are pages: picking one goes there.
+document.addEventListener('change', (e) => {
+  if (e.target.matches('select[data-go]')) location.hash = e.target.value.replace(/^#/, '');
+});
 const clubSideNow = () => !!state.me?.jhmmc && feedPref() === 'club';
-const boardTabs = (on, club) => html`<div class="seg" role="tablist">
+const boardTabs = (on, club) => html`<div class="line-tabs" role="tablist">
   <a role="tab" href="${clubSideNow() ? '#/points' : `#/leaderboard?club=${club}`}" aria-selected="${on === 'board'}">Points</a>
   <a role="tab" href="#/records?club=${club}" aria-selected="${on === 'records'}">Records</a></div>`;
 
@@ -1255,10 +1259,11 @@ const pagesFor = (view) => ({
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
-    const scopeTab = (key, label) => html`<a role="tab" href="${link(`scope=${key}&division=${division}`)}" aria-selected="${scope === key}">${label}</a>`;
     view.innerHTML = html`${raw(top || html`<h1>Points</h1>${raw(boardTabs('board', state.meta.homeClubId))}`)}
-      <div class="seg scope" role="tablist">${raw(scopeTab('overall', 'Overall'))}${raw(scopeTab('tournaments', 'Tournaments'))}</div>
-      ${raw(divisionTabs(link(`scope=${scope}`), division))}
+      <div class="filter-chips">
+        <select class="chip-select" data-go aria-label="Trophy">${raw(options([[link(`scope=overall&division=${division}`), 'Overall'], [link(`scope=tournaments&division=${division}`), 'Tournaments']], link(`scope=${scope}&division=${division}`)))}</select>
+        <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`scope=${scope}&division=${key}`), label]), link(`scope=${scope}&division=${division}`)))}</select>
+      </div>
       <p class="small muted">${scope === 'tournaments'
         ? `Tournament trophy: points from fish caught during the season's tournaments only, all tournaments added up.`
         : `Overall trophy: points from every fishing day of the JHMMC season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`}

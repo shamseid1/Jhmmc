@@ -759,3 +759,11 @@ fieldset.units legend { font-weight: 600; margin-bottom: 4px; }
 .unit-row .chips { margin: 0; }
 .unit-row input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
 .unit-row .chip2 { position: relative; }
+/* Points | Records: plain text tabs, underlined, like a profile's tabs. */
+.line-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin: 4px 0 12px; }
+.line-tabs a { padding: 8px 2px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.line-tabs a[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+/* Small dropdown chips on one line (Overall ▾  Ocean ▾). */
+.filter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; border-radius: 999px; font-size: 14px; font-weight: 700;
+  background-color: var(--accent-soft); color: var(--accent); border-color: transparent; }
