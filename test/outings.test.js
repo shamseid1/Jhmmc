@@ -121,6 +121,13 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await bob('PATCH', `/outings/${trip.id}`, { area: 'x' })).status, 403);
     assert.equal((await marwan('GET', '/outings/trip?date=2026-10-20')).body.trip.id, trip.id);
     assert.match((await marwan('POST', '/outings', { date: '2026-10-20', noCatch: true })).body.error, /already has a line/, 'one line per boat per day');
+    // Depth charts: crews only, never public.
+    assert.equal((await as()('GET', '/charts')).status, 401);
+    assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');
+    const { charts } = (await deckhand('GET', '/charts')).body;
+    assert.ok(charts.length && charts[0].bounds.north > charts[0].bounds.south);
+    const img = await fetch(at + charts[0].url.replace('/api', ''), { headers: {} });
+    assert.equal(img.status, 401, 'the image needs signing in too');
     // The spots go on the crew's catch maps.
     const mine = (await deckhand('GET', '/me/spots')).body.spots;
     assert.deepEqual(mine.filter((x) => x.kind === 'log').map((x) => [x.species, x.released]), [['Atlantic sailfish', true], ['Atlantic sailfish', true]]);

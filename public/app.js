@@ -2133,7 +2133,8 @@ const pagesFor = (view) => ({
   async spots() {
     if (!state.me) return needLogin(view, 'see your catch map');
     const year = new URLSearchParams(location.hash.split('?')[1] || '').get('year') || '';
-    const [{ years, spots }, L] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null)]);
+    const [{ years, spots }, L, { charts }] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null),
+      state.me.teamId || state.me.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
     const chip = (y, label) => html`<a role="tab" href="#/spots${y ? `?year=${y}` : ''}" aria-selected="${y === year}">${label}</a>`;
     const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
     // Weights logged at sea are estimates.
@@ -2143,28 +2144,42 @@ const pagesFor = (view) => ({
       <h1>My catch map</h1>
       <p class="small muted">Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
-      ${spots.length ? raw(html`<div class="card catch-map" id="catch-map"></div>
-        <p class="small muted">${plural(spots.length, 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
+      ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
+      ${charts.length ? raw('<p class="small muted">Depth chart: switch it on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
+      ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
           <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
             ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
         : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Tap <b>Log fish</b> in the regional log when a fish is landed, and its spot appears here.</div>`)}`;
-    if (!spots.length) return;
+    if (!spots.length && !charts.length) return;
     if (!L) {
       view.querySelector('#catch-map').outerHTML = '<div class="card pad empty">The map couldn\'t load just now. Your catches are listed below.</div>';
       return;
     }
     const map = L.map('catch-map', { zoomControl: true });
     addSatellite(L, map);
+    // Depth charts sit over the satellite, under the pins; on unless switched off.
+    if (charts.length) {
+      const layers = Object.fromEntries(charts.map((c) => [`Depth chart: ${c.name}`,
+        L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
+      L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
+    }
+    if (!spots.length) {
+      const c = charts[0].bounds;
+      map.fitBounds([[c.south, c.west], [c.north, c.east]]);
+      return;
+    }
     const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${kg(x)}${x.released ? ' · released' : ''}<br>
       ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
-    map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 12 });
+    // The charts are screenshots: sharp up to about zoom 11, blurry past it.
+    const close = charts.length ? 11 : 12;
+    map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: close - 1 });
     view.querySelector('.spot-list').addEventListener('click', (e) => {
       const li = e.target.closest('li[data-n]');
       if (!li || e.target.closest('a')) return;
       const x = spots[li.dataset.n];
-      map.setView([x.lat, x.lng], 12);
+      map.setView([x.lat, x.lng], close);
       pins[li.dataset.n].openPopup();
       view.querySelector('#catch-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
     });

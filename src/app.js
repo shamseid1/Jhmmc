@@ -2066,6 +2066,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // Every fish you caught or logged with its spot (and, for a captain, the
   // boat's), from your posts and your JHMMC feed posts, by year. Only yours.
+  // Depth charts for My catch map: chart images placed by their corner
+  // coordinates (charts/charts.json). For crews only, never public.
+  const CHART_DIR = path.join(__dirname, '..', 'charts');
+  const chartList = () => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(CHART_DIR, 'charts.json'), 'utf8'));
+    } catch {
+      return [];
+    }
+  };
+  const forCrews = (req, res, next) => (req.user.teamId || isAdminUser(req.user) ? next()
+    : res.status(403).json({ error: 'Depth charts are for boat crews.' }));
+  api.get('/charts', auth.requireUser, forCrews, (_req, res) => {
+    res.json({ charts: chartList().map(({ id, name, bounds }) => ({ id, name, bounds, url: `/api/charts/${id}` })) });
+  });
+  api.get('/charts/:id', auth.requireUser, forCrews, (req, res) => {
+    const chart = chartList().find((c) => c.id === req.params.id);
+    if (!chart) return res.status(404).json({ error: 'Chart not found.' });
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.sendFile(path.join(CHART_DIR, path.basename(chart.file)));
+  });
+
   api.get('/me/spots', auth.requireUser, (req, res) => {
     const u = req.user;
     const captainOf = db.prepare('SELECT id FROM teams WHERE captain_id = ?').get(u.id)?.id ?? null;

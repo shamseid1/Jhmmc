@@ -1,0 +1,8 @@
+[
+  {
+    "id": "monrovia",
+    "name": "Off Monrovia",
+    "file": "monrovia.png",
+    "bounds": { "south": 5.08893, "west": -11.04775, "north": 6.56852, "east": -10.19607 }
+  }
+]
