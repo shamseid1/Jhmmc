@@ -409,9 +409,11 @@ function phoneSpot(timeout = 8000) {
   });
 }
 
-// West Africa side: the clubs' points and their record books, one tab each.
-const waBoardTabs = (on, club) => html`<div class="seg" role="tablist">
-  <a role="tab" href="#/leaderboard?club=${club}" aria-selected="${on === 'board'}">Points</a>
+// Points and the record book, one tab each: under Leaderboard on the West
+// Africa side (for the chosen club), under Points on the JHMMC side.
+const clubSideNow = () => !!state.me?.jhmmc && feedPref() === 'club';
+const boardTabs = (on, club) => html`<div class="seg" role="tablist">
+  <a role="tab" href="${clubSideNow() ? '#/points' : `#/leaderboard?club=${club}`}" aria-selected="${on === 'board'}">Points</a>
   <a role="tab" href="#/records?club=${club}" aria-selected="${on === 'records'}">Records</a></div>`;
 
 // JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
@@ -1228,7 +1230,7 @@ const pagesFor = (view) => ({
     const homeId = String(state.meta.homeClubId);
     const club = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : homeId);
     const chooser = html`<h1>Leaderboard</h1>
-      ${raw(waBoardTabs('board', club))}
+      ${raw(boardTabs('board', club))}
       <label class="club-pick">Club <select id="board-club">${raw(options(clubs.map((c) => [c.id, c.name]), club))}</select></label>`;
     const wire = () => view.querySelector('#board-club').addEventListener('change', (e) => { location.hash = `#/leaderboard?club=${e.target.value}`; });
     if (club !== homeId) {
@@ -1254,7 +1256,7 @@ const pagesFor = (view) => ({
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     const scopeTab = (key, label) => html`<a role="tab" href="${link(`scope=${key}&division=${division}`)}" aria-selected="${scope === key}">${label}</a>`;
-    view.innerHTML = html`${raw(top)}
+    view.innerHTML = html`${raw(top || html`<h1>Points</h1>${raw(boardTabs('board', state.meta.homeClubId))}`)}
       <div class="seg scope" role="tablist">${raw(scopeTab('overall', 'Overall'))}${raw(scopeTab('tournaments', 'Tournaments'))}</div>
       ${raw(divisionTabs(link(`scope=${scope}`), division))}
       <p class="small muted">${scope === 'tournaments'
@@ -2847,9 +2849,8 @@ const pagesFor = (view) => ({
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }
-    // On the West Africa side the records sit beside the leaderboard.
-    const waSide = !(state.me?.jhmmc && feedPref() === 'club');
-    view.innerHTML = html`${waSide ? raw(html`<h1>Leaderboard</h1>${raw(waBoardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}`) : ''}${raw(picker)}${raw(body)}`;
+    // The records sit beside the points, on both sides.
+    view.innerHTML = html`<h1>${clubSideNow() ? 'Points' : 'Leaderboard'}</h1>${raw(boardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}${raw(picker)}${raw(body)}`;
     view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });
@@ -3187,13 +3188,13 @@ function renderNav(active = state.navActive) {
   state.navActive = active;
   syncClubChip();
   // The JHMMC side: the club's own tabs (no feed). Captains and officials get
-  // Register fish in the middle.
+  // Register in the middle; crews get Log fish. Records sit under Points.
   const clubSide = state.me?.jhmmc && feedPref() === 'club';
   const links = clubSide ? [
     ['#/points', 'Points', 'points', 'leaderboard'],
     ['#/tournaments', 'Tournaments', 'tournaments', 'trophy'],
     ...(state.me.canWeigh ? [['#/weigh', 'Register', 'weigh', 'weight', 'cta']] : []),
-    [`#/records?club=${state.meta?.homeClubId ?? ''}`, 'Records', 'records', 'medal'],
+    ...(state.me.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish']] : []),
   ] : [
     ['#/', 'Feed', 'home', 'feed'],
     ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
@@ -3202,7 +3203,7 @@ function renderNav(active = state.navActive) {
   ];
   links.push(['#/more', 'More', 'more', 'more']);
   const current = clubSide ? ({
-    leaderboard: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
+    leaderboard: 'points', records: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
     boat: 'participants', user: 'participants', records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
     new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
