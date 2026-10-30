@@ -409,6 +409,11 @@ function phoneSpot(timeout = 8000) {
   });
 }
 
+// West Africa side: the clubs' points and their record books, one tab each.
+const waBoardTabs = (on, club) => html`<div class="seg" role="tablist">
+  <a role="tab" href="#/leaderboard?club=${club}" aria-selected="${on === 'board'}">Points</a>
+  <a role="tab" href="#/records?club=${club}" aria-selected="${on === 'records'}">Records</a></div>`;
+
 // JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
 function boatOptions(boats, mine) {
   const label = (t) => `${t.name} (${t.division === 'river' ? 'River' : 'Ocean'})`;
@@ -1223,6 +1228,7 @@ const pagesFor = (view) => ({
     const homeId = String(state.meta.homeClubId);
     const club = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : homeId);
     const chooser = html`<h1>Leaderboard</h1>
+      ${raw(waBoardTabs('board', club))}
       <label class="club-pick">Club <select id="board-club">${raw(options(clubs.map((c) => [c.id, c.name]), club))}</select></label>`;
     const wire = () => view.querySelector('#board-club').addEventListener('change', (e) => { location.hash = `#/leaderboard?club=${e.target.value}`; });
     if (club !== homeId) {
@@ -2841,7 +2847,9 @@ const pagesFor = (view) => ({
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }
-    view.innerHTML = html`${raw(picker)}${raw(body)}`;
+    // On the West Africa side the records sit beside the leaderboard.
+    const waSide = !(state.me?.jhmmc && feedPref() === 'club');
+    view.innerHTML = html`${waSide ? raw(html`<h1>Leaderboard</h1>${raw(waBoardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}`) : ''}${raw(picker)}${raw(body)}`;
     view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });
@@ -3196,7 +3204,7 @@ function renderNav(active = state.navActive) {
   const current = clubSide ? ({
     leaderboard: 'points', 'points-fish': 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
-    boat: 'participants', user: 'participants', records: 'more', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
+    boat: 'participants', user: 'participants', records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
     new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', 'points-fish': 'leaderboard', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
