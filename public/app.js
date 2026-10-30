@@ -1330,17 +1330,40 @@ const pagesFor = (view) => ({
   },
 
   // Official JHMMC standings from approved catches.
-  async points() {
+  // The club leaderboard (West Africa side): choose a club and see its points
+  // leaderboard, laid out like JHMMC's. Only JHMMC keeps points in the app so far.
+  async leaderboard() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const clubs = (await loadClubs()).filter((c) => c.id != null && c.id !== 'igfa');
+    const homeId = String(state.meta.homeClubId);
+    const club = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : homeId);
+    const chooser = html`<h1>Leaderboard</h1>
+      <label class="club-pick">Club <select id="board-club">${raw(options(clubs.map((c) => [c.id, c.name]), club))}</select></label>`;
+    const wire = () => view.querySelector('#board-club').addEventListener('change', (e) => { location.hash = `#/leaderboard?club=${e.target.value}`; });
+    if (club !== homeId) {
+      const name = clubs.find((c) => String(c.id) === club)?.name || 'This club';
+      view.innerHTML = html`${raw(chooser)}
+        <div class="card pad empty">${name} doesn't keep points in the app yet. Its leaderboard starts once its boats' fish are weighed and approved here, the way JHMMC's are.
+          <p><a href="#/club/${club}">See ${name}'s club page</a></p></div>`;
+      wire();
+      return;
+    }
+    await this.points(undefined, { base: `#/leaderboard?club=${club}`, top: chooser });
+    wire();
+  },
+
+  async points(_arg, { base = '#/points', top = '' } = {}) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const link = (params) => `${base}${base.includes('?') ? '&' : '?'}${params}`;
     const division = q.get('division') === 'river' ? 'river' : 'ocean';
     // Two trophies: overall points (every day) and tournament points only.
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
-    const scopeTab = (key, label) => html`<a role="tab" href="#/points?scope=${key}&division=${division}" aria-selected="${scope === key}">${label}</a>`;
-    view.innerHTML = html`
+    const scopeTab = (key, label) => html`<a role="tab" href="${link(`scope=${key}&division=${division}`)}" aria-selected="${scope === key}">${label}</a>`;
+    view.innerHTML = html`${raw(top)}
       <div class="seg scope" role="tablist">${raw(scopeTab('overall', 'Overall'))}${raw(scopeTab('tournaments', 'Tournaments'))}</div>
-      ${raw(divisionTabs(`#/points?scope=${scope}`, division))}
+      ${raw(divisionTabs(link(`scope=${scope}`), division))}
       <p class="small muted">${scope === 'tournaments'
         ? `Tournament trophy: points from fish caught during the season's tournaments only, all tournaments added up.`
         : `Overall trophy: points from every fishing day of the JHMMC season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`}
@@ -1997,7 +2020,6 @@ const pagesFor = (view) => ({
       </div>
       <h2>Records &amp; clubs</h2>
       <div class="card menu">
-        ${raw(item('#/points', 'leaderboard', 'JHMMC points', "The club's verified standings and tournaments"))}
         ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
         ${raw(item('#/records', 'medal', 'Club records'))}
         ${raw(item('#/clubs', 'clubs', 'Clubs'))}
@@ -2891,6 +2913,7 @@ function renderNav(active = state.navActive) {
     [`#/records?club=${state.meta?.homeClubId ?? ''}`, 'Records', 'records', 'medal'],
   ] : [
     ['#/', 'Feed', 'home', 'feed'],
+    ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
     ...(state.me?.teamId ? [['#/new', 'Post', 'new', 'catch', 'cta']] : []),
     ['#/participants', 'Participants', 'participants', 'participants'],
   ];
@@ -2898,7 +2921,7 @@ function renderNav(active = state.navActive) {
   const current = clubSide ? ({
     leaderboard: 'points', tournament: 'tournaments', enter: 'tournaments', sheet: 'tournaments', scoring: 'points',
   }[active] || (links.some((l) => l[2] === active) ? active : 'more')) : {
-    boat: 'participants', user: 'participants', records: 'more', points: 'more', tournament: 'more', scoring: 'more',
+    boat: 'participants', user: 'participants', records: 'more', points: 'leaderboard', tournament: 'leaderboard', scoring: 'more',
     rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more', clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more', 'admin-boats': 'more', tournaments: 'more', enter: 'more', sheet: 'more', 'club-members': 'more', pending: 'more', history: 'more', weigh: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
