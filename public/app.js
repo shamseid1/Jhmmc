@@ -1778,16 +1778,23 @@ const pagesFor = (view) => ({
     let trip = got?.trip ?? null;
     if (list0) state.techniques = list0.techniques;
     const techniques = state.techniques || [];
-    let lastSpecies = '';
-    try { lastSpecies = localStorage.getItem('fishon-species') || ''; } catch {}
+    // Big buttons for the boat's usual fish: the ones logged most recently on
+    // this phone, then the region's regulars. Anything else from the list.
+    const REGULARS = ['Atlantic sailfish', 'Atlantic blue marlin', 'Yellowfin tuna', 'Wahoo', 'Dorado (mahi-mahi)', 'Barracuda'];
+    let recent = [];
+    try { recent = JSON.parse(localStorage.getItem('fishon-recent') || '[]'); } catch {}
+    const byName = new Map(state.meta.species.map((x) => [x.name, x]));
+    const byId = new Map(state.meta.species.map((x) => [String(x.id), x]));
+    const quick = [...new Set([...recent.map((id) => byId.get(String(id))?.name), ...REGULARS])]
+      .map((n) => byName.get(n)).filter(Boolean).slice(0, 6);
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
       <h1>Log fish</h1>
       <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
         <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
-      <p class="small muted">${live ? 'At sea: tap Released, Kept or Lost as each fish comes aboard; the spot is taken there and then.' : 'An earlier day: add its fish here (no GPS spot), or mark it as no catch.'}
-        Every fish goes on your boat's line in the regional log; exact spots stay with your crew.</p>
+      <p class="small muted">${live ? 'Tap the fish, then Released, Kept or Lost. The spot is taken for you; only your crew sees it.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
       <div class="card pad stack fishon">
-        <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
+        <div class="quick-species" role="radiogroup" aria-label="Species">${quick.map((x, i) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}" ${i === 0 ? 'checked' : ''}><span>${x.name.replace(' (mahi-mahi)', '')}</span></label>`))}</div>
+        <select id="fo-species" aria-label="Other species">${raw(speciesOptions(null, 'Other species…'))}</select>
         <div class="fates">
           <button type="button" class="fate released" data-fate="released">Released</button>
           <button type="button" class="fate kept" data-fate="kept">Kept</button>
@@ -1823,7 +1830,7 @@ const pagesFor = (view) => ({
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
-        || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today. Pick the species and tap Released, Kept or Lost when one is landed.' : 'No fish logged that day.'}</li>`;
+        || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today.' : 'No fish logged that day.'}</li>`;
       view.querySelector('#fo-nocatch').hidden = !!trip || waiting.length > 0;
       if (!trip) {
         finish.innerHTML = '';
@@ -1939,28 +1946,36 @@ const pagesFor = (view) => ({
     window.addEventListener('hashchange', stop);
     window.addEventListener('online', flush);
     const card = view.querySelector('.fishon');
+    // A big button or the list: whichever was touched last.
+    card.addEventListener('change', (e) => {
+      if (e.target.id === 'fo-species' && e.target.value) for (const r of card.querySelectorAll('[name=fo-sp]')) r.checked = false;
+      if (e.target.name === 'fo-sp') card.querySelector('#fo-species').value = '';
+    });
     card.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-fate]');
       if (!btn) return;
-      const sel = view.querySelector('#fo-species');
+      const other = view.querySelector('#fo-species');
       const err = card.querySelector('.error');
       err.textContent = '';
-      if (!sel.value) {
+      const sp = byId.get(other.value || card.querySelector('[name=fo-sp]:checked')?.value || '');
+      if (!sp) {
         err.textContent = 'Choose the species first.';
-        sel.focus();
         return;
       }
-      try { localStorage.setItem('fishon-species', sel.value); } catch {}
+      // The boat's usual fish come first next time.
+      recent = [sp.id, ...recent.filter((id) => id !== sp.id)].slice(0, 6);
+      try { localStorage.setItem('fishon-recent', JSON.stringify(recent)); } catch {}
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
       // Fish added for an earlier day get no spot (the boat isn't there now).
-      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(8000);
+      // No waiting around: at most a few seconds for a fix if the phone hasn't one yet.
+      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(3000);
       const now = live ? new Date() : new Date(`${day}T12:00:00Z`);
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
-        speciesId: sel.value, species: sel.selectedOptions[0].textContent, fate: btn.dataset.fate,
+        speciesId: sp.id, species: sp.name, fate: btn.dataset.fate,
         lat: spot?.lat ?? '', lng: spot?.lng ?? '', landedAt: now.toISOString(), date: day,
       }]);
-      toast(`${sel.selectedOptions[0].textContent} ${btn.dataset.fate}${spot ? ', spot taken' : ''}.`);
+      toast(`${sp.name} ${btn.dataset.fate}${spot ? ', spot taken' : ''}. Tight lines!`);
       draw();
       flush();
     });

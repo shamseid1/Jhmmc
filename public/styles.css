@@ -765,3 +765,11 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .chip-date::after { content: '▾'; font-size: 11px; }
 .chip-date input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .shared-fish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); }
+/* Log fish: the boat's usual fish as big buttons, one tap each. */
+.quick-species { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.qs { position: relative; display: block; }
+.qs input { position: absolute; opacity: 0; pointer-events: none; }
+.qs span { display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 6px 8px; text-align: center; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 15px; line-height: 1.2; cursor: pointer; }
+.qs input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.qs input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
