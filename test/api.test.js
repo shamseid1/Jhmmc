@@ -136,14 +136,14 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   const blue = r.body.species.find((x) => x.name === 'Blue marlin');
   assert.equal(blue.igfa.display, '1,402 lb 2 oz');
   assert.equal(blue.igfa.kg, 636);
-  assert.equal(blue.best.weightKg, 212.5);
+  assert.equal(blue.best, null, 'posts never set records: only weighed, approved fish');
   assert.equal(r.body.species.find((x) => x.name === 'Tarpon').igfa.african, true);
   assert.equal(r.body.species.find((x) => x.name === 'Little tunny').igfa, null, 'unconfirmed records are left out');
-  assert.deepEqual(r.body.lineRecords.map((x) => [x.species, x.lineClass, x.weightKg]), [['Blue marlin', '80 lb', 212.5]]);
+  assert.deepEqual(r.body.lineRecords, []);
   assert.equal(c.worldRecordKg, 636);
   r = await ibra('GET', `/records?club=${clubId}`);
   assert.equal(r.body.club.name, 'Dakar Offshore Club');
-  assert.equal(r.body.species.find((x) => x.name === 'Blue marlin').best.weightKg, 212.5);
+  assert.equal(r.body.species.find((x) => x.name === 'Blue marlin').best, null);
   assert.equal((await ibra('GET', '/records?club=9999')).status, 404);
   assert.equal((await kofi('GET', '/me')).body.user.clubId, clubId);
 
@@ -256,7 +256,7 @@ test('anglers without an account: catches logged under a typed name', async () =
   r = await anon('GET', '/catches?angler=GUEST%20VARNEY');
   assert.equal(r.body.catches.length, 2);
   const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
-  assert.equal(rec.best.angler, 'Guest Varney');
+  assert.equal(rec.best, null, 'posts never set records');
   assert.equal(guest[0].name, 'Guest Varney', 'shown as first typed');
 
   // Varney joins the crew and the captain moves the typed-name catches to the account.
@@ -507,10 +507,23 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual([post.status, post.weightKg, post.lineClass, post.points ?? null], ['unofficial', 19, '50 lb', null]);
     r = await other('POST', '/catches', form({ speciesId: sp('Wahoo').id, caughtOn: '2026-10-25', weightKg: '30' }));
     assert.equal(r.body.catch.status, 'unofficial');
-    assert.equal((await sec('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: TODAY, weightKg: '30', weighStation: 'Extreme' }))).status, 400, 'only JHMMC boats are registered');
+    // For now every boat is weighed in through JHMMC: another club's boat
+    // registers too, at its home port (no weigh station to choose).
+    r = await other('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
+      caughtOn: TODAY, weightKg: '30', declared: 'yes', deviceLat: '5.6', deviceLng: '-0.2' }));
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.catch.status, 'pending_review');
+    assert.match(r.body.catch.weighStation, /Home port/);
+    await sec('DELETE', `/catches/${r.body.catch.id}`);
+    // Once its club runs its own weigh-ins, its fish no longer come to JHMMC.
+    const theirClub = (await other('GET', `/teams/${visitor.id}`)).body.team.clubId;
+    assert.equal((await sec('PATCH', `/admin/clubs/${theirClub}`, { selfRun: true })).status, 403, 'admin only');
+    assert.equal((await boss('PATCH', `/admin/clubs/${theirClub}`, { selfRun: true })).status, 200);
+    assert.match((await sec('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
+      caughtOn: TODAY, weightKg: '30', weighStation: 'Extreme', deviceLat: '5.6', deviceLng: '-0.2' }))).body.error, /weighs its own/);
     assert.equal((await other('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: TODAY, weightKg: '30' }))).status, 403, "other clubs' captains don't register");
+      caughtOn: TODAY, weightKg: '30', declared: 'yes', deviceLat: '5.6', deviceLng: '-0.2' }))).status, 403, "its captains register with their own club");
+    await boss('PATCH', `/admin/clubs/${theirClub}`, { selfRun: false });
 
     // The captain registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;

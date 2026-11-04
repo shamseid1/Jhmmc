@@ -77,7 +77,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.ok(seen.every((r) => r.scalePhotoUrl), 'with the scale photos');
     assert.ok((await capA('GET', '/registrations/pending')).body.registrations.every((r) => !r.canDispute), 'not your own boat');
     assert.equal((await crewB('GET', '/registrations/pending')).status, 403);
-    assert.equal((await outsider('GET', '/registrations/pending')).status, 403);
+    assert.equal((await outsider('GET', '/registrations/pending')).status, 200, 'every boat weighed through JHMMC competes, so its captain sees them too');
 
     // Disputes: a reason, once, by another JHMMC captain.
     assert.equal((await capB('POST', `/catches/${marlin.id}/disputes`, { reason: '' })).status, 400);
@@ -85,13 +85,13 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.equal((await capB('POST', `/catches/${marlin.id}/disputes`, { reason: 'Again' })).status, 409);
     assert.equal((await capA('POST', `/catches/${marlin.id}/disputes`, { reason: 'Mine' })).status, 400);
     assert.equal((await crewB('POST', `/catches/${marlin.id}/disputes`, { reason: 'Crew' })).status, 403);
-    assert.equal((await outsider('POST', `/catches/${marlin.id}/disputes`, { reason: 'Outsider' })).status, 403);
+    assert.equal((await outsider('POST', `/catches/${marlin.id}/disputes`, { reason: 'Seen it at Tema' })).status, 201, 'a captain from another country competes too');
     const listed = (await capB('GET', '/registrations/pending')).body.registrations.find((r) => r.id === marlin.id);
-    assert.deepEqual([listed.disputes, listed.disputedByMe, listed.canDispute], [1, true, false]);
+    assert.deepEqual([listed.disputes, listed.disputedByMe, listed.canDispute], [2, true, false]);
 
     // The secretary sees the dispute and must say how it was settled.
     const queued = (await sec('GET', '/officials/queue')).body.toReview.find((c) => c.id === marlin.id);
-    assert.deepEqual(queued.disputes.map((d) => [d.author, d.boat, d.reason]), [['Captain B', 'Reel Deal', 'That marlin was caught yesterday']]);
+    assert.deepEqual(queued.disputes.map((d) => [d.author, d.boat, d.reason]), [['Captain B', 'Reel Deal', 'That marlin was caught yesterday'], ['Tema Captain', 'Black Star', 'Seen it at Tema']]);
     assert.ok(Date.parse(queued.disputeUntil) > Date.now());
     assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).body.error, /disputed/);
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve', note: 'Checked the radio log: caught today' })).status, 200);
@@ -115,6 +115,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.deepEqual(steps(marlin.id), [
       ['registered', 'Captain A', null],
       ['disputed', 'Captain B', 'That marlin was caught yesterday'],
+      ['disputed', 'Tema Captain', 'Seen it at Tema'],
       ['approved', 'Robert Khoueiry', 'Checked the radio log: caught today'],
     ]);
     assert.deepEqual(steps(wahoo.id), [['registered', 'Captain A', null], ['withdrawn', 'Captain A', null]]);
@@ -124,7 +125,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.equal((await fetch(at.replace('/api', '') + w.scalePhotoUrl)).status, 200);
     assert.equal((await boss('GET', `/registrations/log?team=${reelDeal.id}`)).body.fish.length, 0, 'filtered by boat');
     const one = (await boss('GET', `/registrations/log?catch=${marlin.id}`)).body.fish;
-    assert.deepEqual([one.length, one[0].steps.length], [1, 3], 'one fish');
+    assert.deepEqual([one.length, one[0].steps.length], [1, 4], 'one fish: registered, two disputes, approved');
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

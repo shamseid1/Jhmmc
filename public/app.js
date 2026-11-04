@@ -414,10 +414,10 @@ function phoneSpot(timeout = 8000) {
 document.addEventListener('change', (e) => {
   if (e.target.matches('select[data-go]')) location.hash = e.target.value.replace(/^#/, '');
 });
-const boardTabs = (on, club = state.meta.homeClubId) => html`<div class="line-tabs" role="tablist">
-  <a role="tab" href="#/leaderboard?club=${club}" aria-selected="${on === 'board'}">Points</a>
+const boardTabs = (on) => html`<div class="line-tabs" role="tablist">
+  <a role="tab" href="#/leaderboard" aria-selected="${on === 'board'}">Points</a>
   <a role="tab" href="#/tournaments" aria-selected="${on === 'tournaments'}">Tournaments</a>
-  <a role="tab" href="#/records?club=${club}" aria-selected="${on === 'records'}">Records</a></div>`;
+  <a role="tab" href="#/records" aria-selected="${on === 'records'}">Records</a></div>`;
 
 // JHMMC boats for the secretary's weigh sheet, grouped by weigh station.
 function boatOptions(boats, mine) {
@@ -427,7 +427,7 @@ function boatOptions(boats, mine) {
   const opts = (list) => list.map((t) => `<option value="${esc(t.id)}">${esc(label(t))}</option>`).join('');
   if (groups.length < 2) return `<option value="">Choose…</option>${opts(boats)}`;
   return `<option value="">Choose…</option>${groups.map(([w, list]) =>
-    `<optgroup label="${esc(w ? (w === mine ? `${w} (your station)` : w) : 'No station set')}">${opts(list)}</optgroup>`).join('')}`;
+    `<optgroup label="${esc(w ? (w === mine ? `${w} (your station)` : w) : 'Other boats (weighed at home port)')}">${opts(list)}</optgroup>`).join('')}`;
 }
 
 function speciesOptions(selected, placeholder) {
@@ -1185,11 +1185,11 @@ const pagesFor = (view) => ({
   // Behind a number on the points tables: the boat's or angler's fish that count.
   async 'points-fish'() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const { title, fish, total, scope, division } = await api(`/points/fish?${q}`);
+    const { title, fish, total, scope, division, board } = await api(`/points/fish?${q}`);
     const byBoat = q.has('team');
     view.innerHTML = html`<p class="back"><a href="#/" data-back>‹ Back</a></p>
       <h1>${title || 'Fish'}</h1>
-      <p class="muted">${scope === 'tournaments' ? 'Tournament points' : 'Overall points'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
+      <p class="muted">${scope === 'tournaments' ? 'JHMMC tournament points' : board === 'jhmmc' ? 'JHMMC trophy' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
       <div class="stats3">
         <div class="card s"><b>${fish.length}</b><span>fish</span></div>
         <div class="card s"><b>${total}</b><span>points</span></div>
@@ -1210,51 +1210,43 @@ const pagesFor = (view) => ({
 
   // The club leaderboard (West Africa side): choose a club and see its points
   // leaderboard, laid out like JHMMC's. Only JHMMC keeps points in the app so far.
+  // For now JHMMC is West Africa Big Game: one points board for every boat
+  // weighed in through JHMMC, and the JHMMC trophy (JHMMC boats only).
   async leaderboard() {
-    const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const clubs = (await loadClubs()).filter((c) => c.id != null && c.id !== 'igfa');
-    const homeId = String(state.meta.homeClubId);
-    const club = q.get('club') || (state.me?.clubId ? String(state.me.clubId) : homeId);
-    const chooser = html`<h1>Leaderboard</h1>
-      ${raw(boardTabs('board', club))}
-      <label class="club-pick">Club <select id="board-club">${raw(options(clubs.map((c) => [c.id, c.name]), club))}</select></label>`;
-    const wire = () => view.querySelector('#board-club').addEventListener('change', (e) => { location.hash = `#/leaderboard?club=${e.target.value}`; });
-    if (club !== homeId) {
-      const name = clubs.find((c) => String(c.id) === club)?.name || 'This club';
-      view.innerHTML = html`${raw(chooser)}
-        <div class="card pad empty">${name} doesn't keep points in the app yet. Its leaderboard starts once its boats' fish are weighed and approved here, the way JHMMC's are.
-          <p><a href="#/club/${club}">See ${name}'s club page</a></p></div>`;
-      wire();
-      return;
-    }
-    await this.points(undefined, { base: `#/leaderboard?club=${club}`, top: chooser });
-    wire();
+    await this.points(undefined, { base: '#/leaderboard', top: html`<h1>Leaderboard</h1>${raw(boardTabs('board'))}` });
   },
 
   async points(_arg, { base = '#/points', top = '' } = {}) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     // Old #/points links (from the JHMMC side) open the leaderboard.
     if (!top) {
-      location.replace(`#/leaderboard?club=${state.meta.homeClubId}${q.size ? `&${q}` : ''}`);
+      location.replace(`#/leaderboard${q.size ? `?${q}` : ''}`);
       return;
     }
     const link = (params) => `${base}${base.includes('?') ? '&' : '?'}${params}`;
     // Tap a number: the fish behind it.
-    const drill = (who) => `#/points-fish?${new URLSearchParams({ scope: q.get('scope') || 'overall', division: q.get('division') || 'ocean', ...who })}`;
+    const drill = (who) => `#/points-fish?${new URLSearchParams({ scope: q.get('scope') || 'overall', division: q.get('division') || 'ocean', board: q.get('board') || 'all', ...who })}`;
     const division = q.get('division') === 'river' ? 'river' : 'ocean';
     // Two trophies: overall points (every day) and tournament points only.
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
-    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}`);
+    const board = q.get('board') === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
+    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
     const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(top)}
       <div class="filter-chips">
-        <select class="chip-select" data-go aria-label="Trophy">${raw(options([[link(`scope=overall&division=${division}`), 'Overall'], [link(`scope=tournaments&division=${division}`), 'Tournaments']], link(`scope=${scope}&division=${division}`)))}</select>
-        <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`scope=${scope}&division=${key}`), label]), link(`scope=${scope}&division=${division}`)))}</select>
+        <select class="chip-select" data-go aria-label="Which table">${raw(options([
+          [link(`board=all&division=${division}`), 'All of West Africa'],
+          [link(`board=jhmmc&division=${division}`), 'JHMMC trophy'],
+          [link(`scope=tournaments&division=${division}`), 'JHMMC tournaments'],
+        ], link(scope === 'tournaments' ? `scope=tournaments&division=${division}` : `board=${board}&division=${division}`)))}</select>
+        <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${key}`), label]),
+          link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${division}`)))}</select>
       </div>
       <p class="small muted">${scope === 'tournaments'
-        ? `Tournament trophy: points from fish caught during the season's tournaments only, all tournaments added up.`
-        : `Overall trophy: points from every fishing day of the JHMMC season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`}
-        Fish registered by captains at the weigh station and approved by the secretary.
+        ? `JHMMC tournament trophy: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
+        : board === 'jhmmc' ? `JHMMC trophy: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
+          : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats can win the JHMMC trophies.`}
+        Fish registered at the weigh station (or the boat's home port) and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
       <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
@@ -1345,7 +1337,7 @@ const pagesFor = (view) => ({
   // boat's fish for today; the secretary any JHMMC boat, any earlier day.
   // One boat and day, as many fish as it brought in, submitted together.
   async weigh() {
-    if (!state.me?.canWeigh) return needLogin(view, 'register fish (captains of JHMMC boats)');
+    if (!state.me?.canWeigh) return needLogin(view, 'register fish (boat captains)');
     const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
     // Fish on a tournament day count for the season and for that tournament.
     const onNow = events.find((e) => e.kind === 'tournament' && e.date <= today() && today() <= e.endDate);
@@ -1355,9 +1347,11 @@ const pagesFor = (view) => ({
       : onNow.entries.includes(Number(teamId)) ? "entered: today's fish also count for this tournament"
         : 'not entered: fish count for the season only');
     const mine = official ? toReview.filter((c) => c.loggedBy === state.me.id) : toReview;
-    const jhmmcBoats = teams.filter((t) => isJhmmc(t.clubId));
-    // A captain's own boat, with its weigh station (its home port).
+    // Every boat weighed in through JHMMC (for now all of them): JHMMC boats at a
+    // JHMMC weigh station, the rest at their home port.
+    const jhmmcBoats = teams.filter((t) => t.throughJhmmc);
     const own = official ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
+    const atHomePort = (t) => t && !isJhmmc(t.clubId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Register fish</h1>
@@ -1373,8 +1367,10 @@ const pagesFor = (view) => ({
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
         </div>
-        ${own?.weighStation ? raw(html`<p class="station-fixed">Weigh station: <b>${own.weighStation}</b></p>`)
-          : raw(html`<label>Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>`)}
+        ${atHomePort(own) ? raw(html`<p class="station-fixed">Weighed at: <b>${own.homePort || 'your home port'}</b></p>`)
+          : own?.weighStation ? raw(html`<p class="station-fixed">Weigh station: <b>${own.weighStation}</b></p>`)
+          : raw(html`<label id="station-pick">Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
+            <p class="station-fixed" id="home-port" hidden></p>`)}
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
         <div class="sheet-totals" id="sheet-total">
@@ -1382,7 +1378,7 @@ const pagesFor = (view) => ({
           <div><span>Total points</span><b id="total-points">0 pts</b></div>
         </div>
         ${official ? '' : raw(html`<label class="check declare"><input type="checkbox" name="declared" value="yes" required>
-          <span>I declare these fish were caught today by the anglers named, under the club rules, and weighed on this station's scale.
+          <span>I declare these fish were caught today by the anglers named, under the club rules, and weighed on this scale.
           A false registration disqualifies the boat (<a href="#/rules?section=app-registrations">rule</a>).</span></label>`)}
         <p class="small muted location-note">${raw(icon('locate'))} Your phone's location is taken when you send, to show where the fish were registered. Allow location when the phone asks.</p>
         <p class="error"></p>
@@ -1540,6 +1536,16 @@ const pagesFor = (view) => ({
     sheet.teamId.addEventListener('change', async () => {
       const boat = jhmmcBoats.find((t) => String(t.id) === sheet.teamId.value);
       if (boat?.weighStation && sheet.weighStation) sheet.weighStation.value = boat.weighStation;
+      // A boat outside JHMMC is weighed at its home port: no station to choose.
+      const pick = view.querySelector('#station-pick');
+      if (pick) {
+        const home = atHomePort(boat);
+        pick.hidden = home;
+        sheet.weighStation.required = !home;
+        const note = view.querySelector('#home-port');
+        note.hidden = !home;
+        note.textContent = home ? `Weighed at: ${boat.homePort || `home port (${boat.country || 'not set'})`}` : '';
+      }
       if (onNow) view.querySelector('#entry-note').textContent = entryNote(boat?.id);
       crew = boat ? (await api(`/teams/${boat.id}`)).team.members : [];
       for (const sel of list.querySelectorAll('[name=anglerId]')) sel.innerHTML = anglerOptions(sel.value);
@@ -2211,8 +2217,8 @@ const pagesFor = (view) => ({
         ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo, units')}
       </div>`) : ''}
-      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'JHMMC points'}</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any JHMMC boat' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'Points'}</h2><div class="card menu">
+        ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any boat in West Africa' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
         ${item('#/tournaments', 'trophy', me.canReview ? 'Tournaments' : 'Tournament entry', me.canReview ? "Who's in, anglers, members and guests" : 'Enter your boat and anglers')}
         ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
@@ -2729,16 +2735,20 @@ const pagesFor = (view) => ({
     // The home club comes first after IGFA, then the rest by name.
     const home = state.meta.homeClub.toLowerCase();
     const books = [...clubs].sort((a, b) => (b.name.toLowerCase() === home) - (a.name.toLowerCase() === home) || a.name.localeCompare(b.name));
-    // Anglers whose boat is in a club open on their club's book; others on IGFA.
+    // JHMMC boats open on the JHMMC record book; everyone else on West Africa's
+    // (every approved fish weighed through JHMMC, from any boat).
     const homeId = books.find((c) => c.name.toLowerCase() === home)?.id;
-    const book = q.get('club') || String(state.me?.clubId || homeId || 'igfa');
+    const book = q.get('club') || (state.me?.clubId && state.me.clubId === homeId ? String(homeId) : 'wa');
     const isIgfa = book === 'igfa';
-    const { species, lineRecords, checked, igfaUrl, club, book: recordBook } = await api('/records' + (isIgfa ? '' : `?club=${encodeURIComponent(book)}`));
+    const isWa = book === 'wa';
+    const got = await api('/records' + (isIgfa || isWa ? '' : `?club=${encodeURIComponent(book)}`));
+    const { species, lineRecords, checked, igfaUrl, book: recordBook } = got;
+    const club = isWa ? { id: 'wa', name: 'West Africa Big Game' } : got.club;
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
     const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
     const pct = (s) => Math.round((s.best.weightKg / s.igfa.kg) * 100);
     const picker = html`<label class="club-pick">Records for
-      <select id="club-pick">${raw(options([['igfa', 'IGFA world records'], ...books.map((c) => [c.id, c.name])], isIgfa ? 'igfa' : club.id))}</select>
+      <select id="club-pick">${raw(options([['wa', 'West Africa Big Game'], ...books.map((c) => [c.id, c.name]), ['igfa', 'IGFA world records']], isIgfa ? 'igfa' : club.id))}</select>
     </label>`;
 
     let body;
@@ -2788,14 +2798,14 @@ const pagesFor = (view) => ({
       const held = species.filter((s) => s.best);
       const open = species.filter((s) => !s.best);
       body = html`<h2>${club.name} club records</h2>
-        <p class="small muted">The heaviest weighed fish of each species logged by ${club.name} boats.</p>
+        <p class="small muted">${isWa ? 'The heaviest fish of each species weighed and approved, from every boat in West Africa.' : `The heaviest weighed fish of each species logged by ${club.name} boats.`}</p>
         ${held.length ? raw(html`<div class="records">${held.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.best.lineClass ? raw(html`<span class="badge">${s.best.lineClass} line</span>`) : ''}</div>
           <div><a class="wr-lb" href="#/catch/${s.best.catchId}">${lb(s.best.weightKg)}</a> <span class="muted">${kg(s.best.weightKg)}</span></div>
           <div class="small muted"><a href="${anglerHref(s.best.userId, s.best.angler)}">${s.best.angler}</a>${s.best.teamName ? ` · ${s.best.teamName}` : ''} · ${fmtDate(s.best.caughtOn)}</div>
           ${s.igfa ? raw(html`<div class="ours"><div class="bar blue" title="Share of the IGFA world record"><i style="width:${Math.min(100, Math.max(2, pct(s)))}%"></i></div>
             <span class="small muted">${pct(s)}% of the IGFA world record (${s.igfa.display})</span></div>`) : ''}
-        </article>`))}</div>`) : raw(html`<div class="card pad empty">No weighed catches from ${club.name} boats yet. The first one logged sets the club record.</div>`)}
+        </article>`))}</div>`) : raw(html`<div class="card pad empty">No approved fish ${isWa ? 'yet' : `from ${club.name} boats yet`}. The first one weighed and approved sets the record.</div>`)}
         ${held.length && open.length ? raw(html`<p class="small muted">Still open: ${open.map((s) => s.name).join(', ')}.</p>`) : ''}
         <h2>${club.name} records by line class</h2>
         <div class="card table-wrap"><table>
@@ -2807,7 +2817,7 @@ const pagesFor = (view) => ({
           </tr>`)) : raw('<tr><td colspan="5" class="muted">No weighed catches with a line class yet. Pick the line class when logging a catch to set a record.</td></tr>')}</tbody>
         </table></div>`;
     }
-    view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('records', isIgfa ? state.meta.homeClubId : club.id))}${raw(picker)}${raw(body)}`;
+    view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('records'))}${raw(picker)}${raw(body)}`;
     view.querySelector('#club-pick').addEventListener('change', (e) => {
       location.hash = `#/records?club=${e.target.value}`;
     });

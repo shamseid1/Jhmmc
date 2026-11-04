@@ -126,10 +126,8 @@ function createApp({
   const setting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
   // JHMMC's own scoring (weigh-in, approval, points) applies to its boats only.
   const homeClubId = () => db.prepare('SELECT id FROM clubs WHERE name = ? COLLATE NOCASE').get(HOME_CLUB.name)?.id ?? null;
-  // Two separate books: members' feed posts (status 'unofficial') make the
-  // West Africa feed, leaderboards and records; JHMMC's own figures come only
-  // from captains' registrations the secretary approved.
-  const clubBook = (clubId) => (clubId === homeClubId() ? 'approved' : 'unofficial');
+  // Every book is approved fish now: posts never set records or points.
+  const clubBook = () => 'approved';
 
   // Club officials: the admin (ADMIN_EMAIL) and secretaries, who approve
   // points. Captains of JHMMC boats register their own boat's fish at the
@@ -148,11 +146,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The admin always belongs to JHMMC.
   const markAdminMember = () => adminEmail && db.prepare('UPDATE users SET jhmmc = 1 WHERE lower(email) = ?').run(adminEmail);
   markAdminMember();
-  const captainsJhmmcBoat = (u) => !!u && !!db.prepare('SELECT 1 FROM teams WHERE captain_id = ? AND club_id = ?').get(u.id, homeClubId());
+  // For now JHMMC is West Africa Big Game: every boat's fish are weighed in and
+  // approved through JHMMC, unless its club runs its own weigh-ins (self_run).
+  // Only JHMMC's own boats can win the JHMMC trophies.
+  const THROUGH_JHMMC = 'NOT EXISTS (SELECT 1 FROM clubs sc WHERE sc.id = k.club_id AND sc.self_run = 1)';
+  const throughJhmmc = (clubId) => !clubId || !db.prepare('SELECT 1 FROM clubs WHERE id = ? AND self_run = 1').get(clubId);
+  const captainsJhmmcBoat = (u) => !!u && !!db.prepare(`SELECT 1 FROM teams t LEFT JOIN clubs c ON c.id = t.club_id
+    WHERE t.captain_id = ? AND COALESCE(c.self_run, 0) = 0`).get(u.id);
   const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
-  const requireWeigh = requireOfficial(canWeigh, 'the captain of a JHMMC boat or the secretary');
+  const requireWeigh = requireOfficial(canWeigh, "a boat's captain or the JHMMC secretary");
   const requireReview = requireOfficial(canReview, 'the JHMMC secretary');
   const requireMoney = requireOfficial(canHandleMoney, 'the JHMMC treasurer or secretary');
   const requireApprove = requireOfficial(canApprove, 'the JHMMC secretary');
@@ -440,17 +444,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true, role, jhmmc });
   });
 
+  // When a country's club is ready to run its own weigh-ins, the admin switches
+  // it over: its boats' fish then go to its own secretary, not JHMMC's.
+  api.patch('/admin/clubs/:id', requireAdmin, (req, res) => {
+    const club = db.prepare('SELECT id FROM clubs WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!club) return res.status(404).json({ error: 'Club not found.' });
+    if (club.id === homeClubId()) return res.status(400).json({ error: 'JHMMC always runs its own weigh-ins.' });
+    db.prepare('UPDATE clubs SET self_run = ? WHERE id = ?').run(bool(req.body.selfRun) ? 1 : 0, club.id);
+    res.json({ ok: true, selfRun: bool(req.body.selfRun) });
+  });
+
   // The admin's Boats page: a JHMMC boat's weigh station (its home port) and Ocean or River.
   api.patch('/admin/teams/:id', requireAdmin, (req, res) => {
     const team = db.prepare('SELECT id, club_id AS clubId, weigh_station AS station, division FROM teams WHERE id = ?')
       .get(intId(req.params.id) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
-    if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station and division.' });
+    if ('weighStation' in req.body && team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station; others weigh at their home port.' });
     const station = 'weighStation' in req.body ? req.body.weighStation || null : team.station;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
     const division = 'division' in req.body ? req.body.division : team.division;
     if (!['ocean', 'river'].includes(division)) return res.status(400).json({ error: 'Choose Ocean or River.' });
-    db.prepare('UPDATE teams SET weigh_station = ?, home_port = ?, division = ? WHERE id = ?').run(station, station, division, team.id);
+    if (team.clubId === homeClubId()) db.prepare('UPDATE teams SET weigh_station = ?, home_port = ?, division = ? WHERE id = ?').run(station, station, division, team.id);
+    else db.prepare('UPDATE teams SET division = ? WHERE id = ?').run(division, team.id);
     res.json({ ok: true, weighStation: station, division });
   });
 
@@ -548,7 +563,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/teams', (_req, res) => {
     const teams = db.prepare(`
       SELECT t.id, t.name, t.home_port AS homePort, t.country, t.length_ft AS lengthFt, t.make, t.photo, t.division,
-        t.weigh_station AS weighStation, c.id AS clubId, c.name AS clubName,
+        t.weigh_station AS weighStation, c.id AS clubId, c.name AS clubName, COALESCE(c.self_run, 0) = 0 AS throughJhmmc,
         (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members, ${TALLY}
       FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status = 'unofficial'
       GROUP BY t.id ORDER BY t.name COLLATE NOCASE
@@ -899,10 +914,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // media: { photo, video } (uploaded files, either may be missing).
   function checkCatch(user, b, { photo: file, video } = {}, { teamId, official }) {
-    const team = db.prepare('SELECT club_id, country, captain_id, weigh_station FROM teams WHERE id = ?').get(teamId);
+    const team = db.prepare('SELECT club_id, country, captain_id, weigh_station, home_port FROM teams WHERE id = ?').get(teamId);
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
-    if (official && !jhmmcBoat) return { error: 'Only JHMMC boats are registered for points.' };
+    if (official && !throughJhmmc(team.club_id)) return { error: "This boat's club weighs its own fish." };
     if (official && !canReview(user) && team.captain_id !== user.id) return { error: "Captains register their own boat's fish only." };
     // A feed post can be any photo; a registration is always a fish.
     const speciesId = intId(b.speciesId);
@@ -945,9 +960,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const released = bool(b.released);
     let station = null;
     if (official) {
-      const s = stationFor(user, str(b.weighStation, 40), team.weigh_station);
-      if (s.error) return s;
-      station = s.station;
+      // JHMMC boats weigh at a JHMMC weigh station; boats elsewhere at their home port.
+      if (jhmmcBoat) {
+        const s = stationFor(user, str(b.weighStation, 40), team.weigh_station);
+        if (s.error) return s;
+        station = s.station;
+      } else {
+        station = team.home_port || (team.country ? `Home port (${team.country})` : 'Home port');
+      }
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
       // Rule 8: every fish weighed is photographed hanging on the scale;
       // a released fish is proved by a video of the release.
@@ -1368,17 +1388,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function pointsFilter(query) {
     const division = query.division === 'river' ? 'river' : 'ocean';
     const scope = query.scope === 'tournaments' ? 'tournaments' : 'overall';
+    // Every boat weighed through JHMMC, or the JHMMC trophy (JHMMC boats only;
+    // tournaments are JHMMC's, so their trophy is too).
+    const board = query.board === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
     const start = setting('season_start');
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status = 'approved' AND k.club_id = :home AND t.division = :division AND k.caught_on BETWEEN :start AND :end
+      WHERE k.status = 'approved' AND ${board === 'jhmmc' ? 'k.club_id = :home' : THROUGH_JHMMC} AND t.division = :division AND k.caught_on BETWEEN :start AND :end
       ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e JOIN tournament_entries te ON te.event_id = e.id
         WHERE e.kind = 'tournament' AND te.team_id = k.team_id AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
-    return { division, scope, start, end, base, params: { division, start, end, home: homeClubId() } };
+    return { division, scope, board, start, end, base, params: { division, start, end, ...(board === 'jhmmc' ? { home: homeClubId() } : {}) } };
   }
   // Behind a number on the points tables: one boat's or one angler's fish.
   api.get('/points/fish', (req, res) => {
-    const { division, scope, base, params } = pointsFilter(req.query);
+    const { division, scope, board, base, params } = pointsFilter(req.query);
     const team = intId(req.query.team);
     const angler = str(req.query.angler, 90);
     if (!team && !angler) return res.status(400).json({ error: 'Choose a boat or an angler.' });
@@ -1387,14 +1410,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       ORDER BY k.caught_on DESC, k.id DESC`).all({ ...params, ...(team ? { team } : { angler }), viewer: req.user?.id ?? 0 });
     const fish = rows.map((r) => present(r, req.user));
     res.json({
-      division, scope, fish,
+      division, scope, board, fish,
       total: Math.round(fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10,
       title: team ? fish[0]?.teamName ?? db.prepare('SELECT name FROM teams WHERE id = ?').get(team)?.name : fish[0]?.angler ?? angler.slice(1),
     });
   });
 
   api.get('/points', (req, res) => {
-    const { division, scope, start, end, base, params } = pointsFilter(req.query);
+    const { division, scope, board, start, end, base, params } = pointsFilter(req.query);
     const boats = db.prepare(`
       SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
@@ -1415,11 +1438,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
           FROM catches k JOIN teams t ON t.id = k.team_id JOIN tournament_entries te ON te.team_id = t.id AND te.event_id = ?
           WHERE k.status = 'approved' AND k.club_id = ? AND t.division = ? AND k.caught_on BETWEEN ? AND ?
           GROUP BY t.id ORDER BY points DESC LIMIT 1
-        `).get(e.id, params.home, division, e.date, e.endDate) ?? null,
+        `).get(e.id, homeClubId(), division, e.date, e.endDate) ?? null,
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
-    res.json({ division, scope, season: { start, end }, boats, anglers, tournaments, pending });
+    res.json({ division, scope, board, season: { start, end }, boats, anglers, tournaments, pending });
   });
 
   // One tournament's results: boats ranked, with their approved catches.
@@ -2208,9 +2231,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
           ROW_NUMBER() OVER (PARTITION BY k.species_id ORDER BY k.weight_kg DESC, k.id) AS overall,
           ROW_NUMBER() OVER (PARTITION BY k.species_id, k.line_class ORDER BY k.weight_kg DESC, k.id) AS inClass
         FROM catches k LEFT JOIN users u ON u.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
-        WHERE k.weight_kg IS NOT NULL AND k.species_id IS NOT NULL AND k.status = :book ${club ? 'AND k.club_id = :club' : ''}
+        WHERE k.weight_kg IS NOT NULL AND k.species_id IS NOT NULL AND k.status = :book ${club ? 'AND k.club_id = :club' : `AND ${THROUGH_JHMMC}`}
       ) WHERE overall = 1 OR (inClass = 1 AND lineClass IS NOT NULL)
-    `).all(club ? { club: club.id, book: clubBook(club.id) } : { book: 'unofficial' });
+    `).all(club ? { club: club.id, book: clubBook(club.id) } : { book: 'approved' });
     const species = db.prepare('SELECT id, name, category FROM species ORDER BY category, name').all();
     const names = Object.fromEntries(species.map((s) => [s.id, s.name]));
     const strip = ({ overall, inClass, ...r }) => r;
