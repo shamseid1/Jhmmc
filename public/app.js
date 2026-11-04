@@ -688,12 +688,8 @@ function wireCards(root, byId) {
 // under the boat's name and photo. Never a spot.
 const withArticle = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
 function feedLine(x) {
-  const fish = x.species.toLowerCase();
-  if (x.kind === 'weighin') {
-    return x.fate === 'released' || x.weightKg == null
-      ? `${x.angler || 'The crew'} released ${withArticle(fish)} (weighed in).`
-      : `${x.angler || 'The crew'} weighed ${withArticle(`${fmtWeight(x.weightKg)} ${fish}`)}.`;
-  }
+  const fish = (x.species || '').toLowerCase();
+  if (x.kind === 'weighin') return `${x.boat || 'A boat'} weighed in ${plural(x.fish.length, 'fish')}.`;
   const boat = x.boat || 'A boat';
   return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boarded ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
 }
@@ -713,7 +709,10 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
       <b>${x.boat || 'A boat'}</b></a>
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
-  <p class="feed-line">${x.kind === 'weighin' ? raw(html`<a href="#/catch/${x.id}">${feedLine(x)}</a>`) : feedLine(x)}</p>
+  <p class="feed-line">${feedLine(x)}</p>
+  ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
+    <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span><span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}</span></a></li>`))}</ul>
+    ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boarded' : 'Lost'}</span>
 </article>`);
 async function renderFeed(container, query = {}) {

@@ -1194,12 +1194,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const before = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(req.query.before ?? '') ? req.query.before : null;
     const parts = [];
     if (type === 'all' || type === 'weighins') {
-      parts.push(`SELECT 'weighin' AS kind, k.id, datetime(COALESCE(k.reviewed_at, k.created_at)) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
-          s.name AS species, k.weight_kg AS weightKg, CASE WHEN k.released THEN 'released' ELSE 'kept' END AS fate,
-          COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, k.user_id AS userId, NULL AS title, NULL AS body
-        FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id
+      // One post per boat per day: all its fish approved for that day together.
+      parts.push(`SELECT 'weighin' AS kind, MAX(k.id) AS id, MAX(datetime(COALESCE(k.reviewed_at, k.created_at))) AS at, t.id AS teamId,
+          t.name AS boat, t.photo AS boatPhoto, NULL AS species, NULL AS weightKg, NULL AS fate, NULL AS angler, NULL AS userId,
+          k.caught_on AS title, NULL AS body
+        FROM catches k LEFT JOIN teams t ON t.id = k.team_id
         WHERE k.status = 'approved' AND (:team IS NULL OR k.team_id = :team) AND (:user IS NULL OR k.user_id = :user)
-          AND (:club IS NULL OR t.club_id = :club)`);
+          AND (:club IS NULL OR t.club_id = :club)
+        GROUP BY k.team_id, k.caught_on`);
     }
     if (!['weighins', 'announcements'].includes(type)) {
       parts.push(`SELECT 'log' AS kind, l.id, datetime(l.landed_at) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
@@ -1217,8 +1219,22 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    const items = rows.slice(0, 30).map(({ boatPhoto, ...x }) => ({ ...x, boatPhotoUrl: photoUrl(boatPhoto),
-      ...(x.kind === 'announcement' ? { canDelete: !!req.user && (x.userId === req.user.id || isAdminUser(req.user)) } : {}) }));
+    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released,
+        COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
+      WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
+      ORDER BY k.weight_kg IS NULL, k.weight_kg DESC, k.id`);
+    const items = rows.slice(0, 30).map(({ boatPhoto, ...x }) => {
+      const item = { ...x, boatPhotoUrl: photoUrl(boatPhoto) };
+      if (x.kind === 'announcement') item.canDelete = !!req.user && (x.userId === req.user.id || isAdminUser(req.user));
+      if (x.kind === 'weighin') {
+        // The day's fish for that boat, heaviest first.
+        item.day = x.title;
+        item.title = null;
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map((f) => ({ ...f, released: !!f.released }));
+      }
+      return item;
+    });
     res.json({ items, nextBefore: rows.length > 30 ? items.at(-1).at : null });
   });
 
@@ -1449,10 +1465,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       url: `/#/catch/${id}`,
     }, req.user, (p) => p.id === k.logged_by);
     if (approved) {
+      // One notification per boat per day, updated quietly as more of its fish are approved.
+      const day = db.prepare(`SELECT COUNT(*) AS n, MAX(k.weight_kg) AS top,
+          (SELECT s.name FROM catches x JOIN species s ON s.id = x.species_id WHERE x.team_id IS c.team_id AND x.caught_on = c.caught_on
+            AND x.status = 'approved' ORDER BY x.weight_kg DESC LIMIT 1) AS topSpecies, c.team_id AS teamId, c.caught_on AS caughtOn
+        FROM catches c JOIN catches k ON k.team_id IS c.team_id AND k.caught_on = c.caught_on AND k.status = 'approved' WHERE c.id = ?`).get(id);
+      const first = day.n === 1;
       pushWhere('weighins', {
         title: `Weigh-in · ${k.boat || 'A boat'}`,
-        body: k.weight_kg ? `${k.angler} weighed a ${Math.round(k.weight_kg * 10) / 10} kg ${k.species.toLowerCase()}.` : `${k.angler} released a ${k.species.toLowerCase()}.`,
+        body: first
+          ? (k.weight_kg ? `${k.angler} weighed a ${Math.round(k.weight_kg * 10) / 10} kg ${k.species.toLowerCase()}.` : `${k.angler} released a ${k.species.toLowerCase()}.`)
+          : `${day.n} fish weighed in${day.top ? `, heaviest a ${Math.round(day.top * 10) / 10} kg ${day.topSpecies.toLowerCase()}` : ''}.`,
         url: '/#/?type=weighins',
+        tag: `weighin-${day.teamId}-${day.caughtOn}`,
+        quiet: !first,
       }, req.user, (p) => p.id !== k.logged_by);
     }
     res.json({ catch: getCatch(id, req.user) });

@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v3';
+const CACHE = 'app-v4';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/logo.svg', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
@@ -57,8 +57,10 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: data.url || 'general',
-    renotify: true,
+    // A notification with a tag of its own (one boat's weigh-in for the day)
+    // updates in place, quietly, as more fish come in.
+    tag: data.tag || data.url || 'general',
+    renotify: data.quiet !== true,
     data: { url: data.url || '/' },
   }));
 });

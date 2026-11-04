@@ -142,7 +142,11 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     // Approved weigh-ins go on the feed by themselves.
     const weighins = (await as()('GET', `/feed?type=weighins&team=${boat.id}`)).body.items;
     assert.ok(weighins.length > 0 && weighins.every((x) => x.kind === 'weighin' && x.boat === 'Liberian Girl'));
-    assert.ok(weighins.some((x) => x.angler === 'Guest' && x.species === 'Wahoo' && x.weightKg));
+    // One post per boat and day, with all its fish listed, heaviest first.
+    assert.equal(weighins.filter((x) => x.day === today).length, 1);
+    const daily = weighins.find((x) => x.day === today);
+    assert.ok(daily.fish.length >= 1 && daily.fish.some((f) => f.angler === 'Guest' && f.species === 'Wahoo' && f.weightKg));
+    assert.deepEqual(daily.fish.map((f) => f.weightKg ?? -1), [...daily.fish.map((f) => f.weightKg ?? -1)].sort((a, b) => b - a));
 
     // The log and the scale: three tunas logged at sea, then registered.
     // Each logged tuna gets a scale weight, in the order they were logged.

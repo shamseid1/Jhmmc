@@ -133,6 +133,14 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.equal(got['cap-phone'].title, 'Fish approved');
     assert.match(got['cap-phone'].body, /^Your Wahoo \(\d+ kg\) was approved: [\d.]+ points\.$/);
     assert.match(got['crew-phone'].body, /weighed a \d+ kg wahoo/);
+    assert.equal(got['crew-phone'].quiet, false, 'the first fish of the day buzzes');
+    // The boat's next fish that day updates the same notification, quietly.
+    sent.length = 0;
+    await sec('POST', `/catches/${waiting[1].id}/review`, { decision: 'approve' });
+    await settle();
+    const update = sent.find((s) => s.endpoint.endsWith('crew-phone'));
+    assert.deepEqual([update.tag, update.quiet], [got['crew-phone'].tag, true]);
+    assert.match(update.body, /^2 fish weighed in, heaviest a \d+ kg wahoo\.$/);
 
     // Fish logged at sea: everyone but whoever logged it (and the admin, who
     // switched it off), never the spot.
