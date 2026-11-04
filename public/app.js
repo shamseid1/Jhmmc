@@ -1794,13 +1794,13 @@ const pagesFor = (view) => ({
       <h1>Log fish</h1>
       <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
         <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
-      <p class="small muted">${live ? 'Tap the fish, then Released, Kept or Lost. The spot is taken for you; only your crew sees it.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
+      <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost. The spot is taken for you; only your crew sees it.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
       <div class="card pad stack fishon">
         <div class="quick-species" role="radiogroup" aria-label="Species" ${quick.length ? '' : 'hidden'}>${quick.map((x) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}" ${x.id === picked ? 'checked' : ''}><span>${x.name}</span></label>`))}</div>
         <select id="fo-species" aria-label="Other species">${raw(speciesOptions(null, 'Other species…'))}</select>
         <div class="fates">
-          <button type="button" class="fate released" data-fate="released">Released</button>
           <button type="button" class="fate kept" data-fate="kept">Kept</button>
+          <button type="button" class="fate released" data-fate="released">Released</button>
           <button type="button" class="fate lost" data-fate="lost">Lost</button>
         </div>
         ${live ? raw('<span class="small muted" id="fo-gps">Finding GPS…</span>') : ''}
@@ -2046,7 +2046,7 @@ const pagesFor = (view) => ({
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, fmtDepth(o.depthM)].filter(Boolean).join(', '), fmtTemp(o.waterC), o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.kept, 'kept'))}${raw(tag(f.released, 'released'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
         ${state.me?.teamId && o.teamId === state.me.teamId ? raw(html`<a href="#/fishon?date=${o.date}">Open</a>`) : ''}
