@@ -153,9 +153,30 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     await cap('POST', '/weigh', sail);
     trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     assert.deepEqual(trip.landings.filter((l) => l.species === 'Atlantic sailfish').map((l) => [l.weightKg, l.scaleKg]), [[20, null], [60, 55]]);
+    // Logged 3 tunas, brought 5 to the scale: the log counts 5.
+    const extra = [];
+    for (const kg of ['22', '19']) {
+      const t = registration({ speciesId: tuna, weightKg: kg });
+      t.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 's.png');
+      extra.push((await cap('POST', '/weigh', t)).body.catch.id);
+    }
+    trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
+    const five = trip.landings.filter((l) => l.speciesId === tuna);
+    assert.deepEqual(five.map((l) => [l.scaleKg, !!l.fromScale]), [[28, false], [41, false], [35, false], [22, true], [19, true]]);
+    assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 5);
+    // One withdrawn: it leaves the log with it.
+    await cap('DELETE', `/catches/${extra[1]}`);
+    trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
+    assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 4);
+    // The crew logs the fourth tuna afterwards, with its spot: it takes the
+    // weigh-station one's place instead of counting twice.
+    await cap('POST', '/outings/fish', { speciesId: tuna, fate: 'kept', lat: 6.5, lng: -10.5, date: today });
+    trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
+    assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 4);
+    assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).at(-1), { ...trip.landings.filter((l) => l.speciesId === tuna).at(-1), scaleKg: 22, fromScale: 0, lat: 6.5 });
     // The catch map shows the tunas once each, with their scale weights.
     const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
-    assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', 28, false], ['log', 35, false], ['log', 41, false]]);
+    assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', 22, false], ['log', 28, false], ['log', 35, false], ['log', 41, false]]);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

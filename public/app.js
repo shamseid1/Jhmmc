@@ -1810,7 +1810,7 @@ const pagesFor = (view) => ({
     const saveQueue = (q) => { try { localStorage.setItem(QUEUE, JSON.stringify(q)); } catch {} };
     const time = (iso) => parseTime(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
-    const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : 'added afterwards');
+    const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
     // A fish worth showing off: a post with it filled in, ready for the photo.
     const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.scaleKg ?? l.weightKg ? { weight: l.scaleKg ?? l.weightKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
     function draw() {
@@ -1829,7 +1829,7 @@ const pagesFor = (view) => ({
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate !== 'lost' ? raw(html`· <a class="link small" href="${shareHref(l)}">Share to feed</a>`) : ''}
             ${l.scaleKg != null ? raw(swap(l)) : raw(html`· <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Add estimate'}</button>`)}
-            · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button></div></li>`),
+            ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b>${est(x.weightKg)} <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
