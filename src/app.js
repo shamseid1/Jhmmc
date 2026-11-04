@@ -352,12 +352,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const me = db.prepare(`
       SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
-        t.weigh_station AS weighStation, t.division AS division, u.units
+        t.weigh_station AS weighStation, t.division AS division, u.units, u.notify
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
-    const { photo, units, ...rest } = me;
+    const { photo, units, notify, ...rest } = me;
     return {
-      ...rest, photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
+      ...rest, photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, notify: notifyPrefs(notify), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
       isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }
@@ -391,26 +391,33 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true });
   });
 
-  // Phone notifications to the secretary (and the admin), except whoever acted.
-  // Sent in the background: a slow push service never holds up the captain.
-  function pushToReviewers(payload, by) {
-    const reviewers = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subscriptions s JOIN users u ON u.id = s.user_id
-      WHERE (u.role = 'secretary' OR lower(u.email) = ?) AND u.id != ?`).all(adminEmail ?? '', by.id);
-    for (const r of reviewers) {
+  // What each person wants to be told about (More → Notifications).
+  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: false, review: true };
+  const notifyPrefs = (json) => {
+    let saved = {};
+    try { saved = JSON.parse(json || '{}'); } catch {}
+    return Object.fromEntries(Object.entries(NOTIFY_DEFAULTS).map(([k, v]) => [k, typeof saved[k] === 'boolean' ? saved[k] : v]));
+  };
+  // Phones of the people who want this kind of notification (and pass the filter), except whoever acted.
+  function pushWhere(kind, payload, by, keep = () => true) {
+    const phones = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth, u.id, u.email, u.role, u.notify FROM push_subscriptions s
+      JOIN users u ON u.id = s.user_id WHERE u.id != ?`).all(by?.id ?? 0);
+    for (const r of phones.filter((p) => notifyPrefs(p.notify)[kind] && keep(p))) {
       pusher.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload)
         .then((alive) => { if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(r.endpoint); })
         .catch((err) => console.warn(`Notification failed: ${err.message}`));
     }
   }
 
+  // Phone notifications to the secretary (and the admin), except whoever acted.
+  // Sent in the background: a slow push service never holds up the captain.
+  function pushToReviewers(payload, by) {
+    pushWhere('review', payload, by, (p) => p.role === 'secretary' || (!!adminEmail && p.email.toLowerCase() === adminEmail));
+  }
+
   // An announcement goes to every phone with notifications on, except the author's.
   function pushToEveryone(payload, by) {
-    const phones = db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id != ?').all(by.id);
-    for (const r of phones) {
-      pusher.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload)
-        .then((alive) => { if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(r.endpoint); })
-        .catch((err) => console.warn(`Notification failed: ${err.message}`));
-    }
+    pushWhere('announcements', payload, by);
   }
 
   // New registrations are waiting.
@@ -437,6 +444,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, nickname = ?, country = ?, bio = ? WHERE id = ?')
       .run(name, first, last, nickname, country, bio, u.id);
     if ('units' in req.body) db.prepare('UPDATE users SET units = ? WHERE id = ?').run(readUnits(req.body.units), u.id);
+    if (req.body.notify && typeof req.body.notify === 'object') {
+      const cur = notifyPrefs(db.prepare('SELECT notify FROM users WHERE id = ?').get(u.id).notify);
+      for (const k of Object.keys(NOTIFY_DEFAULTS)) if (typeof req.body.notify[k] === 'boolean') cur[k] = req.body.notify[k];
+      db.prepare('UPDATE users SET notify = ? WHERE id = ?').run(JSON.stringify(cur), u.id);
+    }
     res.json({ user: getMe(u.id) });
   });
 
@@ -1425,6 +1437,24 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       return res.status(400).json({ error: 'Approve or reject.' });
     }
     logRegistration(id, req.body.decision === 'reject' ? 'rejected' : 'approved', req.user, { note });
+    // Tell whoever registered it, and (if they want it) everyone about a new weigh-in.
+    const k = db.prepare(`SELECT k.logged_by, k.weight_kg, k.released, k.points, k.points_note, s.name AS species, t.name AS boat,
+        COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?`).get(id);
+    const fish = `${k.species}${k.weight_kg ? ` (${Math.round(k.weight_kg * 10) / 10} kg)` : k.released ? ' (released)' : ''}`;
+    const approved = req.body.decision !== 'reject';
+    pushWhere('myFish', {
+      title: approved ? 'Fish approved' : 'Fish not counted',
+      body: approved ? `Your ${fish} was approved: ${k.points} points.` : `Your ${fish} wasn't counted: ${k.points_note}`,
+      url: `/#/catch/${id}`,
+    }, req.user, (p) => p.id === k.logged_by);
+    if (approved) {
+      pushWhere('weighins', {
+        title: `Weigh-in · ${k.boat || 'A boat'}`,
+        body: k.weight_kg ? `${k.angler} weighed a ${Math.round(k.weight_kg * 10) / 10} kg ${k.species.toLowerCase()}.` : `${k.angler} released a ${k.species.toLowerCase()}.`,
+        url: '/#/?type=weighins',
+      }, req.user, (p) => p.id !== k.logged_by);
+    }
     res.json({ catch: getCatch(id, req.user) });
   });
 

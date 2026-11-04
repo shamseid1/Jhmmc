@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 40;
+const SCHEMA_VERSION = 41;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS users (
   nickname TEXT,
   -- Units the person sees and types in: {"weight":"kg|lb","depth":"m|ft","temp":"°C|°F"}.
   units TEXT,
+  -- Which notifications the person wants (JSON); unset means the defaults.
+  notify TEXT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   country TEXT,
@@ -585,6 +587,9 @@ function openDb(file) {
   }
   if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'self_run')) {
     db.exec('ALTER TABLE clubs ADD COLUMN self_run INTEGER NOT NULL DEFAULT 0');
+  }
+  if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'notify')) {
+    db.exec('ALTER TABLE users ADD COLUMN notify TEXT');
   }
   if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'units')) {
     db.exec('ALTER TABLE users ADD COLUMN units TEXT');

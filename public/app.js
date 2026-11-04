@@ -2165,6 +2165,36 @@ const pagesFor = (view) => ({
     });
   },
 
+  // Notifications: this phone on or off, and which kinds the person wants.
+  async notifications() {
+    if (!state.me) return needLogin(view, 'choose your notifications');
+    const me = state.me;
+    const kinds = [
+      ['announcements', 'Announcements from JHMMC', 'Tournaments, membership reminders and other news from the officers.'],
+      ...(me.canWeigh ? [['myFish', 'Your fish approved or not counted', 'When the secretary decides on a fish you registered.']] : []),
+      ['weighins', 'Every weigh-in', 'Each time any boat\'s fish is approved. Can be a lot on a busy day.'],
+      ...(me.canApprove ? [['review', 'Fish to review', 'When a captain registers fish waiting for you.']] : []),
+    ];
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Notifications</h1>
+      <div id="notify"></div>
+      <h2>Tell me about</h2>
+      <form class="card menu notify-kinds" id="kinds">${kinds.map(([k, label, sub]) => raw(html`<label class="notify-kind">
+        <span class="mi-text"><b>${label}</b><span>${sub}</span></span>
+        <input type="checkbox" class="switch" name="${k}" ${me.notify?.[k] ? 'checked' : ''}></label>`))}</form>
+      <p class="small muted">These choices follow your account to any phone. Each phone also has to have notifications turned on, above.</p>`;
+    renderNotify(view.querySelector('#notify'), { what: 'the things you choose below' });
+    view.querySelector('#kinds').addEventListener('change', async (e) => {
+      try {
+        state.me = (await api('/me', { method: 'PATCH', body: { notify: { [e.target.name]: e.target.checked } } })).user;
+        toast('Saved.');
+      } catch (err) {
+        e.target.checked = !e.target.checked;
+        toast(err.message);
+      }
+    });
+  },
+
   // How to put the app on the home screen, for each kind of phone.
   async install() {
     const ua = navigator.userAgent;
@@ -2220,6 +2250,7 @@ const pagesFor = (view) => ({
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo, units')}
+        ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>`) : ''}
       ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'Points'}</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any boat in West Africa' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
@@ -2239,7 +2270,6 @@ const pagesFor = (view) => ({
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
-      ${me ? raw('<h2>Notifications</h2><div id="more-notify"></div>') : ''}
       <h2>Regional log</h2><div class="card menu">
         ${raw(me?.teamId ? item('#/fishon', 'fish', 'Log fish', 'At sea or afterwards, blank days too') : '')}
         ${raw(item('#/log', 'history', 'Regional log', "Every boat's outings, and the season at a glance"))}
@@ -2259,8 +2289,6 @@ const pagesFor = (view) => ({
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
-    const moreNotify = view.querySelector('#more-notify');
-    if (moreNotify) renderNotify(moreNotify, { what: `announcements from JHMMC${me.canApprove ? ' and fish to review' : ''}` });
     view.querySelector('#logout')?.addEventListener('click', async () => {
       await api('/auth/logout', { method: 'POST' });
       state.me = null;
@@ -3048,6 +3076,7 @@ const ICONS = {
   boat: '<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   dashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+  bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
   edit: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   rules: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
   scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
@@ -3186,7 +3215,7 @@ function renderNav(active = state.navActive) {
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
-    'admin-boats': 'more', 'club-members': 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
+    'admin-boats': 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

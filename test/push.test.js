@@ -112,6 +112,26 @@ test('the secretary gets a phone notification when fish are registered', async (
     await settle();
     assert.deepEqual(sent.map((s) => s.endpoint.split('/').pop()).sort(), ['boss-phone', 'cap-phone', 'crew-phone']);
     assert.deepEqual([sent[0].title, sent[0].body, sent[0].url], ['JHMMC: Tournament Saturday', 'Pay your membership by Friday.', '/#/?type=announcements']);
+
+    // Each person chooses what they're told about (More → Notifications).
+    assert.deepEqual((await cap('GET', '/me')).body.user.notify, { announcements: true, myFish: true, weighins: false, review: true });
+    await cap('PATCH', '/me', { notify: { announcements: false, nonsense: true } });
+    await crew('PATCH', '/me', { notify: { weighins: true } });
+    sent.length = 0;
+    await sec('POST', '/announcements', { title: 'Second one' });
+    await settle();
+    assert.deepEqual(sent.map((s) => s.endpoint.split('/').pop()).sort(), ['boss-phone', 'crew-phone'], 'the captain switched announcements off');
+    // The secretary approves one of the captain's fish: the captain hears about
+    // their fish; the crew member who asked for every weigh-in hears too.
+    sent.length = 0;
+    const waiting = (await sec('GET', '/officials/queue')).body.toReview;
+    await sec('POST', `/catches/${waiting[0].id}/review`, { decision: 'approve' });
+    await settle();
+    const got = Object.fromEntries(sent.map((s) => [s.endpoint.split('/').pop(), s]));
+    assert.deepEqual(Object.keys(got).sort(), ['cap-phone', 'crew-phone']);
+    assert.equal(got['cap-phone'].title, 'Fish approved');
+    assert.match(got['cap-phone'].body, /^Your Wahoo \(\d+ kg\) was approved: [\d.]+ points\.$/);
+    assert.match(got['crew-phone'].body, /weighed a \d+ kg wahoo/);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });
