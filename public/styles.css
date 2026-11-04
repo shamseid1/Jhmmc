@@ -773,7 +773,8 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .feed-line { margin: 0; font-size: 17px; font-weight: 700; }
 .feed-line a { color: inherit; text-decoration: none; }
 .feed-item .pill { justify-self: start; margin-left: 0; }
-.feed-tabs { overflow-x: auto; scrollbar-width: none; white-space: nowrap; gap: 20px; }
+.feed-tabs { overflow-x: auto; scrollbar-width: none; white-space: nowrap; gap: 14px; justify-content: space-between; }
+.feed-tabs a { font-size: 15px; }
 .feed-tabs::-webkit-scrollbar { display: none; }
 .feed-tabs a { flex: none; }
 .club-mark { width: 44px; height: 44px; border-radius: 12px; object-fit: contain; background: #fff; border: 1px solid var(--line); padding: 3px; }
@@ -785,3 +786,4 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .ann-new summary { cursor: pointer; font-weight: 700; color: var(--accent); list-style: none; display: flex; align-items: center; gap: 8px; }
 .ann-new summary::-webkit-details-marker { display: none; }
 .ann-new[open] summary { margin-bottom: 12px; }
+.feed-notify:not(:empty) { margin-bottom: 12px; }

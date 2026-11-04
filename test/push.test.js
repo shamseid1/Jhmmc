@@ -104,6 +104,14 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.equal((await cap('POST', '/weigh', one)).status, 201);
     await settle();
     assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.body]), [['boss-phone', 'Sea Hunter: 1 fish registered by Moses Doe. 3 waiting in total.']]);
+
+    // An announcement goes to every phone with notifications on, captains and
+    // crews included, but not the author's.
+    sent.length = 0;
+    await sec('POST', '/announcements', { title: 'Tournament Saturday', body: 'Pay your membership by Friday.' });
+    await settle();
+    assert.deepEqual(sent.map((s) => s.endpoint.split('/').pop()).sort(), ['boss-phone', 'cap-phone', 'crew-phone']);
+    assert.deepEqual([sent[0].title, sent[0].body, sent[0].url], ['JHMMC: Tournament Saturday', 'Pay your membership by Friday.', '/#/?type=announcements']);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

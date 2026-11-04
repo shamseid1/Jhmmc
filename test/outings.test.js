@@ -128,7 +128,6 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.ok(feed.some((x) => x.kind === 'log' && x.boat === 'Exocet' && x.species === 'Sailfish' && x.fate === 'released'));
     assert.equal(JSON.stringify(feed).includes('9.41'), false, 'no spots on the feed');
     assert.ok((await as()('GET', '/feed?type=releases')).body.items.every((x) => x.fate === 'released'));
-    assert.ok((await as()('GET', '/feed?type=hookups')).body.items.every((x) => ['kept', 'lost'].includes(x.fate)));
     assert.equal((await as()('GET', '/feed?type=weighins')).body.items.length, 0, 'nothing weighed in yet');
     assert.match((await marwan('POST', '/catches', {})).body.error, /fills itself/);
     // Depth charts: crews only, never public.

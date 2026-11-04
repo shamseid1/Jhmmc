@@ -820,7 +820,7 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const type = ['weighins', 'releases', 'hookups', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
+    const type = ['weighins', 'releases', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
     const tab = (key, label) => html`<a role="tab" href="#/${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
     // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
     const officer = !!state.me?.canReview;
@@ -832,8 +832,11 @@ const pagesFor = (view) => ({
           <p class="error"></p>
           <div><button type="submit" class="primary">Post announcement</button></div>
         </form></details>`) : ''}
-      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('releases', 'Releases'))}${raw(tab('hookups', 'Hookups'))}${raw(tab('announcements', 'Announcements'))}</div>
+      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('releases', 'Releases'))}${raw(tab('announcements', 'Announcements'))}</div>
+      ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
+    // Until this phone has notifications on, offer them here (announcements, reminders).
+    if (state.me) renderNotify(view.querySelector('#notify'), { what: 'announcements from JHMMC, like tournament reminders', hideWhenOn: true });
     const form = view.querySelector('#ann');
     if (form) {
       bindForm(form, async () => {
@@ -2234,6 +2237,7 @@ const pagesFor = (view) => ({
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
+      ${me ? raw('<h2>Notifications</h2><div id="more-notify"></div>') : ''}
       <h2>Regional log</h2><div class="card menu">
         ${raw(me?.teamId ? item('#/fishon', 'fish', 'Log fish', 'At sea or afterwards, blank days too') : '')}
         ${raw(item('#/log', 'history', 'Regional log', "Every boat's outings, and the season at a glance"))}
@@ -2253,6 +2257,8 @@ const pagesFor = (view) => ({
         ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
+    const moreNotify = view.querySelector('#more-notify');
+    if (moreNotify) renderNotify(moreNotify, { what: `announcements from JHMMC${me.canApprove ? ' and fish to review' : ''}` });
     view.querySelector('#logout')?.addEventListener('click', async () => {
       await api('/auth/logout', { method: 'POST' });
       state.me = null;
@@ -3102,13 +3108,16 @@ async function pushSubscription() {
   return { reg, sub: await reg.pushManager.getSubscription() };
 }
 
-// The "notifications on this phone" switch on the Review page.
-async function renderNotify(el) {
+// The "notifications on this phone" switch: on More for everyone (announcements),
+// on the Review page for officials (fish to review), and on the feed until it's on.
+async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn = false } = {}) {
+  // On the feed it's only an offer: nothing if this phone can't, or won't, have them.
+  if (hideWhenOn && (!pushSupported() || Notification.permission === 'denied')) return;
   const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (!pushSupported()) {
     el.innerHTML = iphone && !installed
-      ? `<p><b>Get a notification when fish are registered.</b></p><p class="small muted">On iPhone, first add this app to your Home Screen: tap the Share button, then <b>Add to Home Screen</b>. Open the app from the Home Screen and come back to this page.</p>`
+      ? `<p><b>Get notifications for ${what}.</b></p><p class="small muted">On iPhone, first add this app to your Home Screen: tap the Share button, then <b>Add to Home Screen</b>. Open the app from the Home Screen and come back to this page.</p>`
       : '<p class="small muted">This browser can\'t show notifications. Chrome on Android, or the app added to an iPhone Home Screen, can.</p>';
     return;
   }
@@ -3117,11 +3126,17 @@ async function renderNotify(el) {
     return;
   }
   const { reg, sub } = await pushSubscription();
+  if (sub && hideWhenOn) {
+    el.innerHTML = '';
+    el.className = '';
+    api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
+    return;
+  }
   // Re-send a live subscription, in case the server forgot it.
   if (sub) api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
   el.innerHTML = sub
     ? `<p class="small muted">${icon('check')} Notifications on for this phone · <button class="link" data-act="push-off">Turn off</button></p>`
-    : `<div class="notify-row"><span><b>Get a notification</b> on this phone when a captain registers fish.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
+    : `<div class="notify-row"><span><b>Get notifications</b> on this phone for ${what}.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
   // Once on, it's a quiet line rather than a card.
   el.classList.toggle('card', !sub);
   el.classList.toggle('pad', !sub);
@@ -3148,7 +3163,7 @@ async function renderNotify(el) {
     } catch (ex) {
       toast(ex.message || 'Could not change notifications.');
     }
-    renderNotify(el);
+    renderNotify(el, { what, hideWhenOn });
   };
 }
 
