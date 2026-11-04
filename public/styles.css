@@ -802,3 +802,5 @@ input.switch:checked::after { transform: translateX(20px); }
 .weighin-fish small { font-weight: 600; margin-left: 6px; }
 .weighin-total { display: flex; justify-content: space-between; padding: 8px 12px; font-weight: 800; background: var(--accent-soft); color: var(--accent); }
 .row-buttons { display: flex; gap: 8px; margin-top: 8px; }
+a.me-card { color: var(--text); text-decoration: none; }
+.me-link { color: var(--accent); font-weight: 700; margin-top: 2px; }

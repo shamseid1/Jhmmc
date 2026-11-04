@@ -2265,60 +2265,50 @@ const pagesFor = (view) => ({
       ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
       <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<div class="page-head"><h1 class="center">More</h1>${raw(themeButton())}</div>
-      ${me ? raw(html`<div class="card pad me-card">
+      ${me ? raw(html`<a class="card pad me-card" href="#/user/${me.id}">
           ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
-          <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div></div>
-        </div>`)
-        : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log catches with your boat, like and comment.</p>
+          <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div>
+            <div class="small me-link">My dashboard ›</div></div>
+        </a>`)
+        : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log fish with your boat.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${isInstalled() ? '' : raw(`<div class="card pad install-card">
         <img src="/icon-192.png" alt="" width="48" height="48">
         <div><b>Get the app</b><span class="small muted">On your home screen, opens like any other app</span></div>
         <button type="button" class="primary" data-install>${icon('download')} Install</button>
       </div>`)}
-      ${me ? raw(`<h2>You</h2><div class="card menu">
-        ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your approved fish, releases and heaviest')}
+      ${me ? raw(`<h2>Account</h2><div class="card menu">
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
-        ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
-        ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo, units')}
+        ${item('#/profile', 'edit', 'Edit profile', 'Name, photo, units, password')}
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
+      </div>
+      <h2>Fishing</h2><div class="card menu">
+        ${me.teamId ? item('#/spots', 'pin', 'My catch map', 'Your crew\'s fish, where they were caught') : ''}
+        ${item('#/log', 'history', 'Regional log', "Every boat's trips, and the season at a glance")}
+        ${me.canWeigh && !me.canReview ? item('#/weigh', 'weight', 'Register fish', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`) : ''}
+        ${me.canWeigh && !me.canReview ? item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours') : ''}
       </div>`) : ''}
-      ${me?.canWeigh ? raw(`<h2>${me.canReview ? 'JHMMC officials' : 'Points'}</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Register fish', me.canReview ? 'For any boat in West Africa' : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
-        ${item('#/tournaments', 'trophy', me.canReview ? 'Tournaments' : 'Tournament entry', me.canReview ? "Who's in, anglers, members and guests" : 'Enter your boat and anglers')}
-        ${me.canReview ? '' : item('#/pending', 'eye', 'Pending registrations', "Every boat's fish waiting for the secretary; dispute within 24 hours")}
+      ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
-        ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, withdrawal, dispute and decision') : ''}
-        ${me.canReview ? item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season') : ''}
+        ${me.canReview ? item('#/weigh', 'weight', 'Register fish', 'For any boat') : ''}
+        ${item('#/tournaments', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
+        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
+        ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
-      ${me?.canHandleMoney && !me.canReview ? raw(`<h2>JHMMC treasurer</h2><div class="card menu">
-        ${item('#/club-members', 'participants', 'Club members', 'Who has paid their JHMMC membership this season')}
-        ${item('#/tournaments', 'trophy', 'Tournaments', 'Temporary memberships to collect')}
-      </div>`) : ''}
-      ${me?.isAdmin ? raw(`<h2>Platform admin</h2><p class="small muted section-note">West Africa Big Game: every club, boat and member.</p><div class="card menu">
-        ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
-        ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
+      ${me?.isAdmin ? raw(`<h2>Platform admin</h2><div class="card menu">
+        ${item('#/members', 'key', 'Members', 'Accounts, roles, password reset links')}
+        ${item('#/admin-boats', 'boat', 'Boats', 'Weigh stations, Ocean or River')}
         ${item('#/clubs', 'clubs', 'Clubs', clubRequests ? 'Requests to open a club waiting for you' : 'Open clubs and answer requests', clubRequests)}
       </div>`) : ''}
-      <h2>Regional log</h2><div class="card menu">
-        ${raw(me?.teamId ? item('#/fishon', 'fish', 'Log fish', 'At sea or afterwards, blank days too') : '')}
-        ${raw(item('#/log', 'history', 'Regional log', "Every boat's outings, and the season at a glance"))}
-      </div>
-      <h2>Rules</h2>
-      <div class="card menu">
+      <h2>Info</h2><div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
-        ${raw(item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
-        ${raw(item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
-      </div>
-      <h2>Records &amp; clubs</h2>
-      <div class="card menu">
-        ${raw(item('#/records?club=igfa', 'trophy', 'IGFA world records'))}
-        ${raw(item('#/records', 'medal', 'Club records'))}
-        ${raw(item('#/clubs', 'clubs', 'Clubs'))}
-        ${raw(item('#/participants?tab=boats', 'boat', 'All boats'))}
+        ${raw(me?.canReview ? '' : item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
+        ${raw(me?.canReview ? '' : item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
+        ${raw(me?.isAdmin ? '' : item('#/clubs', 'clubs', 'Clubs', 'Every club, or ask to open one'))}
+        ${raw(me ? '' : item('#/log', 'history', 'Regional log', "Every boat's trips"))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
     view.querySelector('#logout')?.addEventListener('click', async () => {
