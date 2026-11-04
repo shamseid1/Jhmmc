@@ -114,7 +114,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.deepEqual([sent[0].title, sent[0].body, sent[0].url], ['JHMMC: Tournament Saturday', 'Pay your membership by Friday.', '/#/?type=announcements']);
 
     // Each person chooses what they're told about (More → Notifications).
-    assert.deepEqual((await cap('GET', '/me')).body.user.notify, { announcements: true, myFish: true, weighins: true, logged: true, review: true });
+    assert.deepEqual((await cap('GET', '/me')).body.user.notify, { announcements: true, myFish: true, weighins: true, logged: true });
     await cap('PATCH', '/me', { notify: { announcements: false, nonsense: true } });
     await boss('PATCH', '/me', { notify: { weighins: false, logged: false } });
     sent.length = 0;
@@ -149,6 +149,29 @@ test('the secretary gets a phone notification when fish are registered', async (
     await settle();
     assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title, s.body]), [['crew-phone', 'Fish on', 'Sea Hunter boarded a wahoo.']]);
     assert.equal(JSON.stringify(sent).includes('6.31'), false);
+
+    // Only JHMMC (the admin) opens clubs: anyone else's is a request. It stays
+    // hidden until approved, and the person hears back either way.
+    sent.length = 0;
+    const asked = await cap('POST', '/clubs', { name: 'Conakry Big Game', country: 'Guinea' });
+    assert.deepEqual([asked.status, asked.body.requested], [201, true]);
+    await settle();
+    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title]), [['boss-phone', 'Club request']]);
+    assert.equal((await cap('GET', '/clubs')).body.clubs.some((c) => c.name === 'Conakry Big Game'), false, 'not listed yet');
+    assert.equal((await cap('GET', `/clubs/${asked.body.club.id}`)).status, 404);
+    assert.equal((await cap('GET', '/admin/club-requests')).status, 403);
+    const reqs = (await boss('GET', '/admin/club-requests')).body.requests;
+    assert.deepEqual(reqs.map((r) => [r.name, r.country, r.requestedBy]), [['Conakry Big Game', 'Guinea', 'Moses']]);
+    sent.length = 0;
+    assert.equal((await boss('POST', `/admin/club-requests/${reqs[0].id}`, { decision: 'approve' })).status, 200);
+    await settle();
+    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title]), [['cap-phone', 'Club approved']]);
+    assert.ok((await cap('GET', '/clubs')).body.clubs.some((c) => c.name === 'Conakry Big Game'));
+    // The admin's own club opens straight away; a declined request disappears.
+    assert.equal((await boss('POST', '/clubs', { name: 'Sherbro Anglers', country: 'Sierra Leone' })).body.requested, false);
+    const no = (await crew('POST', '/clubs', { name: 'Not Yet', country: 'Ghana' })).body.club;
+    await boss('POST', `/admin/club-requests/${no.id}`, { decision: 'decline' });
+    assert.equal((await boss('GET', '/admin/club-requests')).body.requests.length, 0);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

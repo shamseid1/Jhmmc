@@ -801,3 +801,4 @@ input.switch:checked::after { transform: translateX(20px); }
 .weighin-fish a span:last-child { font-weight: 700; white-space: nowrap; }
 .weighin-fish small { font-weight: 600; margin-left: 6px; }
 .weighin-total { display: flex; justify-content: space-between; padding: 8px 12px; font-weight: 800; background: var(--accent-soft); color: var(--accent); }
+.row-buttons { display: flex; gap: 8px; margin-top: 8px; }

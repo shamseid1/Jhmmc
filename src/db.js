@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 41;
+const SCHEMA_VERSION = 42;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -119,7 +119,9 @@ CREATE TABLE IF NOT EXISTS clubs (
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   -- A club that weighs and approves its own boats' fish. Until then they go through JHMMC.
-  self_run INTEGER NOT NULL DEFAULT 0
+  self_run INTEGER NOT NULL DEFAULT 0,
+  -- Asked for by a member, waiting for JHMMC (the admin) to approve it.
+  pending INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -584,6 +586,9 @@ function openDb(file) {
       DELETE FROM club_post_comments; DELETE FROM club_post_likes; DELETE FROM club_posts;
       DELETE FROM catches;
       COMMIT;`);
+  }
+  if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'pending')) {
+    db.exec('ALTER TABLE clubs ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');
   }
   if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'self_run')) {
     db.exec('ALTER TABLE clubs ADD COLUMN self_run INTEGER NOT NULL DEFAULT 0');

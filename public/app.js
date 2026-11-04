@@ -1129,16 +1129,27 @@ const pagesFor = (view) => ({
     await renderFeed(view.querySelector('#feed'), { team: team.id });
   },
 
+  // Clubs: JHMMC (the admin) opens them; anyone else asks, and the admin decides.
   async clubs() {
-    const clubs = await loadClubs(true);
+    const admin = !!state.me?.isAdmin;
+    const [clubs, { requests }] = await Promise.all([loadClubs(true), admin ? api('/admin/club-requests') : { requests: [] }]);
     view.innerHTML = html`<h1>Clubs</h1>
+      ${requests.length ? raw(html`<h2>Requests to open a club (${requests.length})</h2>
+        <div class="card"><ul class="list" id="club-requests">${requests.map((r) => raw(html`<li data-id="${r.id}">
+          <b>${r.name}</b> <span class="muted small">${[r.city, r.country].filter(Boolean).join(', ')}</span>
+          <div class="small muted">Asked by ${r.requestedBy || 'a member'}${r.email ? ` (${r.email})` : ''} · ${fmtWhen(r.createdAt)}</div>
+          ${r.description ? raw(html`<p class="small">${r.description}</p>`) : ''}
+          <div class="row-buttons"><button type="button" class="primary" data-decide="approve">Approve</button>
+            <button type="button" class="danger" data-decide="decline">Decline</button></div>
+        </li>`))}</ul></div>`) : ''}
       <div class="card"><ul class="list">
         ${clubs.length ? clubs.map((c) => raw(html`<li>
           <a href="#/club/${c.id}"><b>${c.name}</b></a>
-          <div class="muted small">${[c.city, c.country].filter(Boolean).join(', ')} · ${plural(c.teams, 'boat')} · ${plural(c.catches, 'catch')}</div>
-        </li>`)) : raw('<li class="muted">No clubs yet — register yours below.</li>')}
+          <div class="muted small">${[c.city, c.country].filter(Boolean).join(', ')} · ${plural(c.teams, 'boat')}</div>
+        </li>`)) : raw('<li class="muted">No clubs yet.</li>')}
       </ul></div>
-      <h2>Register a club</h2>
+      <h2>${admin ? 'Open a club' : 'Ask to open a club'}</h2>
+      ${admin ? '' : raw('<p class="small muted">Clubs are opened by JHMMC. Send the details and JHMMC will approve it; you\'ll get a notification.</p>')}
       ${state.me ? raw(html`<form class="card pad stack" id="f">
         <label>Club name <input name="name" required maxlength="100"></label>
         <div class="row">
@@ -1147,13 +1158,31 @@ const pagesFor = (view) => ({
         </div>
         <label>About <textarea name="description" maxlength="1000"></textarea></label>
         <p class="error"></p>
-        <div><button type="submit" class="primary">Create club</button></div>
-      </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to register a club.</p>')}`;
+        <div><button type="submit" class="primary">${admin ? 'Open club' : 'Send request'}</button></div>
+      </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to ask for a club.</p>')}`;
     const form = view.querySelector('#f');
     if (form) bindForm(form, async () => {
-      const { club } = await api('/clubs', { method: 'POST', body: formData(form) });
+      const { club, requested } = await api('/clubs', { method: 'POST', body: formData(form) });
       state.clubs = null;
-      location.hash = `#/club/${club.id}`;
+      if (requested) {
+        toast('Request sent to JHMMC.');
+        form.reset();
+      } else {
+        location.hash = `#/club/${club.id}`;
+      }
+    });
+    view.querySelector('#club-requests')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-decide]');
+      if (!btn) return;
+      const li = btn.closest('[data-id]');
+      try {
+        await api(`/admin/club-requests/${li.dataset.id}`, { method: 'POST', body: { decision: btn.dataset.decide } });
+        toast(btn.dataset.decide === 'approve' ? 'Club opened.' : 'Request declined.');
+        state.clubs = null;
+        route();
+      } catch (err) {
+        toast(err.message);
+      }
     });
   },
 
@@ -2174,8 +2203,7 @@ const pagesFor = (view) => ({
       ['announcements', 'Announcements from JHMMC', 'Tournaments, membership reminders and other news from the officers.'],
       ...(me.canWeigh ? [['myFish', 'Your fish approved or not counted', 'When the secretary decides on a fish you registered.']] : []),
       ['weighins', 'Every weigh-in', 'Each time any boat\'s fish is approved.'],
-      ['logged', 'Fish logged at sea', 'Each time a boat logs a fish: "Liberian Girl boarded a blue marlin". Never the spot.'],
-      ...(me.canApprove ? [['review', 'Fish to review', 'When a captain registers fish waiting for you.']] : []),
+      ['logged', 'Fish logged at sea', 'Each time a boat logs a fish.'],
     ];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Notifications</h1>
@@ -2230,6 +2258,7 @@ const pagesFor = (view) => ({
   async more() {
     const me = state.me;
     if (me?.canReview) await refreshPending();
+    const clubRequests = me?.isAdmin ? (await api('/admin/club-requests').catch(() => ({ requests: [] }))).requests.length : 0;
     const item = (href, iconName, label, sub = '', count = 0) => `<a class="menu-item" href="${href}">
       <span class="mi-icon">${icon(iconName)}</span>
       <span class="mi-text"><b>${esc(label)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
@@ -2271,6 +2300,7 @@ const pagesFor = (view) => ({
       ${me?.isAdmin ? raw(`<h2>Platform admin</h2><p class="small muted section-note">West Africa Big Game: every club, boat and member.</p><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Who belongs to JHMMC, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
+        ${item('#/clubs', 'clubs', 'Clubs', clubRequests ? 'Requests to open a club waiting for you' : 'Open clubs and answer requests', clubRequests)}
       </div>`) : ''}
       <h2>Regional log</h2><div class="card menu">
         ${raw(me?.teamId ? item('#/fishon', 'fish', 'Log fish', 'At sea or afterwards, blank days too') : '')}

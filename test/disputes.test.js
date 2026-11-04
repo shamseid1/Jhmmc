@@ -15,7 +15,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-disputes-'));
   const dbFile = path.join(tmp, 'fishing.db');
   const pusher = { publicKey: 'k', send: async () => true };
-  const app = createApp({ dbFile, uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher });
+  const app = createApp({ openClubs: true, dbFile, uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;

@@ -64,6 +64,8 @@ function createApp({
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
   // Tests that still post open it.
   openPosts = false,
+  // Only JHMMC (the admin) opens clubs; others ask. Tests that make clubs freely open it.
+  openClubs = false,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
@@ -392,17 +394,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   // What each person wants to be told about (More → Notifications).
-  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: true, logged: true, review: true };
+  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: true, logged: true };
   const notifyPrefs = (json) => {
     let saved = {};
     try { saved = JSON.parse(json || '{}'); } catch {}
     return Object.fromEntries(Object.entries(NOTIFY_DEFAULTS).map(([k, v]) => [k, typeof saved[k] === 'boolean' ? saved[k] : v]));
   };
   // Phones of the people who want this kind of notification (and pass the filter), except whoever acted.
-  function pushWhere(kind, payload, by, keep = () => true) {
+  // always: sent whatever the person's choices (fish to review, club requests).
+  function pushWhere(kind, payload, by, keep = () => true, always = false) {
     const phones = db.prepare(`SELECT s.endpoint, s.p256dh, s.auth, u.id, u.email, u.role, u.notify FROM push_subscriptions s
       JOIN users u ON u.id = s.user_id WHERE u.id != ?`).all(by?.id ?? 0);
-    for (const r of phones.filter((p) => notifyPrefs(p.notify)[kind] && keep(p))) {
+    for (const r of phones.filter((p) => (always || notifyPrefs(p.notify)[kind]) && keep(p))) {
       pusher.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload)
         .then((alive) => { if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(r.endpoint); })
         .catch((err) => console.warn(`Notification failed: ${err.message}`));
@@ -412,7 +415,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Phone notifications to the secretary (and the admin), except whoever acted.
   // Sent in the background: a slow push service never holds up the captain.
   function pushToReviewers(payload, by) {
-    pushWhere('review', payload, by, (p) => p.role === 'secretary' || (!!adminEmail && p.email.toLowerCase() === adminEmail));
+    // Always on: reviewing fish is the secretary's job, not a choice.
+    pushWhere('review', payload, by, (p) => p.role === 'secretary' || (!!adminEmail && p.email.toLowerCase() === adminEmail), true);
   }
 
   // An announcement goes to every phone with notifications on, except the author's.
@@ -570,9 +574,29 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       SELECT c.id, c.name, c.country, c.city, c.description,
         (SELECT COUNT(*) FROM teams t WHERE t.club_id = c.id) AS teams,
         (SELECT COUNT(*) FROM catches k WHERE k.club_id = c.id) AS catches
-      FROM clubs c ORDER BY c.country, c.name
+      FROM clubs c WHERE c.pending = 0 ORDER BY c.country, c.name
     `).all();
     res.json({ clubs });
+  });
+
+  // Requests to open a club, for JHMMC (the admin) to approve or decline.
+  api.get('/admin/club-requests', requireAdmin, (_req, res) => {
+    res.json({ requests: db.prepare(`SELECT c.id, c.name, c.country, c.city, c.description, c.created_at AS createdAt,
+        COALESCE(NULLIF(u.nickname, ''), u.name) AS requestedBy, u.email
+      FROM clubs c LEFT JOIN users u ON u.id = c.created_by WHERE c.pending = 1 ORDER BY c.id`).all() });
+  });
+  api.post('/admin/club-requests/:id', requireAdmin, (req, res) => {
+    const club = db.prepare('SELECT id, name, created_by FROM clubs WHERE id = ? AND pending = 1').get(intId(req.params.id) ?? 0);
+    if (!club) return res.status(404).json({ error: 'Request not found.' });
+    const approve = req.body.decision === 'approve';
+    if (approve) db.prepare('UPDATE clubs SET pending = 0 WHERE id = ?').run(club.id);
+    else db.prepare('DELETE FROM clubs WHERE id = ?').run(club.id);
+    pushWhere('review', {
+      title: approve ? 'Club approved' : 'Club request declined',
+      body: approve ? `${club.name} is open: boats can join it now.` : `JHMMC didn't open ${club.name}.`,
+      url: approve ? `/#/club/${club.id}` : '/#/clubs',
+    }, req.user, (p) => p.id === club.created_by, true);
+    res.json({ ok: true });
   });
 
   api.post('/clubs', (req, res) => {
@@ -582,17 +606,23 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       return res.status(400).json({ error: 'Club name and a West African country are required.' });
     }
     if (db.prepare('SELECT 1 FROM clubs WHERE name = ?').get(name)) {
-      return res.status(409).json({ error: 'A club with that name already exists.' });
+      return res.status(409).json({ error: 'A club with that name already exists (or has been asked for).' });
     }
+    // JHMMC (the admin) opens clubs; anyone else's goes to the admin as a request.
+    const pending = openClubs || isAdminUser(req.user) ? 0 : 1;
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO clubs (name, country, city, description, created_by) VALUES (?, ?, ?, ?, ?)')
-      .run(name, country, str(req.body.city, 80), str(req.body.description, 1000), req.user.id);
-    res.status(201).json({ club: db.prepare('SELECT * FROM clubs WHERE id = ?').get(Number(lastInsertRowid)) });
+      .prepare('INSERT INTO clubs (name, country, city, description, created_by, pending) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(name, country, str(req.body.city, 80), str(req.body.description, 1000), req.user.id, pending);
+    if (pending) {
+      pushWhere('review', { title: 'Club request', body: `${req.user.name} asks to open ${name} (${country}).`, url: '/#/clubs' },
+        req.user, (p) => !!adminEmail && p.email.toLowerCase() === adminEmail, true);
+    }
+    res.status(201).json({ club: db.prepare('SELECT * FROM clubs WHERE id = ?').get(Number(lastInsertRowid)), requested: !!pending });
   });
 
   api.get('/clubs/:id', (req, res) => {
     const id = intId(req.params.id);
-    const club = id && db.prepare('SELECT id, name, country, city, description, created_at AS createdAt FROM clubs WHERE id = ?').get(id);
+    const club = id && db.prepare('SELECT id, name, country, city, description, created_at AS createdAt FROM clubs WHERE id = ? AND pending = 0').get(id);
     if (!club) return res.status(404).json({ error: 'Club not found.' });
     const teams = db.prepare(`
       SELECT t.id, t.name, t.home_port AS homePort,
@@ -610,7 +640,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- teams (boats) -----------------------------------------------------
 
   function validClub(clubId) {
-    return !clubId || !!db.prepare('SELECT 1 FROM clubs WHERE id = ?').get(clubId);
+    return !clubId || !!db.prepare('SELECT 1 FROM clubs WHERE id = ? AND pending = 0').get(clubId);
   }
 
   // Released and weighed counts drive the bars on the participant cards: fish
@@ -2397,7 +2427,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // the app's own records for each species and line class.
   api.get('/records', (req, res) => {
     const clubId = intId(req.query.club);
-    const club = clubId && db.prepare('SELECT id, name FROM clubs WHERE id = ?').get(clubId);
+    const club = clubId && db.prepare('SELECT id, name FROM clubs WHERE id = ? AND pending = 0').get(clubId);
     if (clubId && !club) return res.status(404).json({ error: 'Club not found.' });
     const best = db.prepare(`
       SELECT * FROM (
