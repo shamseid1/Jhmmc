@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 37;
+const SCHEMA_VERSION = 38;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -556,6 +556,13 @@ function openDb(file) {
   }
   if (landingCols.length && !landingCols.some((c) => c.name === 'catch_id')) {
     db.exec('ALTER TABLE outing_landings ADD COLUMN catch_id INTEGER REFERENCES catches(id) ON DELETE SET NULL');
+  }
+  if (hasTables && version < 38) {
+    // Early posts that went through the secretary's queue (before posts and
+    // registrations were separate) were never weighed: no weigh station, no
+    // scale photo or video. They're posts, so they stop counting as weighed fish.
+    db.exec(`UPDATE catches SET status = 'unofficial', points = NULL, points_note = NULL
+      WHERE status <> 'unofficial' AND weigh_station IS NULL AND scale_photo IS NULL AND scale_video IS NULL`);
   }
   if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'self_run')) {
     db.exec('ALTER TABLE clubs ADD COLUMN self_run INTEGER NOT NULL DEFAULT 0');
