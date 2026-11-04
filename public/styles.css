@@ -773,3 +773,4 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
   border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 15px; line-height: 1.2; cursor: pointer; }
 .qs input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .qs input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.quick-species[hidden] { display: none; }

@@ -1778,22 +1778,25 @@ const pagesFor = (view) => ({
     let trip = got?.trip ?? null;
     if (list0) state.techniques = list0.techniques;
     const techniques = state.techniques || [];
-    // Big buttons for the boat's usual fish: the ones logged most recently on
-    // this phone, then the region's regulars. Anything else from the list.
-    const REGULARS = ['Atlantic sailfish', 'Atlantic blue marlin', 'Yellowfin tuna', 'Wahoo', 'Dorado (mahi-mahi)', 'Barracuda'];
+    // Big buttons for the boat's usual fish. Ocean boats: the same four, always
+    // in the same place. River boats: the ones logged most recently on this phone.
+    const OCEAN = ['Atlantic blue marlin', 'Yellowfin tuna', 'Atlantic sailfish', 'Dorado (mahi-mahi)'];
     let recent = [];
     try { recent = JSON.parse(localStorage.getItem('fishon-recent') || '[]'); } catch {}
     const byName = new Map(state.meta.species.map((x) => [x.name, x]));
     const byId = new Map(state.meta.species.map((x) => [String(x.id), x]));
-    const quick = [...new Set([...recent.map((id) => byId.get(String(id))?.name), ...REGULARS])]
-      .map((n) => byName.get(n)).filter(Boolean).slice(0, 6);
+    const river = state.me.division === 'river';
+    const quick = (river ? [...new Set(recent.map((id) => byId.get(String(id))?.name))].slice(0, 4) : OCEAN)
+      .map((n) => byName.get(n)).filter(Boolean);
+    // The last fish logged is picked already, if it has a button.
+    const picked = quick.find((x) => x.id === recent[0])?.id;
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
       <h1>Log fish</h1>
       <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
         <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
       <p class="small muted">${live ? 'Tap the fish, then Released, Kept or Lost. The spot is taken for you; only your crew sees it.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
       <div class="card pad stack fishon">
-        <div class="quick-species" role="radiogroup" aria-label="Species">${quick.map((x, i) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}" ${i === 0 ? 'checked' : ''}><span>${x.name.replace(' (mahi-mahi)', '')}</span></label>`))}</div>
+        <div class="quick-species" role="radiogroup" aria-label="Species" ${quick.length ? '' : 'hidden'}>${quick.map((x) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}" ${x.id === picked ? 'checked' : ''}><span>${x.name.replace(' (mahi-mahi)', '')}</span></label>`))}</div>
         <select id="fo-species" aria-label="Other species">${raw(speciesOptions(null, 'Other species…'))}</select>
         <div class="fates">
           <button type="button" class="fate released" data-fate="released">Released</button>

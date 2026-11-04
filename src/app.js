@@ -313,7 +313,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const me = db.prepare(`
       SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
-        t.weigh_station AS weighStation, u.units
+        t.weigh_station AS weighStation, t.division AS division, u.units
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
     const { photo, units, ...rest } = me;
