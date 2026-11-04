@@ -1246,7 +1246,7 @@ const pagesFor = (view) => ({
         ? `JHMMC Tournaments: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
         : board === 'jhmmc' ? `JHMMC Season: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
           : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
-        Fish registered at the weigh station (or the boat's home port) and approved by the JHMMC secretary.
+        Fish registered at the weigh station and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
       <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
