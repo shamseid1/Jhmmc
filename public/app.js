@@ -832,32 +832,32 @@ const pagesFor = (view) => ({
       view.innerHTML = html`<h1>New post</h1>${raw(noBoatBanner())}`;
       return;
     }
-    const { team } = await api(`/teams/${state.me.teamId}`);
-    const crew = team.members;
-    // Like Instagram: the photo or video and a caption. The fish's details are
-    // there to add, never required. Fish with their spots go in the log (Log fish).
+    // Like Instagram: a photo or video and a caption. Fish are added in Log fish;
+    // "Share to feed" there opens this page with the fish filled in.
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const fish = state.meta.species.find((x) => String(x.id) === q.get('species'));
+    const weightKg = Number(q.get('weight')) > 0 ? Number(q.get('weight')) : null;
+    const released = q.get('released') === '1';
+    const crew = fish ? (await api(`/teams/${state.me.teamId}`)).team.members : [];
     view.innerHTML = html`<h1>New post</h1>
       <form class="card pad stack" id="f">
+        ${fish ? raw(html`<div class="shared-fish"><b>${fish.name}</b>${weightKg ? ` · ~${fmtWeight(weightKg)}` : ''}
+          ${released ? raw('<span class="pill released">released</span>') : ''}<span class="small muted">from Log fish</span></div>`) : ''}
         <div class="photo-pick">
           ${raw(MEDIA_PREVIEWS)}
           <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Add a photo or video</span></button>
           <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
         </div>
-        <label>Caption <textarea name="notes" maxlength="2000" rows="3" placeholder="Fish on! Lure, crew, conditions…"></textarea></label>
-        <label>Species <select name="speciesId">${raw(speciesOptions(null, 'Optional'))}</select></label>
-        <label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], '', 'Optional'))}</select></label>
-        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>
-        <div class="row">
-          <label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" placeholder="optional"></label>
-          <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Optional'))}</select></label>
-        </div>
-        <p class="small muted">Logging fish at sea with the spot? Use <b>Log fish</b> in the bottom bar.</p>
+        <label>Caption <textarea name="notes" maxlength="2000" rows="3" placeholder="${fish ? 'Fish on! Lure, crew, conditions…' : 'The crew, the boat, the day…'}"></textarea></label>
+        ${fish ? raw(html`<label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], '', 'Optional'))}</select></label>
+        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>`)
+          : raw('<p class="small muted">Landed a fish? Add it in <b>Log fish</b>, then tap <b>Share to feed</b> on it.</p>')}
         <p class="error"></p>
         <div><button type="submit" class="primary">Share</button></div>
       </form>`;
     const form = view.querySelector('#f');
     const nameBox = view.querySelector('#angler-name');
-    form.anglerId.addEventListener('change', () => {
+    form.anglerId?.addEventListener('change', () => {
       nameBox.hidden = form.anglerId.value !== 'other';
       form.anglerName.required = !nameBox.hidden;
       if (!nameBox.hidden) form.anglerName.focus();
@@ -865,8 +865,14 @@ const pagesFor = (view) => ({
     const media = wireMediaPick(form);
     bindForm(form, async () => {
       const fd = await media.addTo(new FormData(form));
-      fd.set('weightKg', fromUnit('weight', fd.get('weightKg')));
       if (!fd.getAll('photo').some((f) => f.size) && !fd.get('video')?.size) throw new Error('Add a photo or video to share.');
+      if (fish) {
+        fd.set('speciesId', fish.id);
+        if (weightKg) fd.set('weightKg', weightKg);
+        if (released) fd.set('released', 'on');
+      } else {
+        fd.set('anglerId', ''); // not a fish: nobody's catch
+      }
       const btn = form.querySelector('button[type=submit]');
       btn.textContent = 'Sharing…';
       try {
@@ -1774,9 +1780,12 @@ const pagesFor = (view) => ({
     let lastSpecies = '';
     try { lastSpecies = localStorage.getItem('fishon-species') || ''; } catch {}
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
-      <h1>${live ? 'Log fish' : `Trip of ${fmtDate(day)}`}</h1>
-      <p class="small muted">${state.me.teamName || 'Your boat'} · ${live ? 'today' : fmtDate(day)}. Each fish goes on your boat's line in the regional log. Each fish is listed on its own; its exact spot is only for your crew and your catch map.</p>
-      ${live ? raw(html`<div class="card pad stack fishon">
+      <h1>Log fish</h1>
+      <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
+        <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
+      <p class="small muted">${live ? 'At sea: tap Released, Kept or Lost as each fish comes aboard; the spot is taken there and then.' : 'An earlier day: add its fish here (no GPS spot), or mark it as no catch.'}
+        Every fish goes on your boat's line in the regional log; exact spots stay with your crew.</p>
+      <div class="card pad stack fishon">
         <div class="row">
           <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
           <label>Estimated weight (${unit('weight')}) <input id="fo-weight" type="number" min="0" step="0.5" inputmode="decimal" placeholder="optional"></label>
@@ -1786,9 +1795,10 @@ const pagesFor = (view) => ({
           <button type="button" class="fate kept" data-fate="kept">Kept</button>
           <button type="button" class="fate lost" data-fate="lost">Lost</button>
         </div>
-        <span class="small muted" id="fo-gps">Finding GPS…</span>
+        ${live ? raw('<span class="small muted" id="fo-gps">Finding GPS…</span>') : ''}
+        <button type="button" class="link small" id="fo-nocatch" hidden>No fish ${live ? 'today' : 'that day'}? Log it as no catch</button>
         <p class="error"></p>
-      </div>`) : ''}
+      </div>
       <h2>The fish</h2>
       <div class="card"><ul class="list" id="fo-list"></ul></div>
       <p><a class="btn" href="#/spots">${raw(icon('pin'))} See them on my catch map</a></p>
@@ -1799,19 +1809,24 @@ const pagesFor = (view) => ({
     const queued = () => { try { return JSON.parse(localStorage.getItem(QUEUE) || '[]'); } catch { return []; } };
     const saveQueue = (q) => { try { localStorage.setItem(QUEUE, JSON.stringify(q)); } catch {} };
     const time = (iso) => parseTime(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    const spotText = (x) => (x.lat != null ? fmtCoords(x.lat, x.lng) : 'no GPS');
+    // Fish logged at sea have a time and a spot; fish added afterwards have neither.
+    const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : 'added afterwards');
+    // A fish worth showing off: a post with it filled in, ready for the photo.
+    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.weightKg ? { weight: l.weightKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
       const est = (w) => (Number(w) > 0 ? ` · ~${fmtWeight(Number(w))}` : '');
       list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${est(l.weightKg)} <span class="pill ${l.fate}">${l.fate}</span>
-          <div class="small muted">${time(l.landedAt)} · ${spotText(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
+          <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
+            ${l.fate !== 'lost' ? raw(html`· <a class="link small" href="${shareHref(l)}">Share to feed</a>`) : ''}
             · <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change weight' : 'Add weight'}</button>
             · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button></div></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b>${est(x.weightKg)} <span class="pill ${x.fate}">${x.fate}</span>
-          <div class="small muted">${time(x.landedAt)} · ${spotText(x)} · <b>waiting for signal</b>
+          <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
-        || `<li class="muted">${live ? 'No fish yet today. Pick the species and tap Released, Kept or Lost when one is landed.' : 'No fish logged that day.'}</li>`;
+        || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today. Pick the species and tap Released, Kept or Lost when one is landed.' : 'No fish logged that day.'}</li>`;
+      view.querySelector('#fo-nocatch').hidden = !!trip || waiting.length > 0;
       if (!trip) {
         finish.innerHTML = '';
         return;
@@ -1894,14 +1909,29 @@ const pagesFor = (view) => ({
         }
       }
     });
+    view.querySelector('#fo-day').addEventListener('change', (e) => {
+      if (e.target.value) location.hash = `#/fishon?date=${e.target.value}`;
+    });
+    // A blank day goes in the log too: it says as much about the season.
+    view.querySelector('#fo-nocatch').addEventListener('click', async () => {
+      try {
+        await api('/outings', { method: 'POST', body: { date: day, noCatch: true } });
+        trip = (await api(`/outings/trip?date=${day}`)).trip;
+        toast('No catch logged.');
+      } catch (err) {
+        toast(err.message);
+      }
+      draw();
+    });
     draw();
     flush();
-    if (!live) return;
     // Keep a GPS fix warm so the spot is right where the fish came aboard.
     const gps = view.querySelector('#fo-gps');
     let fix = null;
     let watch = null;
-    if (navigator.geolocation) {
+    if (!live) {
+      // An earlier day: no GPS.
+    } else if (navigator.geolocation) {
       watch = navigator.geolocation.watchPosition((pos) => {
         fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
@@ -1941,8 +1971,9 @@ const pagesFor = (view) => ({
         return;
       }
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
-      const spot = fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(8000);
-      const now = new Date();
+      // Fish added for an earlier day get no spot (the boat isn't there now).
+      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(8000);
+      const now = live ? new Date() : new Date(`${day}T12:00:00Z`);
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
         speciesId: sel.value, species: sel.selectedOptions[0].textContent, fate: btn.dataset.fate,
@@ -1956,89 +1987,9 @@ const pagesFor = (view) => ({
     });
   },
 
-  // Log an outing: one line per trip, blank days included, rough areas only.
+  // The old "Log a whole trip" form: Log fish does it all now (pick the day, or no catch).
   async outing() {
-    if (!state.me) return needLogin(view, 'log an outing');
-    const [{ teams }, { techniques }] = await Promise.all([api('/teams'), api('/outings?country=__none__')]);
-    const team = teams.find((t) => t.id === state.me.teamId);
-    if (!teams.length) {
-      view.innerHTML = '<div class="card pad empty">Boats have to be on the app to be logged. <a href="#/crew">Register your boat</a> first.</div>';
-      return;
-    }
-    const fishRow = () => html`<div class="fishrow">
-      <div class="fishrow-head"><select name="speciesId" required>${raw(speciesOptions(null, 'Choose species…'))}</select>
-        <button type="button" class="link danger small" data-act="drop-fish" aria-label="Remove this species">✕</button></div>
-      <div class="counts">${['released', 'kept', 'lost'].map((k) => raw(html`<div class="count" data-k="${k}">
-        <button type="button" data-step="-1" aria-label="One fewer ${k}">−</button><b>0</b><button type="button" data-step="1" aria-label="One more ${k}">+</button>
-        <small>${k}</small></div>`))}</div></div>`;
-    view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
-      <h1>Log a whole trip</h1>
-      <p class="small muted">One line per trip, the same for every boat. No fish? Log it anyway: blank days tell us as much about the season. Rough areas only, never exact spots.</p>
-      <form class="card pad stack" id="f">
-        <label>Date <input name="date" type="date" required max="${today()}" value="${today()}"></label>
-        <div class="row">
-          <label>Boat <select name="teamId" required>${raw(options(teams.map((t) => [t.id, t.name]), team?.id, 'Choose the boat…'))}</select></label>
-          <label>Country <select name="country">${raw(options(state.meta.countries, team?.country || state.me.country, 'Choose…'))}</select></label>
-        </div>
-        <div class="seg2" role="radiogroup">
-          <button type="button" class="on" data-mode="fish" aria-pressed="true">Fish</button>
-          <button type="button" data-mode="none" aria-pressed="false">No catch</button>
-        </div>
-        <div class="stack fish-list">${raw(fishRow())}</div>
-        <button type="button" class="add-species" data-act="add-fish">+ Add species</button>
-        <span class="spot-head">Technique</span>
-        <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}"> ${t}</label>`))}</div>
-        <div class="three">
-          <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Marshall"></label>
-          <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional"></label>
-          <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional"></label>
-        </div>
-        <p class="small muted">Rough area only: nobody sees exact spots. Depth and water temperature are optional.</p>
-        <p class="error"></p>
-        <div><button type="submit" class="primary">Post outing</button></div>
-      </form>`;
-    const form = view.querySelector('#f');
-    form.teamId.addEventListener('change', () => {
-      const t = teams.find((x) => String(x.id) === form.teamId.value);
-      if (t?.country) form.country.value = t.country;
-    });
-    const list = form.querySelector('.fish-list');
-    const addBtn = form.querySelector('[data-act=add-fish]');
-    let noCatch = false;
-    form.addEventListener('click', (e) => {
-      const mode = e.target.closest('[data-mode]');
-      if (mode) {
-        noCatch = mode.dataset.mode === 'none';
-        for (const b of form.querySelectorAll('[data-mode]')) {
-          b.classList.toggle('on', b === mode);
-          b.setAttribute('aria-pressed', String(b === mode));
-        }
-        list.hidden = noCatch;
-        addBtn.hidden = noCatch;
-        for (const sel of list.querySelectorAll('select')) sel.required = !noCatch;
-      }
-      const step = e.target.closest('[data-step]');
-      if (step) {
-        const out = step.parentElement.querySelector('b');
-        out.textContent = Math.max(0, Number(out.textContent) + Number(step.dataset.step));
-      }
-      if (e.target.closest('[data-act=add-fish]')) list.insertAdjacentHTML('beforeend', fishRow());
-      if (e.target.closest('[data-act=drop-fish]') && list.children.length > 1) e.target.closest('.fishrow').remove();
-    });
-    bindForm(form, async () => {
-      const fd = formData(form);
-      const body = {
-        date: fd.date, teamId: fd.teamId, country: fd.country, area: fd.area, depthM: fromUnit('depth', fd.depthM), waterC: fromUnit('temp', fd.waterC),
-        technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value), noCatch,
-        fish: noCatch ? [] : [...list.querySelectorAll('.fishrow')].map((row) => ({
-          speciesId: row.querySelector('select').value,
-          ...Object.fromEntries([...row.querySelectorAll('.count')].map((c) => [c.dataset.k, Number(c.querySelector('b').textContent)])),
-        })),
-      };
-      await api('/outings', { method: 'POST', body });
-      toast('Outing logged. Thanks!');
-      location.hash = '#/log';
-    });
+    location.replace('#/fishon');
   },
 
   // The regional log: everyone's outings, and the season at a glance.
@@ -2105,13 +2056,12 @@ const pagesFor = (view) => ({
         ${o.canDelete ? raw('<button type="button" class="link danger" data-act="remove">Remove</button>') : ''}</div>
     </li>`;
     view.innerHTML = html`${raw(head)}
-      <p class="log-buttons">${state.me?.teamId ? raw(html`<a class="btn primary" href="#/fishon">${raw(icon('catch'))} Log fish</a>`) : ''}
-        <a class="btn ${state.me?.teamId ? '' : 'primary'}" href="#/outing" data-return>+ Log a whole trip</a></p>
-      ${state.me?.teamId ? raw('<p class="small muted">At sea, tap <b>Log fish</b> as each fish is landed: its spot is taken there and then. Back on land, or for a blank day, log the whole trip in one go.</p>') : ''}
+      ${state.me?.teamId ? raw(html`<p class="log-buttons"><a class="btn primary" href="#/fishon">${raw(icon('fish'))} Log fish</a></p>
+        <p class="small muted">At sea, tap a fish in as it's landed: its spot is taken there and then. Back on land, pick the day to add an earlier trip, or log a blank day as no catch.</p>`) : ''}
       ${raw(chips)}
       ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
         ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
-        : raw('<div class="card pad empty">No outings logged yet. Be the first: tap Log fish at sea, or log a whole trip after it.</div>')}`;
+        : raw('<div class="card pad empty">No outings logged yet. Boat crews add theirs with Log fish.</div>')}`;
     const byId = new Map(outings.map((o) => [String(o.id), o]));
     view.querySelector('.log')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-act]');
@@ -2267,8 +2217,7 @@ const pagesFor = (view) => ({
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh station, Ocean or River, and every boat\'s details')}
       </div>`) : ''}
       <h2>Regional log</h2><div class="card menu">
-        ${raw(me?.teamId ? item('#/fishon', 'catch', 'Log fish', 'Each fish as it\'s landed, with the spot') : '')}
-        ${raw(me ? item('#/outing', 'edit', 'Log a whole trip', 'One line per trip, blank days too') : '')}
+        ${raw(me?.teamId ? item('#/fishon', 'fish', 'Log fish', 'At sea or afterwards, blank days too') : '')}
         ${raw(item('#/log', 'history', 'Regional log', "Every boat's outings, and the season at a glance"))}
       </div>
       <h2>Rules</h2>

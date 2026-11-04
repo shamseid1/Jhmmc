@@ -1905,7 +1905,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
-  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, s.name AS species, l.fate, l.weight_kg AS weightKg, l.lat, l.lng, l.landed_at AS landedAt,
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, s.name AS species, l.fate, l.weight_kg AS weightKg, l.lat, l.lng, l.landed_at AS landedAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
@@ -1953,6 +1953,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const landedAt = b.landedAt ? new Date(at).toISOString() : new Date().toISOString();
     // The day is the phone's own day, so a fish at 23:30 doesn't land on tomorrow's line.
     const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date ?? '') ? b.date : landedAt.slice(0, 10);
+    if (Date.parse(date) > Date.now() + 864e5) return res.status(400).json({ error: "The day can't be in the future." });
     db.exec('BEGIN');
     try {
       let outing = db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(team.id, date);

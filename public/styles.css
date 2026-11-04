@@ -684,18 +684,6 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .leaflet-tooltip.place-label::before { display: none; }
 
 /* The regional log. */
-.seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
-.seg2 button { border: 0; background: none; padding: 9px; border-radius: 999px; font: inherit; font-weight: 700; color: var(--muted); }
-.seg2 button.on { background: var(--accent); color: var(--accent-ink); }
-.fish-list[hidden], .add-species[hidden] { display: none; }
-.fishrow { border: 1px solid var(--line); border-radius: 16px; padding: 10px; display: grid; gap: 8px; }
-.fishrow-head { display: flex; gap: 8px; align-items: center; }
-.counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.count { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 4px; text-align: center; }
-.count b { font-size: 18px; }
-.count button { padding: 0; height: 30px; border-radius: 9px; font-size: 18px; }
-.count small { grid-column: 1 / -1; color: var(--muted); }
-.add-species { justify-self: start; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip2 { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; }
 .chip2.on, .chip2:has(input:checked) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
@@ -770,3 +758,10 @@ fieldset.units legend { font-weight: 600; margin-bottom: 4px; }
 .filter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; border-radius: 999px; font-size: 14px; font-weight: 700;
   background-color: var(--accent-soft); color: var(--accent); border-color: transparent; }
+/* Log fish: the boat, and the day as a chip that opens the date picker. */
+.fo-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -4px 0 6px; font-weight: 700; }
+.chip-date { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; }
+.chip-date::after { content: '▾'; font-size: 11px; }
+.chip-date input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.shared-fish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); }
