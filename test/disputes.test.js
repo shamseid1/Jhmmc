@@ -64,7 +64,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
       deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
     fd.set('fish', JSON.stringify([
       { speciesId: sp('Wahoo'), anglerId: 'other', anglerName: 'Guest', weightKg: '20' },
-      { speciesId: sp('Atlantic blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' },
+      { speciesId: sp('Blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' },
     ]));
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'a.png');
     fd.set('scale_1', new Blob([PNG], { type: 'image/png' }), 'b.png');
@@ -73,7 +73,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     // Every JHMMC captain sees them; crews and other clubs don't.
     const seen = (await capB('GET', '/registrations/pending')).body.registrations;
     assert.deepEqual(seen.map((r) => [r.species, r.teamName, r.canDispute]).sort(),
-      [['Atlantic blue marlin', 'Sea Hunter', true], ['Wahoo', 'Sea Hunter', true]]);
+      [['Blue marlin', 'Sea Hunter', true], ['Wahoo', 'Sea Hunter', true]]);
     assert.ok(seen.every((r) => r.scalePhotoUrl), 'with the scale photos');
     assert.ok((await capA('GET', '/registrations/pending')).body.registrations.every((r) => !r.canDispute), 'not your own boat');
     assert.equal((await crewB('GET', '/registrations/pending')).status, 403);
@@ -109,7 +109,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.equal((await capA('GET', '/registrations/log')).status, 403, 'the record is for the secretary and admin');
     // One entry per fish, newest activity first, with its steps in order.
     const log = (await sec('GET', '/registrations/log')).body.fish;
-    assert.deepEqual(log.map((f) => [f.species, f.status]), [['Wahoo', 'withdrawn'], ['Atlantic blue marlin', 'approved']],
+    assert.deepEqual(log.map((f) => [f.species, f.status]), [['Wahoo', 'withdrawn'], ['Blue marlin', 'approved']],
       'a fish is one entry whose status changes, not one entry per step');
     const steps = (id) => log.find((f) => f.catchId === id).steps.map((e) => [e.action, e.userName, e.note]);
     assert.deepEqual(steps(marlin.id), [

@@ -104,10 +104,10 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.deepEqual([edited.photos.length, edited.photos[0].id], [1, 'cover']);
 
     // My catch map: your spots by year, only yours.
-    await cap('POST', '/catches', form({ speciesId: sp['Atlantic sailfish'], released: 'on', lat: '6.5', lng: '-11.0' }));
+    await cap('POST', '/catches', form({ speciesId: sp['Sailfish'], released: 'on', lat: '6.5', lng: '-11.0' }));
     const map = (await cap('GET', '/me/spots')).body;
     assert.deepEqual(map.years, [today.slice(0, 4)]);
-    assert.deepEqual(map.spots.map((x) => [x.species, x.lat]).sort(), [['Atlantic sailfish', 6.5], ['Wahoo', 6.2]]);
+    assert.deepEqual(map.spots.map((x) => [x.species, x.lat]).sort(), [['Sailfish', 6.5], ['Wahoo', 6.2]]);
     assert.equal((await cap('GET', '/me/spots?year=1999')).body.spots.length, 2, 'an unknown year shows all');
     assert.equal((await sec('GET', '/me/spots')).body.spots.length, 0, "nobody else's spots");
     assert.equal((await as()('GET', '/me/spots')).status, 401);

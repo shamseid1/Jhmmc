@@ -82,7 +82,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal(r.body.user.teamName, 'Sea Hunter');
 
   const meta = (await awa('GET', '/meta')).body;
-  const marlin = meta.species.find((s) => s.name === 'Atlantic blue marlin');
+  const marlin = meta.species.find((s) => s.name === 'Blue marlin');
 
   // Kofi logs a fish that Awa caught, with a photo.
   const fd = new FormData();
@@ -133,17 +133,17 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal((await awa('POST', '/catches', other)).status, 400);
 
   r = await ibra('GET', '/records');
-  const blue = r.body.species.find((x) => x.name === 'Atlantic blue marlin');
+  const blue = r.body.species.find((x) => x.name === 'Blue marlin');
   assert.equal(blue.igfa.display, '1,402 lb 2 oz');
   assert.equal(blue.igfa.kg, 636);
   assert.equal(blue.best.weightKg, 212.5);
-  assert.equal(r.body.species.find((x) => x.name === 'Atlantic tarpon').igfa.african, true);
+  assert.equal(r.body.species.find((x) => x.name === 'Tarpon').igfa.african, true);
   assert.equal(r.body.species.find((x) => x.name === 'Little tunny').igfa, null, 'unconfirmed records are left out');
-  assert.deepEqual(r.body.lineRecords.map((x) => [x.species, x.lineClass, x.weightKg]), [['Atlantic blue marlin', '80 lb', 212.5]]);
+  assert.deepEqual(r.body.lineRecords.map((x) => [x.species, x.lineClass, x.weightKg]), [['Blue marlin', '80 lb', 212.5]]);
   assert.equal(c.worldRecordKg, 636);
   r = await ibra('GET', `/records?club=${clubId}`);
   assert.equal(r.body.club.name, 'Dakar Offshore Club');
-  assert.equal(r.body.species.find((x) => x.name === 'Atlantic blue marlin').best.weightKg, 212.5);
+  assert.equal(r.body.species.find((x) => x.name === 'Blue marlin').best.weightKg, 212.5);
   assert.equal((await ibra('GET', '/records?club=9999')).status, 404);
   assert.equal((await kofi('GET', '/me')).body.user.clubId, clubId);
 
@@ -178,7 +178,7 @@ test('participants: boats and anglers with photos and tallies', async () => {
   assert.match(r.body.team.photoUrl, /^\/uploads\//);
 
   const meta = (await cap('GET', '/meta')).body;
-  const tarpon = meta.species.find((s) => s.name === 'Atlantic tarpon');
+  const tarpon = meta.species.find((s) => s.name === 'Tarpon');
   for (const [w, rel] of [['40', ''], ['', 'on']]) {
     const fd = new FormData();
     fd.set('speciesId', tarpon.id);
@@ -558,9 +558,9 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.match(wahoo.scalePhotoUrl, /^\/uploads\//);
     assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
     assert.deepEqual([wahoo.points, wahoo.pointsNote], [105, '21 kg × 5 points per kg.'], 'points worked out at registration');
-    r = await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' }));
+    r = await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Blue marlin').id, released: 'on' }));
     assert.match(r.body.error, /video of the release/, 'a released fish needs a video');
-    const release = form({ ...reg, speciesId: sp('Atlantic blue marlin').id, released: 'on' });
+    const release = form({ ...reg, speciesId: sp('Blue marlin').id, released: 'on' });
     release.set('scaleVideo', new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), 'release.mp4');
     r = await cap('POST', '/weigh', release);
     assert.equal(r.status, 201, 'released fish need a video, no weight or scale photo');
@@ -637,9 +637,9 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
       return fd;
     };
     const three = [
-      { speciesId: sp('Dorado (mahi-mahi)').id, anglerId: capId, weightKg: '9', lineClass: '30 lb' },
+      { speciesId: sp('Dorado').id, anglerId: capId, weightKg: '9', lineClass: '30 lb' },
       { speciesId: sp('Barracuda').id, anglerId: 'other', anglerName: 'Guest Two', weightKg: '6' },
-      { speciesId: sp('Atlantic sailfish').id, anglerId: capId, released: 'on' },
+      { speciesId: sp('Sailfish').id, anglerId: capId, released: 'on' },
     ];
     const before = (await sec('GET', '/officials/queue')).body.toReview.length;
     r = await cap('POST', '/weigh/sheet', sheet(three, [0]));
@@ -650,7 +650,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1], [2]));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation, c.points]),
-      [['Dorado (mahi-mahi)', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Atlantic sailfish', 'Extreme', 125]]);
+      [['Dorado', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Sailfish', 'Extreme', 125]]);
     for (const c of r.body.catches) await sec('POST', `/catches/${c.id}/review`, { decision: 'reject', note: 'Test sheet' });
 
     const capQueue = (await cap('GET', '/officials/queue')).body.toReview;
@@ -747,8 +747,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(jhRecords.find((x) => x.name === 'Wahoo').best.weightKg, 21, 'from the registration');
 
     // Scoring table and season dates.
-    assert.equal((await sec('PATCH', `/species/${sp('Atlantic sailfish').id}`, { pointsPerKg: 4 })).status, 200);
-    assert.equal((await as()('GET', '/meta')).body.species.find((x) => x.name === 'Atlantic sailfish').pointsPerKg, 4);
+    assert.equal((await sec('PATCH', `/species/${sp('Sailfish').id}`, { pointsPerKg: 4 })).status, 200);
+    assert.equal((await as()('GET', '/meta')).body.species.find((x) => x.name === 'Sailfish').pointsPerKg, 4);
     assert.equal((await sec('PATCH', '/settings/season', { start: '2027-01-01', end: '2026-01-01' })).status, 400);
     r = await sec('PATCH', '/settings/season', { start: day(30), end: day(300) });
     assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'today is outside the new season');

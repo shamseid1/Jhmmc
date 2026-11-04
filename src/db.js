@@ -11,8 +11,8 @@ const COUNTRIES = [
 // Big game species commonly targeted off the West African coast, with the
 // JHMMC points per kg from the 2025-26 Fish Registration Form (editable in the app).
 const SPECIES = [
-  ['Atlantic blue marlin', 'Makaira nigricans', 'Billfish', 5],
-  ['Atlantic sailfish', 'Istiophorus albicans', 'Billfish', 5],
+  ['Blue marlin', 'Makaira nigricans', 'Billfish', 5],
+  ['Sailfish', 'Istiophorus albicans', 'Billfish', 5],
   ['White marlin', 'Kajikia albida', 'Billfish', 5],
   ['Swordfish', 'Xiphias gladius', 'Billfish', 3],
   ['Yellowfin tuna', 'Thunnus albacares', 'Tuna', 3],
@@ -20,24 +20,24 @@ const SPECIES = [
   ['Skipjack tuna', 'Katsuwonus pelamis', 'Tuna', 3],
   ['Little tunny', 'Euthynnus alletteratus', 'Tuna', 3],
   ['Wahoo', 'Acanthocybium solandri', 'Pelagic', 5],
-  ['Dorado (mahi-mahi)', 'Coryphaena hippurus', 'Pelagic', 3],
-  ['West African Spanish mackerel', 'Scomberomorus tritor', 'Pelagic', 3],
+  ['Dorado', 'Coryphaena hippurus', 'Pelagic', 3],
+  ['Spanish mackerel', 'Scomberomorus tritor', 'Pelagic', 3],
   ['Barracuda', 'Sphyraena afra', 'Pelagic', 3],
-  ['Greater amberjack', 'Seriola dumerili', 'Reef & jacks', 3],
-  ['Crevalle jack', 'Caranx hippos', 'Reef & jacks', 5],
-  ['African pompano', 'Alectis ciliaris', 'Reef & jacks', 3],
+  ['Amberjack', 'Seriola dumerili', 'Reef & jacks', 3],
+  ['Crevalle', 'Caranx hippos', 'Reef & jacks', 5],
+  ['Pompano', 'Alectis ciliaris', 'Reef & jacks', 3],
   ['Cubera snapper', 'Lutjanus cyanopterus', 'Reef & jacks', 5],
   ['Snapper', 'Lutjanus spp.', 'Bottom', 5],
-  ['Giant African threadfin', 'Polydactylus quadrifilis', 'Inshore', 3],
-  ['Atlantic tarpon', 'Megalops atlanticus', 'Inshore', 5],
+  ['Threadfin', 'Polydactylus quadrifilis', 'Inshore', 3],
+  ['Tarpon', 'Megalops atlanticus', 'Inshore', 5],
   ['Butter nose', null, 'Inshore', 5],
-  ['Leerfish (garrick)', 'Lichia amia', 'Inshore', 3],
-  ['Dusky grouper', 'Epinephelus marginatus', 'Bottom', 5],
-  ['Shortfin mako shark', 'Isurus oxyrinchus', 'Shark', 5],
-  ['Hammerhead shark', 'Sphyrna spp.', 'Shark', 5],
+  ['Leerfish', 'Lichia amia', 'Inshore', 3],
+  ['Grouper', 'Epinephelus marginatus', 'Bottom', 5],
+  ['Mako shark', 'Isurus oxyrinchus', 'Shark', 5],
+  ['Hammerhead', 'Sphyrna spp.', 'Shark', 5],
   // Species in the JHMMC record book (as at May 2026) the list didn't have.
   ['Striped marlin', 'Kajikia audax', 'Billfish', 3],
-  ['Atlantic bonito', 'Sarda sarda', 'Tuna', 3],
+  ['Bonito', 'Sarda sarda', 'Tuna', 3],
   ['Cobia', 'Rachycentron canadum', 'Pelagic', 3],
   ['Rainbow runner', 'Elagatis bipinnulata', 'Pelagic', 3],
   ['Bigeye trevally', 'Caranx sexfasciatus', 'Reef & jacks', 3],
@@ -568,6 +568,23 @@ function openDb(file) {
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   // Species renamed since earlier versions; catches keep pointing at the same row.
   db.prepare("UPDATE species SET name = 'Barracuda' WHERE name = 'Guinean barracuda'").run();
+  // Short names, the way anglers say them (Grouper, not Dusky grouper).
+  for (const [from, to] of [
+    ['Atlantic blue marlin', 'Blue marlin'],
+    ['Atlantic sailfish', 'Sailfish'],
+    ['Dorado (mahi-mahi)', 'Dorado'],
+    ['West African Spanish mackerel', 'Spanish mackerel'],
+    ['Crevalle jack', 'Crevalle'],
+    ['Dusky grouper', 'Grouper'],
+    ['Atlantic tarpon', 'Tarpon'],
+    ['Giant African threadfin', 'Threadfin'],
+    ['Leerfish (garrick)', 'Leerfish'],
+    ['Shortfin mako shark', 'Mako shark'],
+    ['Hammerhead shark', 'Hammerhead'],
+    ['Greater amberjack', 'Amberjack'],
+    ['African pompano', 'Pompano'],
+    ['Atlantic bonito', 'Bonito'],
+  ]) db.prepare('UPDATE species SET name = ? WHERE name = ? AND NOT EXISTS (SELECT 1 FROM species WHERE name = ?)').run(to, from, to);
   const insert = db.prepare(
     'INSERT OR IGNORE INTO species (name, scientific_name, category, points_per_kg) VALUES (?, ?, ?, ?)'
   );

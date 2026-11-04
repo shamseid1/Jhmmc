@@ -39,10 +39,10 @@ test('the regional log: one line per outing, blank days too, and the season at a
     // A good day: two species, mixed results; the boat and country come from Marwan's boat.
     let r = await marwan('POST', '/outings', {
       date: '2026-10-18', technique: ['Casting', 'Not a technique'], area: 'Off Conakry', depthM: '60', waterC: '29',
-      fish: [{ speciesId: sp['Atlantic sailfish'], released: 2, lost: 1 }, { speciesId: sp.Wahoo, kept: 1 }],
+      fish: [{ speciesId: sp['Sailfish'], released: 2, lost: 1 }, { speciesId: sp.Wahoo, kept: 1 }],
     });
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    assert.equal(r.body.outing.line, '2026-10-18 | Exocet | Guinea | Atlantic sailfish: 3 (2 released, 1 lost); Wahoo: 1 (1 kept) | Casting | Off Conakry, 60 m | 29°C');
+    assert.equal(r.body.outing.line, '2026-10-18 | Exocet | Guinea | Sailfish: 3 (2 released, 1 lost); Wahoo: 1 (1 kept) | Casting | Off Conakry, 60 m | 29°C');
     // A blank day, on Bob's boat.
     r = await bob('POST', '/outings', { date: '2026-10-17', noCatch: true, technique: ['Trolling'] });
     assert.equal(r.body.outing.line, '2026-10-17 | Bottom Line | Sierra Leone | No catch | Trolling |  | ');
@@ -72,7 +72,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
 
     // The season: 3 outings, 2 blank, 2 billfish caught (released or kept) over 3 days.
     const season = (await as()('GET', '/outings/season?year=2026')).body;
-    assert.deepEqual([season.year, season.outings, season.blank, season.species], ['2026', 3, 2, 'Atlantic sailfish']);
+    assert.deepEqual([season.year, season.outings, season.blank, season.species], ['2026', 3, 2, 'Sailfish']);
     assert.equal(season.billfishPerDay.toFixed(2), '0.67');
     assert.equal(season.months[9].perDay.toFixed(2), '0.67', 'October: 2 sailfish over 3 days');
     assert.deepEqual(season.best, { days: 1, water: [29, 29], depth: [60, 60], techniques: ['Casting'] });
@@ -87,7 +87,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     await deckhand('POST', '/auth/register', { firstName: 'Kofi', lastName: 'Mensah', email: 'kofi@example.com', password: 'password1' });
     const code = (await marwan('GET', '/teams/1')).body.team.joinCode;
     assert.equal((await deckhand('POST', '/teams/join', { code })).status, 200);
-    const land = (who, extra) => who('POST', '/outings/fish', { speciesId: sp['Atlantic sailfish'], fate: 'released', lat: 9.4, lng: -13.9, landedAt: '2026-10-20T09:15:00Z', date: '2026-10-20', ...extra });
+    const land = (who, extra) => who('POST', '/outings/fish', { speciesId: sp['Sailfish'], fate: 'released', lat: 9.4, lng: -13.9, landedAt: '2026-10-20T09:15:00Z', date: '2026-10-20', ...extra });
     r = await land(marwan, { clientId: 'a1' });
     assert.equal(r.status, 201);
     assert.equal((await land(marwan, { clientId: 'a1' })).body.trip.landings.length, 1, 'sent twice without signal: counted once');
@@ -97,23 +97,23 @@ test('the regional log: one line per outing, blank days too, and the season at a
     r = await land(deckhand, {});
     let trip = r.body.trip;
     assert.equal(trip.boat, 'Exocet');
-    assert.equal(trip.line, '2026-10-20 | Exocet | Guinea | Atlantic sailfish: 2 (2 released); Wahoo: 1 (1 kept) |  |  | ');
+    assert.equal(trip.line, '2026-10-20 | Exocet | Guinea | Sailfish: 2 (2 released); Wahoo: 1 (1 kept) |  |  | ');
     assert.deepEqual(trip.landings.map((l) => [l.species, l.fate, l.lat, l.loggedBy]),
-      [['Atlantic sailfish', 'released', 9.4, 'Marwan Abdalkareem'], ['Wahoo', 'kept', 9.41, 'Kofi Mensah'], ['Atlantic sailfish', 'released', 9.4, 'Kofi Mensah']]);
+      [['Sailfish', 'released', 9.4, 'Marwan Abdalkareem'], ['Wahoo', 'kept', 9.41, 'Kofi Mensah'], ['Sailfish', 'released', 9.4, 'Kofi Mensah']]);
     assert.match((await land(visitor, {})).body.error, /boat/, 'on a boat to log fish');
     assert.match((await land(marwan, { fate: 'eaten' })).body.error, /Released, kept or lost/);
     // The log shows each fish, never the spots.
     const pub = (await as()('GET', '/outings')).body.outings.find((o) => o.id === trip.id);
     assert.equal(pub.fish.length, 2);
     assert.deepEqual(pub.landings.map((l) => [l.species, l.fate, l.weightKg]),
-      [['Atlantic sailfish', 'released', null], ['Wahoo', 'kept', 18.5], ['Atlantic sailfish', 'released', null]]);
+      [['Sailfish', 'released', null], ['Wahoo', 'kept', 18.5], ['Sailfish', 'released', null]]);
     assert.equal(JSON.stringify(pub).includes('9.41'), false);
     // A mistap comes back off; the crew finishes the trip at the end of the day.
     r = await deckhand('DELETE', `/outings/fish/${trip.landings[1].id}`);
-    assert.deepEqual(r.body.trip.fish.map((f) => [f.species, f.released, f.kept]), [['Atlantic sailfish', 2, 0]]);
+    assert.deepEqual(r.body.trip.fish.map((f) => [f.species, f.released, f.kept]), [['Sailfish', 2, 0]]);
     assert.equal((await bob('DELETE', `/outings/fish/${trip.landings[0].id}`)).status, 403, 'not his boat');
     r = await deckhand('PATCH', `/outings/${trip.id}`, { technique: ['Trolling'], area: 'Off Conakry', depthM: 80, waterC: 28.5 });
-    assert.equal(r.body.trip.line, '2026-10-20 | Exocet | Guinea | Atlantic sailfish: 2 (2 released) | Trolling | Off Conakry, 80 m | 28.5°C');
+    assert.equal(r.body.trip.line, '2026-10-20 | Exocet | Guinea | Sailfish: 2 (2 released) | Trolling | Off Conakry, 80 m | 28.5°C');
     assert.equal((await bob('PATCH', `/outings/${trip.id}`, { area: 'x' })).status, 403);
     assert.equal((await marwan('GET', '/outings/trip?date=2026-10-20')).body.trip.id, trip.id);
     assert.match((await marwan('POST', '/outings', { date: '2026-10-20', noCatch: true })).body.error, /already has a line/, 'one line per boat per day');
@@ -126,7 +126,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal(img.status, 401, 'the image needs signing in too');
     // The spots go on the crew's catch maps.
     const mine = (await deckhand('GET', '/me/spots')).body.spots;
-    assert.deepEqual(mine.filter((x) => x.kind === 'log').map((x) => [x.species, x.released]), [['Atlantic sailfish', true], ['Atlantic sailfish', true]]);
+    assert.deepEqual(mine.filter((x) => x.kind === 'log').map((x) => [x.species, x.released]), [['Sailfish', true], ['Sailfish', true]]);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

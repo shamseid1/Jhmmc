@@ -2094,7 +2094,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const caught = (o, pick) => o.fish.filter(pick).reduce((n, f) => n + f.released + f.kept, 0);
     const billfish = (f) => f.category === 'Billfish';
     const speciesList = [...new Set(outings.flatMap((o) => o.fish.map((f) => f.species)))].sort();
-    const species = speciesList.includes(req.query.species) ? req.query.species : speciesList.includes('Atlantic sailfish') ? 'Atlantic sailfish' : speciesList[0] ?? null;
+    const species = speciesList.includes(req.query.species) ? req.query.species : speciesList.includes('Sailfish') ? 'Sailfish' : speciesList[0] ?? null;
     const months = Array.from({ length: 12 }, (_, m) => {
       const inMonth = outings.filter((o) => Number(o.date.slice(5, 7)) === m + 1);
       return { month: m + 1, outings: inMonth.length, perDay: inMonth.length ? caught({ fish: inMonth.flatMap((o) => o.fish) }, (f) => f.species === species) / inMonth.length : null };
