@@ -694,7 +694,8 @@ function feedLine(x) {
       ? `${x.angler || 'The crew'} released ${withArticle(fish)} (weighed in).`
       : `${x.angler || 'The crew'} weighed ${withArticle(`${fmtWeight(x.weightKg)} ${fish}`)}.`;
   }
-  return { released: `Released ${withArticle(fish)}.`, kept: `Landed ${withArticle(fish)}.`, lost: `Lost ${withArticle(fish)}.` }[x.fate];
+  const boat = x.boat || 'A boat';
+  return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boarded ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
 }
 const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-item announcement" data-ann="${x.id}">
   <div class="feed-head">
@@ -713,7 +714,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
   <p class="feed-line">${x.kind === 'weighin' ? raw(html`<a href="#/catch/${x.id}">${feedLine(x)}</a>`) : feedLine(x)}</p>
-  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Release' : x.fate === 'kept' ? 'Hookup' : 'Lost'}</span>
+  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boarded' : 'Lost'}</span>
 </article>`);
 async function renderFeed(container, query = {}) {
   let before = null;
@@ -820,7 +821,7 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const type = ['weighins', 'releases', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
+    const type = ['weighins', 'logged', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
     const tab = (key, label) => html`<a role="tab" href="#/${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
     // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
     const officer = !!state.me?.canReview;
@@ -832,7 +833,7 @@ const pagesFor = (view) => ({
           <p class="error"></p>
           <div><button type="submit" class="primary">Post announcement</button></div>
         </form></details>`) : ''}
-      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('releases', 'Releases'))}${raw(tab('announcements', 'Announcements'))}</div>
+      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('logged', 'Logged'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
     // Until this phone has notifications on, offer them here (announcements, reminders).

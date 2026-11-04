@@ -1173,9 +1173,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The feed: it fills itself. Fish approved at the weigh-in ("Rayan Eid
   // weighed a 41 kg yellowfin tuna") and fish logged at sea ("Released a blue
   // marlin"), newest first, under the boat's name and photo. Never a spot.
-  // ?type=weighins|releases|announcements, ?team=, ?user=, ?before= (older page).
+  // ?type=weighins|logged|announcements, ?team=, ?user=, ?before= (older page).
   api.get('/feed', (req, res) => {
-    const type = ['weighins', 'releases', 'announcements'].includes(req.query.type) ? req.query.type : 'all';
+    const type = ['weighins', 'logged', 'announcements'].includes(req.query.type) ? req.query.type : 'all';
     const team = intId(req.query.team);
     const user = intId(req.query.user);
     const club = intId(req.query.club);
@@ -1190,11 +1190,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
           AND (:club IS NULL OR t.club_id = :club)`);
     }
     if (!['weighins', 'announcements'].includes(type)) {
-      const fates = type === 'releases' ? "('released')" : "('released', 'kept', 'lost')";
       parts.push(`SELECT 'log' AS kind, l.id, datetime(l.landed_at) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
           s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, NULL AS body
         FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
-        WHERE l.fate IN ${fates} AND COALESCE(l.client_id, '') NOT LIKE 'reg-%'
+        WHERE COALESCE(l.client_id, '') NOT LIKE 'reg-%'
           AND (:team IS NULL OR o.team_id = :team) AND (:user IS NULL OR l.user_id = :user) AND (:club IS NULL OR t.club_id = :club)`);
     }
     // Announcements belong to the whole feed, not to one boat or angler.
