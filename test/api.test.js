@@ -15,7 +15,7 @@ let tmp;
 
 before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-'));
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), mailer, appUrl: 'https://club.example' });
+  const app = createApp({ openPosts: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), mailer, appUrl: 'https://club.example' });
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -378,7 +378,7 @@ test('forgotten and changed passwords', async () => {
 
 test('without email: members contact the admin, who makes reset links', async () => {
   const quiet = { configured: false, send: async () => { throw new Error('should not send'); } };
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads2'), mailer: quiet, adminEmail: 'Admin@Example.com' });
+  const app = createApp({ openPosts: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads2'), mailer: quiet, adminEmail: 'Admin@Example.com' });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;
@@ -422,7 +422,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
   // Registrations are for today only, so this test works with today's date.
   const day = (offset = 0) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
   const TODAY = day();
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads3'), mailer, adminEmail: 'boss@example.com' });
+  const app = createApp({ openPosts: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads3'), mailer, adminEmail: 'boss@example.com' });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;

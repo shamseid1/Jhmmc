@@ -724,25 +724,6 @@ a.drill { color: inherit; text-decoration: underline dotted; text-underline-offs
 .fate:active { transform: scale(.97); }
 .log-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .notes.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 6px 0 0; }
-/* New post: a "+ Post" button in the header on the feed. */
-.topbar-post { display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px 7px 10px; border-radius: 999px; flex: none;
-  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 15px; text-decoration: none; }
-.topbar-post[hidden] { display: none; }
-.topbar-post svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
-.topbar-post:active { opacity: .85; }
-/* On phones the logo moves to the left to make room for it on the right. */
-@media (max-width: 640px) {
-  .topbar:has(.topbar-post:not([hidden])) { justify-content: space-between; padding-left: 16px; padding-right: 16px; }
-  /* With the JHMMC logo too: the logo without its word, and the name gives way first on narrow phones. */
-  .topbar:has(.topbar-post:not([hidden])) { gap: 8px; }
-  .topbar:has(.topbar-post:not([hidden])) .brand { min-width: 0; flex: 0 1 auto; margin-right: auto; }
-  .topbar:has(.topbar-post:not([hidden])) .brand span { overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
-  .topbar:has(.topbar-post:not([hidden])) .club-chip span { display: none; }
-  .topbar:has(.topbar-post:not([hidden])) .club-chip { padding: 3px 5px; }
-  .topbar-post { order: 2; padding: 6px 12px 6px 8px; font-size: 14px; }
-}
-/* On a laptop it sits right next to the logo, left of the menu. */
-@media (min-width: 641px) { .topbar-post { order: 1; margin-right: auto; } #nav { order: 2; } }
 .units { display: grid; gap: 10px; }
 fieldset.units { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.units legend { font-weight: 600; margin-bottom: 4px; }
@@ -779,3 +760,28 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .photo-field-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .photo-field-img { width: 72px; height: 72px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); }
 .photo-field-img[hidden] { display: none; }
+/* The feed: weigh-ins and fish logged at sea, under the boat. */
+.feed-tabs { margin-bottom: 12px; }
+.feed-list { padding: 0; }
+.feed-item { padding: 14px 16px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.feed-item:last-child { border-bottom: 0; }
+.feed-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.feed-boat { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-size: 17px; }
+.feed-boat img, .feed-ph { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex: none; }
+.feed-ph { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.feed-ph svg { width: 28px; height: 28px; overflow: visible; }
+.feed-line { margin: 0; font-size: 17px; font-weight: 700; }
+.feed-line a { color: inherit; text-decoration: none; }
+.feed-item .pill { justify-self: start; margin-left: 0; }
+.feed-tabs { overflow-x: auto; scrollbar-width: none; white-space: nowrap; gap: 20px; }
+.feed-tabs::-webkit-scrollbar { display: none; }
+.feed-tabs a { flex: none; }
+.club-mark { width: 44px; height: 44px; border-radius: 12px; object-fit: contain; background: #fff; border: 1px solid var(--line); padding: 3px; }
+.feed-item.announcement { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.ann-title { margin: 2px 0 0; font-size: 20px; line-height: 1.25; }
+.ann-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.ann-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pill.ann { background: var(--accent-soft); color: var(--accent); margin-left: 0; }
+.ann-new summary { cursor: pointer; font-weight: 700; color: var(--accent); list-style: none; display: flex; align-items: center; gap: 8px; }
+.ann-new summary::-webkit-details-marker { display: none; }
+.ann-new[open] summary { margin-bottom: 12px; }

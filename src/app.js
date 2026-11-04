@@ -61,6 +61,9 @@ function createApp({
   adminEmail = process.env.ADMIN_EMAIL,
   // Sends phone notifications; made from the database's keys unless given (tests).
   pusher,
+  // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
+  // Tests that still post open it.
+  openPosts = false,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
@@ -1157,8 +1160,67 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(points, note, id);
   }
 
+  // The feed: it fills itself. Fish approved at the weigh-in ("Rayan Eid
+  // weighed a 41 kg yellowfin tuna") and fish logged at sea ("Released a blue
+  // marlin"), newest first, under the boat's name and photo. Never a spot.
+  // ?type=weighins|releases|hookups, ?team=, ?user=, ?before= (older page).
+  api.get('/feed', (req, res) => {
+    const type = ['weighins', 'releases', 'hookups', 'announcements'].includes(req.query.type) ? req.query.type : 'all';
+    const team = intId(req.query.team);
+    const user = intId(req.query.user);
+    const club = intId(req.query.club);
+    const before = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(req.query.before ?? '') ? req.query.before : null;
+    const parts = [];
+    if (type === 'all' || type === 'weighins') {
+      parts.push(`SELECT 'weighin' AS kind, k.id, datetime(COALESCE(k.reviewed_at, k.created_at)) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
+          s.name AS species, k.weight_kg AS weightKg, CASE WHEN k.released THEN 'released' ELSE 'kept' END AS fate,
+          COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, k.user_id AS userId, NULL AS title, NULL AS body
+        FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id
+        WHERE k.status = 'approved' AND (:team IS NULL OR k.team_id = :team) AND (:user IS NULL OR k.user_id = :user)
+          AND (:club IS NULL OR t.club_id = :club)`);
+    }
+    if (!['weighins', 'announcements'].includes(type)) {
+      const fates = type === 'releases' ? "('released')" : type === 'hookups' ? "('kept', 'lost')" : "('released', 'kept', 'lost')";
+      parts.push(`SELECT 'log' AS kind, l.id, datetime(l.landed_at) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
+          s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, NULL AS body
+        FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
+        WHERE l.fate IN ${fates} AND COALESCE(l.client_id, '') NOT LIKE 'reg-%'
+          AND (:team IS NULL OR o.team_id = :team) AND (:user IS NULL OR l.user_id = :user) AND (:club IS NULL OR t.club_id = :club)`);
+    }
+    // Announcements belong to the whole feed, not to one boat or angler.
+    if ((type === 'all' || type === 'announcements') && !team && !user && !club) {
+      parts.push(`SELECT 'announcement' AS kind, a.id, datetime(a.created_at) AS at, NULL AS teamId, NULL AS boat, NULL AS boatPhoto,
+          NULL AS species, NULL AS weightKg, NULL AS fate, COALESCE(NULLIF(u.nickname, ''), u.name) AS angler, a.user_id AS userId, a.title, a.body
+        FROM announcements a LEFT JOIN users u ON u.id = a.user_id WHERE :team IS NULL AND :user IS NULL AND :club IS NULL`);
+    }
+    if (!parts.length) return res.json({ items: [], nextBefore: null });
+    const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
+      ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
+    const items = rows.slice(0, 30).map(({ boatPhoto, ...x }) => ({ ...x, boatPhotoUrl: photoUrl(boatPhoto),
+      ...(x.kind === 'announcement' ? { canDelete: !!req.user && (x.userId === req.user.id || isAdminUser(req.user)) } : {}) }));
+    res.json({ items, nextBefore: rows.length > 30 ? items.at(-1).at : null });
+  });
+
+  // JHMMC's officers (the secretary, president, vice president) and the admin
+  // post announcements: a tournament coming up, membership to pay…
+  api.post('/announcements', requireReview, (req, res) => {
+    const title = str(req.body.title, 120);
+    if (!title) return res.status(400).json({ error: 'Give the announcement a title.' });
+    const { lastInsertRowid } = db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)')
+      .run(req.user.id, title, str(req.body.body, 2000));
+    res.status(201).json({ id: Number(lastInsertRowid) });
+  });
+  api.delete('/announcements/:id', requireReview, (req, res) => {
+    const a = db.prepare('SELECT id, user_id FROM announcements WHERE id = ?').get(intId(req.params.id) ?? 0);
+    if (!a) return res.status(404).json({ error: 'Announcement not found.' });
+    if (a.user_id !== req.user.id && !isAdminUser(req.user)) return res.status(403).json({ error: 'Only whoever posted it can remove it.' });
+    db.prepare('DELETE FROM announcements WHERE id = ?').run(a.id);
+    res.json({ ok: true });
+  });
+
   // Only crews post: an angler has to be on a boat.
   api.post('/catches', (req, res, next) => {
+    if (!openPosts) return res.status(403).json({ error: 'The feed fills itself now: add fish with Log fish.' });
     if (!req.user.teamId) return res.status(403).json({ error: 'Join or register a boat to post catches.' });
     next();
   }, withVideo('photo', 'video'), (req, res) => {

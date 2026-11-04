@@ -13,7 +13,7 @@ const MP4 = () => new Blob([Buffer.from('00000018667479706d703432', 'hex')], { t
 
 test('posts and registrations: videos, editing back on land, spots on the catch map, the numbers behind the points', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-posts-'));
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher: { publicKey: 'k', send: async () => true } });
+  const app = createApp({ openPosts: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher: { publicKey: 'k', send: async () => true } });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;
@@ -128,6 +128,21 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.deepEqual([byAngler.fish.length, byAngler.total], [guestRow.catches, guestRow.points]);
     assert.equal((await as()('GET', `/points/fish?division=ocean&scope=tournaments&team=${boat.id}`)).body.fish.length, 0, 'no tournament entered');
     assert.equal((await as()('GET', '/points/fish')).status, 400);
+
+    // The secretary's announcements go on the feed too; captains can't post them.
+    assert.equal((await cap('POST', '/announcements', { title: 'Hi' })).status, 403);
+    assert.match((await sec('POST', '/announcements', { title: ' ' })).body.error, /title/);
+    const ann = (await sec('POST', '/announcements', { title: 'Tournament on Saturday', body: 'Pay your membership by Friday.' })).body;
+    const top = (await as()('GET', '/feed')).body.items.find((x) => x.kind === 'announcement');
+    assert.deepEqual([top.kind, top.title, top.body, top.angler], ['announcement', 'Tournament on Saturday', 'Pay your membership by Friday.', 'Robert Khoueiry']);
+    assert.ok((await as()('GET', '/feed?type=announcements')).body.items.every((x) => x.kind === 'announcement'));
+    assert.equal((await as()('GET', `/feed?team=${boat.id}`)).body.items.some((x) => x.kind === 'announcement'), false, "not on a boat's page");
+    assert.equal((await sec('DELETE', `/announcements/${ann.id}`)).status, 200);
+
+    // Approved weigh-ins go on the feed by themselves.
+    const weighins = (await as()('GET', `/feed?type=weighins&team=${boat.id}`)).body.items;
+    assert.ok(weighins.length > 0 && weighins.every((x) => x.kind === 'weighin' && x.boat === 'Liberian Girl'));
+    assert.ok(weighins.some((x) => x.angler === 'Guest' && x.species === 'Wahoo' && x.weightKg));
 
     // The log and the scale: three tunas logged at sea, then registered.
     // Each logged tuna gets a scale weight, in the order they were logged.

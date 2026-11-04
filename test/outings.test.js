@@ -122,6 +122,15 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await bob('PATCH', `/outings/${trip.id}`, { area: 'x' })).status, 403);
     assert.equal((await marwan('GET', '/outings/trip?date=2026-10-20')).body.trip.id, trip.id);
     assert.match((await marwan('POST', '/outings', { date: '2026-10-20', noCatch: true })).body.error, /already has a line/, 'one line per boat per day');
+    // The feed fills itself from Log fish: boat, species and fate, never a spot.
+    // Posting by hand is closed.
+    const feed = (await as()('GET', '/feed')).body.items;
+    assert.ok(feed.some((x) => x.kind === 'log' && x.boat === 'Exocet' && x.species === 'Sailfish' && x.fate === 'released'));
+    assert.equal(JSON.stringify(feed).includes('9.41'), false, 'no spots on the feed');
+    assert.ok((await as()('GET', '/feed?type=releases')).body.items.every((x) => x.fate === 'released'));
+    assert.ok((await as()('GET', '/feed?type=hookups')).body.items.every((x) => ['kept', 'lost'].includes(x.fate)));
+    assert.equal((await as()('GET', '/feed?type=weighins')).body.items.length, 0, 'nothing weighed in yet');
+    assert.match((await marwan('POST', '/catches', {})).body.error, /fills itself/);
     // Depth charts: crews only, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
     assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');

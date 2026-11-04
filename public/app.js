@@ -684,36 +684,74 @@ function wireCards(root, byId) {
 }
 
 // A paginated feed of catches with optional fixed filters.
+// The feed fills itself: fish approved at the weigh-in and fish logged at sea,
+// under the boat's name and photo. Never a spot.
+const withArticle = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
+function feedLine(x) {
+  const fish = x.species.toLowerCase();
+  if (x.kind === 'weighin') {
+    return x.fate === 'released' || x.weightKg == null
+      ? `${x.angler || 'The crew'} released ${withArticle(fish)} (weighed in).`
+      : `${x.angler || 'The crew'} weighed ${withArticle(`${fmtWeight(x.weightKg)} ${fish}`)}.`;
+  }
+  return { released: `Released ${withArticle(fish)}.`, kept: `Landed ${withArticle(fish)}.`, lost: `Lost ${withArticle(fish)}.` }[x.fate];
+}
+const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-item announcement" data-ann="${x.id}">
+  <div class="feed-head">
+    <span class="feed-boat"><img src="/jhmmc-logo.png" alt="" class="club-mark"><b>JHMMC</b></span>
+    <span class="small muted">${fmtWhen(x.at)}</span>
+  </div>
+  <h3 class="ann-title">${x.title}</h3>
+  ${x.body ? raw(html`<p class="ann-body">${x.body}</p>`) : ''}
+  <div class="ann-foot"><span class="pill ann">Announcement</span><span class="small muted">${x.angler || ''}</span>
+    ${x.canDelete ? raw('<button type="button" class="link danger small" data-act="drop-ann">Remove</button>') : ''}</div>
+</article>` : html`<article class="feed-item">
+  <div class="feed-head">
+    <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
+      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}
+      <b>${x.boat || 'A boat'}</b></a>
+    <span class="small muted">${fmtWhen(x.at)}</span>
+  </div>
+  <p class="feed-line">${x.kind === 'weighin' ? raw(html`<a href="#/catch/${x.id}">${feedLine(x)}</a>`) : feedLine(x)}</p>
+  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Release' : x.fate === 'kept' ? 'Hookup' : 'Lost'}</span>
+</article>`);
 async function renderFeed(container, query = {}) {
   let before = null;
   const list = document.createElement('div');
-  list.className = 'feed';
+  list.className = 'card feed-list';
   const more = document.createElement('button');
   more.textContent = 'Load more';
   more.className = 'more';
   more.hidden = true;
   container.replaceChildren(list, more);
-  const all = new Map();
-  wireCards(list, all);
-
+  let shown = 0;
   async function page() {
     const params = new URLSearchParams(Object.entries({ ...query, before: before ?? '' }).filter(([, v]) => v !== '' && v != null));
-    const { catches, nextBefore } = await api('/catches?' + params);
-    for (const c of catches) all.set(String(c.id), c);
-    list.insertAdjacentHTML('beforeend', catches.map((c) => catchCard(c)).join(''));
+    const { items, nextBefore } = await api('/feed?' + params);
+    list.insertAdjacentHTML('beforeend', items.map(feedItem).join(''));
+    shown += items.length;
     before = nextBefore;
     more.hidden = !nextBefore;
-    if (!all.size) list.innerHTML = '<div class="card empty">No catches here yet.</div>';
+    if (!shown) list.innerHTML = '<div class="pad empty muted">Nothing here yet. Fish show up as boats log them and weigh them in.</div>';
   }
   more.addEventListener('click', page);
+  list.addEventListener('click', async (e) => {
+    const drop = e.target.closest('[data-act=drop-ann]');
+    if (!drop || !confirm('Remove this announcement?')) return;
+    const item = drop.closest('[data-ann]');
+    try {
+      await api(`/announcements/${item.dataset.ann}`, { method: 'DELETE' });
+      item.remove();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
   await page();
 }
 
 // JHMMC members carry the club's logo in the header, on every page.
 const syncHeader = () => {
   document.getElementById('club-chip').hidden = !state.me?.jhmmc;
-  // Like Instagram: + at the top left of the feed to post, there however far you scroll.
-  document.getElementById('topbar-post').hidden = !(state.navActive === 'home' && state.me?.teamId);
 };
 
 // Sends a visitor to sign in, then back to where they were.
@@ -739,7 +777,7 @@ function needLogin(view, what) {
 
 const HERO = `<section class="hero">
   <h1>Every big fish in West Africa, in one place</h1>
-  <p>Follow the boats and anglers, see every catch, and check the leaderboard. Crews sign in to log their catches.</p>
+  <p>Follow the boats and anglers, every fish weighed in and released, and the leaderboard. Crews sign in to log their fish.</p>
   <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
 </section>`;
 
@@ -747,7 +785,7 @@ const HERO = `<section class="hero">
 function noBoatBanner() {
   if (!state.me) return HERO;
   return state.me.teamId ? '' : `<div class="card pad banner">
-    <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed, like and comment. To post catches, join a boat's crew or register your boat.</span></div>
+    <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed and the leaderboard. To log fish, join a boat's crew or register your boat.</span></div>
     <a class="btn primary" href="#/crew">Get on a boat</a>
   </div>`;
 }
@@ -781,29 +819,30 @@ function reviewForm(c) {
 // after the user has moved on writes into a detached node instead.
 const pagesFor = (view) => ({
   async home() {
-    const filters = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
-    delete filters.feed; // old links from when JHMMC had its own side
-    const [clubs, { teams }] = await Promise.all([loadClubs(), api('/teams')]);
-    // The filters in use, as chips that each remove one.
-    const nameOf = {
-      species: (v) => state.meta.species.find((x) => String(x.id) === v)?.name,
-      team: (v) => teams.find((t) => String(t.id) === v)?.name,
-      club: (v) => clubs.find((c) => String(c.id) === v)?.name,
-      country: (v) => v,
-      released: () => 'Released only',
-    };
-    const active = Object.keys(nameOf).filter((k) => filters[k]).map((k) => [k, nameOf[k](filters[k]) || filters[k]]);
-    const without = (key) => {
-      const p = new URLSearchParams(filters);
-      p.delete(key);
-      return `#/${p.size ? `?${p}` : ''}`;
-    };
-    view.innerHTML = html`
-      ${raw(noBoatBanner())}
-      ${active.length ? raw(html`<div class="filter-bar">${active.map(([key, label]) => raw(html`<span class="chip">${label} <a href="${without(key)}" aria-label="Remove ${label}">✕</a></span>`))}</div>`) : ''}
-      ${filters.angler ? raw(html`<p><span class="chip">Catches by ${filters.angler} <a href="#/" aria-label="Show everyone">✕</a></span></p>`) : ''}
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const type = ['weighins', 'releases', 'hookups', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
+    const tab = (key, label) => html`<a role="tab" href="#/${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
+    // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
+    const officer = !!state.me?.canReview;
+    view.innerHTML = html`${raw(noBoatBanner())}
+      ${officer ? raw(html`<details class="card pad ann-new"><summary>${raw(icon('edit'))} New announcement</summary>
+        <form class="stack" id="ann">
+          <label>Title <input name="title" required maxlength="120" placeholder="e.g. Tournament this Saturday"></label>
+          <label>Message <textarea name="body" maxlength="2000" rows="3" placeholder="e.g. Remember to pay your membership before Friday."></textarea></label>
+          <p class="error"></p>
+          <div><button type="submit" class="primary">Post announcement</button></div>
+        </form></details>`) : ''}
+      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('releases', 'Releases'))}${raw(tab('hookups', 'Hookups'))}${raw(tab('announcements', 'Announcements'))}</div>
       <div id="feed"></div>`;
-    await renderFeed(view.querySelector('#feed'), filters);
+    const form = view.querySelector('#ann');
+    if (form) {
+      bindForm(form, async () => {
+        await api('/announcements', { method: 'POST', body: formData(form) });
+        toast('Announcement posted.');
+        route();
+      });
+    }
+    await renderFeed(view.querySelector('#feed'), type === 'all' ? {} : { type });
   },
 
   async catch(id) {
@@ -844,65 +883,9 @@ const pagesFor = (view) => ({
     });
   },
 
+  // Posting by hand is closed: the feed fills itself from weigh-ins and Log fish.
   async new() {
-    if (!state.me) return needLogin(view, 'post');
-    if (!state.me.teamId) {
-      view.innerHTML = html`<h1>New post</h1>${raw(noBoatBanner())}`;
-      return;
-    }
-    // Like Instagram: a photo or video and a caption. Fish are added in Log fish;
-    // "Share to feed" there opens this page with the fish filled in.
-    const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const fish = state.meta.species.find((x) => String(x.id) === q.get('species'));
-    const weightKg = Number(q.get('weight')) > 0 ? Number(q.get('weight')) : null;
-    const estimated = q.get('est') === '1';
-    const released = q.get('released') === '1';
-    const crew = fish ? (await api(`/teams/${state.me.teamId}`)).team.members : [];
-    view.innerHTML = html`<h1>New post</h1>
-      <form class="card pad stack" id="f">
-        ${fish ? raw(html`<div class="shared-fish"><b>${fish.name}</b>${weightKg ? ` · ${estimated ? '~' : '⚖️ '}${fmtWeight(weightKg)}${estimated ? ' (est.)' : ''}` : ''}
-          ${released ? raw('<span class="pill released">released</span>') : ''}<span class="small muted">from Log fish</span></div>`) : ''}
-        <div class="photo-pick">
-          ${raw(MEDIA_PREVIEWS)}
-          <button type="button" class="photo-cta" data-act="photo-menu" aria-expanded="false">${raw(icon('camera'))}<span>Add a photo or video</span></button>
-          <div class="photo-menu" hidden>${raw(MEDIA_CHOICES)}</div>
-        </div>
-        <label>Caption <textarea name="notes" maxlength="2000" rows="3" placeholder="${fish ? 'Fish on! Lure, crew, conditions…' : 'The crew, the boat, the day…'}">${fish && estimated && weightKg ? `Released, estimated ~${fmtWeight(weightKg)}. ` : ''}</textarea></label>
-        ${fish ? raw(html`<label>Angler <select name="anglerId">${raw(options([...crew.map((m) => [m.id, m.id === state.me.id ? `${m.name} (me)` : m.name]), ['other', 'Guest (type a name)']], '', 'Optional'))}</select></label>
-        <label id="angler-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off" placeholder="e.g. a guest or visiting angler"></label>`)
-          : raw('<p class="small muted">Landed a fish? Add it in <b>Log fish</b>, then tap <b>Share to feed</b> on it.</p>')}
-        <p class="error"></p>
-        <div><button type="submit" class="primary">Share</button></div>
-      </form>`;
-    const form = view.querySelector('#f');
-    const nameBox = view.querySelector('#angler-name');
-    form.anglerId?.addEventListener('change', () => {
-      nameBox.hidden = form.anglerId.value !== 'other';
-      form.anglerName.required = !nameBox.hidden;
-      if (!nameBox.hidden) form.anglerName.focus();
-    });
-    const media = wireMediaPick(form);
-    bindForm(form, async () => {
-      const fd = await media.addTo(new FormData(form));
-      if (!fd.getAll('photo').some((f) => f.size) && !fd.get('video')?.size) throw new Error('Add a photo or video to share.');
-      if (fish) {
-        fd.set('speciesId', fish.id);
-        // An estimate goes in the caption, never as the weight: records are for scale weights.
-        if (weightKg && !estimated) fd.set('weightKg', weightKg);
-        if (released) fd.set('released', 'on');
-      } else {
-        fd.set('anglerId', ''); // not a fish: nobody's catch
-      }
-      const btn = form.querySelector('button[type=submit]');
-      btn.textContent = 'Sharing…';
-      try {
-        const { catch: c } = await api('/catches', { method: 'POST', form: fd });
-        toast('Shared. Tight lines!');
-        location.hash = `#/catch/${c.id}`;
-      } finally {
-        btn.textContent = 'Share';
-      }
-    });
+    location.replace(state.me?.teamId ? '#/fishon' : '#/');
   },
 
   // Join a crew with a code, register a boat, or carry on as an individual.
@@ -1846,8 +1829,6 @@ const pagesFor = (view) => ({
     const time = (iso) => parseTime(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
     const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
-    // A fish worth showing off: a post with it filled in, ready for the photo.
-    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.scaleKg ? { weight: l.scaleKg } : l.fate === 'released' && l.weightKg ? { weight: l.weightKg, est: 1 } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
@@ -1856,7 +1837,6 @@ const pagesFor = (view) => ({
       const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` · ~${fmtWeight(l.weightKg)} (est.)` : '');
       list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
-            ${l.fate !== 'lost' ? raw(html`· <a class="link small" href="${shareHref(l)}">Share to feed</a>`) : ''}
             ${l.fate === 'released' && l.scaleKg == null ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
             ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
