@@ -1189,7 +1189,7 @@ const pagesFor = (view) => ({
     const byBoat = q.has('team');
     view.innerHTML = html`<p class="back"><a href="#/" data-back>‹ Back</a></p>
       <h1>${title || 'Fish'}</h1>
-      <p class="muted">${scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
+      <p class="muted">${scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · ${board === 'all' && scope !== 'tournaments' ? 'all time' : 'this season'}</p>
       <div class="stats3">
         <div class="card s"><b>${fish.length}</b><span>fish</span></div>
         <div class="card s"><b>${total}</b><span>points</span></div>
@@ -1245,7 +1245,7 @@ const pagesFor = (view) => ({
       <p class="small muted">${scope === 'tournaments'
         ? `JHMMC Tournaments: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
         : board === 'jhmmc' ? `JHMMC Season: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
-          : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
+          : 'Every boat in West Africa, any day of the year: there is no season, every approved fish counts. Only JHMMC boats compete in the JHMMC Season and Tournaments.'}
         Fish registered at the weigh station and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
@@ -1255,7 +1255,7 @@ const pagesFor = (view) => ({
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
         <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
           <td class="num"><a class="drill" href="${drill({ team: b.teamId })}">${b.catches}</a></td>
-          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
+          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : board === 'jhmmc' ? 'No approved catches yet this season.' : 'No approved catches yet.')}</tbody>
       </table></div>
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
