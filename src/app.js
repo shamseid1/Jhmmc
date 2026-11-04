@@ -124,6 +124,38 @@ function createApp({
   }
 
   const setting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
+
+  // After the clear of all fish (schema 39), their photo and video files are
+  // left on the disk: remove, once, every upload nothing in the database
+  // mentions any more. A file named anywhere (a post, a boat or profile photo,
+  // a scale photo, the registration record) stays, and so does anything less
+  // than an hour old.
+  function removeUnusedUploads() {
+    if (setting('uploads_cleaned') === '39') return;
+    const text = [];
+    for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()) {
+      const cols = db.prepare(`PRAGMA table_info("${name}")`).all().filter((c) => !c.type || /TEXT/i.test(c.type)).map((c) => `"${c.name}"`);
+      for (const row of cols.length ? db.prepare(`SELECT ${cols.join(', ')} FROM "${name}"`).all() : []) {
+        for (const v of Object.values(row)) if (typeof v === 'string') text.push(v);
+      }
+    }
+    const used = text.join('\n');
+    let removed = 0;
+    for (const file of fs.readdirSync(uploadDir)) {
+      const full = path.join(uploadDir, file);
+      const st = fs.statSync(full);
+      if (!st.isFile() || Date.now() - st.mtimeMs < 3600e3 || used.includes(file)) continue;
+      fs.rmSync(full, { force: true });
+      removed++;
+    }
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('uploads_cleaned', '39');
+    if (removed) console.log(`Removed ${removed} unused upload${removed === 1 ? '' : 's'} left from the clear.`);
+  }
+  try {
+    removeUnusedUploads();
+  } catch (err) {
+    console.error('Clearing unused uploads failed:', err.message);
+  }
   // JHMMC's own scoring (weigh-in, approval, points) applies to its boats only.
   const homeClubId = () => db.prepare('SELECT id FROM clubs WHERE name = ? COLLATE NOCASE').get(HOME_CLUB.name)?.id ?? null;
   // Every book is approved fish now: posts never set records or points.
