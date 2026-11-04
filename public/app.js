@@ -969,6 +969,7 @@ const pagesFor = (view) => ({
         <a role="tab" href="#/participants?tab=anglers" aria-selected="${tab === 'anglers'}">Anglers</a>
         <a role="tab" href="#/participants?tab=boats" aria-selected="${tab === 'boats'}">Boats</a>
       </div>
+      <p class="small muted center">Released and weighed: fish weighed in and approved by the JHMMC secretary.</p>
       <label class="search">${raw(icon('search'))}
         <input type="search" placeholder="Search ${tab}" aria-label="Search ${tab}" autocomplete="off"></label>
       <div class="pgrid">${items.map((i) => raw(card(i)))}</div>
@@ -1004,9 +1005,9 @@ const pagesFor = (view) => ({
         </div>
       </div>`) : ''}
       <div class="stats">
-        <div class="card stat"><b>${stats.catches}</b><span>catches</span></div>
+        <div class="card stat"><b>${stats.catches}</b><span>fish weighed in</span></div>
         <div class="card stat"><b>${stats.released}</b><span>released</span></div>
-        <div class="card stat"><b>${stats.heaviestKg ? Math.round(stats.heaviestKg) + ' kg' : '—'}</b><span>heaviest</span></div>
+        <div class="card stat"><b>${stats.heaviestKg ? fmtWeight(stats.heaviestKg) : '—'}</b><span>heaviest</span></div>
       </div>
       <h2>Crew (${team.members.length})</h2>
       <div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
@@ -1157,9 +1158,9 @@ const pagesFor = (view) => ({
       <p class="muted">${[club.city, club.country].filter(Boolean).join(', ')}</p>
       ${club.description ? raw(html`<p>${club.description}</p>`) : ''}
       <div class="stats">
-        <div class="card stat"><b>${stats.catches}</b><span>catches</span></div>
+        <div class="card stat"><b>${stats.catches}</b><span>fish weighed in</span></div>
         <div class="card stat"><b>${stats.released}</b><span>released</span></div>
-        <div class="card stat"><b>${stats.heaviestKg ? Math.round(stats.heaviestKg) + ' kg' : '—'}</b><span>heaviest</span></div>
+        <div class="card stat"><b>${stats.heaviestKg ? fmtWeight(stats.heaviestKg) : '—'}</b><span>heaviest</span></div>
       </div>
       <h2>Boats (${teams.length})</h2>
       <div class="card"><ul class="list">${teams.length ? teams.map((t) => raw(html`<li><a href="#/boat/${t.id}">${t.name}</a> <span class="muted small">· ${t.members} crew · ${plural(t.catches, 'catch')}</span></li>`)) : raw('<li class="muted">No boats in this club yet. Captains can pick the club on their boat page.</li>')}</ul></div>
@@ -2212,7 +2213,7 @@ const pagesFor = (view) => ({
         <button type="button" class="primary" data-install>${icon('download')} Install</button>
       </div>`)}
       ${me ? raw(`<h2>You</h2><div class="card menu">
-        ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your catches, releases and heaviest fish')}
+        ${item(`#/user/${me.id}`, 'dashboard', 'My dashboard', 'Your approved fish, releases and heaviest')}
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/spots', 'pin', 'My catch map', 'Every catch you logged with a spot, and where')}
         ${item('#/profile', 'edit', 'Edit profile', 'Name, country, photo, units')}
@@ -2831,9 +2832,9 @@ const pagesFor = (view) => ({
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
       ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
       <div class="stats">
-        <div class="card stat"><b>${stats.catches}</b><span>catches</span></div>
+        <div class="card stat"><b>${stats.catches}</b><span>fish weighed in</span></div>
         <div class="card stat"><b>${stats.released}</b><span>released</span></div>
-        <div class="card stat"><b>${stats.heaviestKg ? Math.round(stats.heaviestKg) + ' kg' : '—'}</b><span>heaviest</span></div>
+        <div class="card stat"><b>${stats.heaviestKg ? fmtWeight(stats.heaviestKg) : '—'}</b><span>heaviest</span></div>
       </div>
       <div id="feed"></div>`;
     await renderFeed(view.querySelector('#feed'), { user: user.id });

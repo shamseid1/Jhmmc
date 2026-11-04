@@ -556,7 +556,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     return !clubId || !!db.prepare('SELECT 1 FROM clubs WHERE id = ?').get(clubId);
   }
 
-  // Released and weighed counts drive the bars on the participant cards.
+  // Released and weighed counts drive the bars on the participant cards: fish
+  // weighed in and approved only (posts never count).
   const TALLY = `COUNT(k.id) AS catches, COALESCE(SUM(k.released), 0) AS released,
     COUNT(k.weight_kg) AS weighed`;
 
@@ -565,7 +566,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       SELECT t.id, t.name, t.home_port AS homePort, t.country, t.length_ft AS lengthFt, t.make, t.photo, t.division,
         t.weigh_station AS weighStation, c.id AS clubId, c.name AS clubName, COALESCE(c.self_run, 0) = 0 AS throughJhmmc,
         (SELECT COUNT(*) FROM users u WHERE u.team_id = t.id) AS members, ${TALLY}
-      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status = 'unofficial'
+      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id LEFT JOIN catches k ON k.team_id = t.id AND k.status = 'approved'
       GROUP BY t.id ORDER BY t.name COLLATE NOCASE
     `).all();
     res.json({ teams: teams.map(({ photo, ...t }) => ({ ...t, photoUrl: photoUrl(photo) })) });
@@ -574,7 +575,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/anglers', (_req, res) => {
     const anglers = db.prepare(`
       SELECT u.id, ${SHOWN} AS name, u.country, u.photo, t.id AS teamId, t.name AS teamName, t.photo AS teamPhoto, ${TALLY}
-      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'unofficial' AND k.no_angler = 0
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id LEFT JOIN catches k ON k.user_id = u.id AND k.status = 'approved'
       GROUP BY u.id ORDER BY 2 COLLATE NOCASE
     `).all();
     // Anglers without an account, known only by the name typed on their catches.
@@ -582,7 +583,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       SELECT NULL AS id, k.angler_name AS name, t.id AS teamId, t.name AS teamName,
         t.photo AS teamPhoto, MIN(k.id) AS first, ${TALLY}
       FROM catches k LEFT JOIN teams t ON t.id = k.team_id
-      WHERE k.user_id IS NULL AND k.status = 'unofficial' GROUP BY lower(k.angler_name)
+      WHERE k.user_id IS NULL AND k.status = 'approved' GROUP BY lower(k.angler_name)
     `).all();
     // An angler without their own photo is shown with their boat's.
     res.json({
@@ -655,7 +656,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE team_id = ? AND status = 'unofficial'
+      FROM catches WHERE team_id = ? AND status = 'approved'
     `).get(id);
     res.json({ team, stats });
   });
@@ -2305,7 +2306,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     delete user.photo;
     const stats = db.prepare(`
       SELECT COUNT(*) AS catches, COALESCE(SUM(released), 0) AS released, MAX(weight_kg) AS heaviestKg
-      FROM catches WHERE user_id = ? AND status = 'unofficial' AND no_angler = 0
+      FROM catches WHERE user_id = ? AND status = 'approved'
     `).get(id);
     res.json({ user, stats });
   });

@@ -193,11 +193,11 @@ test('participants: boats and anglers with photos and tallies', async () => {
   r = await anon('GET', `/records?club=${otherClub.id}`);
   assert.ok(r.body.species.every((x) => x.best === null), 'a club only sees its own catches');
   const boat = (await anon('GET', '/teams')).body.teams.find((t) => t.id === team.id);
-  assert.deepEqual([boat.catches, boat.released, boat.weighed, boat.members], [2, 1, 1, 1]);
+  assert.deepEqual([boat.catches, boat.released, boat.weighed, boat.members], [0, 0, 0, 1], 'posts never count: only fish weighed in and approved');
   let musa = (await anon('GET', '/anglers')).body.anglers.find((a) => a.name === 'Musa Kamara');
   assert.equal(musa.teamName, 'Freetown Flyer');
   assert.equal(musa.photoUrl, r.body?.team?.photoUrl ?? boat.photoUrl, 'falls back to the boat photo');
-  assert.deepEqual([musa.released, musa.weighed], [1, 1]);
+  assert.deepEqual([musa.released, musa.weighed], [0, 0]);
 
   const me = new FormData();
   me.set('photo', new Blob([PNG], { type: 'image/png' }), 'me.png');
@@ -251,13 +251,11 @@ test('anglers without an account: catches logged under a typed name', async () =
 
   const anon = client();
   const guest = (await anon('GET', '/anglers')).body.anglers.filter((a) => a.name.toLowerCase() === 'guest varney');
-  assert.equal(guest.length, 1, 'one card per name, whatever the capitals');
-  assert.deepEqual([guest[0].hasAccount, guest[0].teamName, guest[0].catches, guest[0].released, guest[0].weighed], [false, 'Mesurado Queen', 2, 1, 1]);
+  assert.equal(guest.length, 0, 'a name only on posts gets no card: Participants counts fish weighed in and approved');
   r = await anon('GET', '/catches?angler=GUEST%20VARNEY');
   assert.equal(r.body.catches.length, 2);
   const rec = (await anon('GET', '/records')).body.species.find((x) => x.name === 'Wahoo');
   assert.equal(rec.best, null, 'posts never set records');
-  assert.equal(guest[0].name, 'Guest Varney', 'shown as first typed');
 
   // Varney joins the crew and the captain moves the typed-name catches to the account.
   const teamId = (await cap('GET', '/me')).body.user.teamId;
@@ -273,7 +271,8 @@ test('anglers without an account: catches logged under a typed name', async () =
   assert.equal(r.body.moved, 2);
   assert.deepEqual(r.body.team.guests, []);
   const stats = (await anon('GET', `/users/${varneyId}`)).body.stats;
-  assert.deepEqual([stats.catches, stats.released], [2, 1]);
+  assert.deepEqual([stats.catches, stats.released], [0, 0], 'the posts move to the account; the dashboard counts approved fish only');
+  assert.equal((await anon('GET', `/catches?user=${varneyId}`)).body.catches.length, 2, 'the posts are on the profile');
   assert.ok(!(await anon('GET', '/anglers')).body.anglers.some((a) => a.name === 'Guest Varney'));
   assert.equal((await cap('POST', `/teams/${teamId}/guests/link`, { name: 'Guest Varney', userId: varneyId })).status, 404);
 });
