@@ -1361,6 +1361,7 @@ const pagesFor = (view) => ({
       <h1>Register fish</h1>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
+      <p class="small"><b>Weigh in the order they were caught</b> (first caught, first on this sheet): each weight then goes on the right fish in the boat's log.</p>
       ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
       <form class="card pad stack" id="sheet">
         <div class="row">
