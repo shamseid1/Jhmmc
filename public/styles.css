@@ -765,4 +765,3 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .chip-date::after { content: '▾'; font-size: 11px; }
 .chip-date input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .shared-fish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); }
-select.swap { width: auto; padding: 2px 24px 2px 8px; font-size: 13px; min-height: 0; }

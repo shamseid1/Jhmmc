@@ -129,9 +129,8 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.equal((await as()('GET', `/points/fish?division=ocean&scope=tournaments&team=${boat.id}`)).body.fish.length, 0, 'no tournament entered');
     assert.equal((await as()('GET', '/points/fish')).status, 400);
 
-    // The log and the scale: three tunas logged at sea without estimates, then
-    // registered. Each logged tuna gets a scale weight, and a weight can be
-    // moved to the right fish.
+    // The log and the scale: three tunas logged at sea, then registered.
+    // Each logged tuna gets a scale weight, in the order they were logged.
     const tuna = sp['Yellowfin tuna'];
     for (const n of [1, 2, 3]) await cap('POST', '/outings/fish', { speciesId: tuna, fate: 'kept', lat: 6 + n / 10, lng: -10.5, date: today });
     for (const kg of ['41', '28', '35']) {
@@ -142,17 +141,6 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     let trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     const tunas = trip.landings.filter((l) => l.speciesId === tuna);
     assert.deepEqual(tunas.map((l) => l.scaleKg), [41, 28, 35], 'in the order they were logged');
-    trip = (await cap('PATCH', `/outings/fish/${tunas[0].id}/registration`, { catchId: tunas[1].catchId })).body.trip;
-    assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).map((l) => l.scaleKg), [28, 41, 35], 'the two swap');
-    const wahoo = (await cap('GET', '/meta')).body.species.find((x) => x.name === 'Wahoo').id;
-    assert.equal((await cap('PATCH', `/outings/fish/${tunas[0].id}/registration`, { catchId: trip.registered.find((k) => k.speciesId === wahoo)?.id ?? 999 })).status, 400, 'a tuna takes a tuna\'s weight');
-    // With estimates, each registration finds the closest one.
-    for (const est of [20, 60]) await cap('POST', '/outings/fish', { speciesId: sp['Atlantic sailfish'], fate: 'kept', weightKg: est, date: today });
-    const sail = registration({ speciesId: sp['Atlantic sailfish'], weightKg: '55' });
-    sail.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 's.png');
-    await cap('POST', '/weigh', sail);
-    trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
-    assert.deepEqual(trip.landings.filter((l) => l.species === 'Atlantic sailfish').map((l) => [l.weightKg, l.scaleKg]), [[20, null], [60, 55]]);
     // Logged 3 tunas, brought 5 to the scale: the log counts 5.
     const extra = [];
     for (const kg of ['22', '19']) {
@@ -162,7 +150,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     }
     trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     const five = trip.landings.filter((l) => l.speciesId === tuna);
-    assert.deepEqual(five.map((l) => [l.scaleKg, !!l.fromScale]), [[28, false], [41, false], [35, false], [22, true], [19, true]]);
+    assert.deepEqual(five.map((l) => [l.scaleKg, !!l.fromScale]), [[41, false], [28, false], [35, false], [22, true], [19, true]]);
     assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 5);
     // One withdrawn: it leaves the log with it.
     await cap('DELETE', `/catches/${extra[1]}`);

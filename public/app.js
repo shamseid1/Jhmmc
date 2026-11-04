@@ -841,7 +841,7 @@ const pagesFor = (view) => ({
     const crew = fish ? (await api(`/teams/${state.me.teamId}`)).team.members : [];
     view.innerHTML = html`<h1>New post</h1>
       <form class="card pad stack" id="f">
-        ${fish ? raw(html`<div class="shared-fish"><b>${fish.name}</b>${weightKg ? ` · ~${fmtWeight(weightKg)}` : ''}
+        ${fish ? raw(html`<div class="shared-fish"><b>${fish.name}</b>${weightKg ? ` · ⚖️ ${fmtWeight(weightKg)}` : ''}
           ${released ? raw('<span class="pill released">released</span>') : ''}<span class="small muted">from Log fish</span></div>`) : ''}
         <div class="photo-pick">
           ${raw(MEDIA_PREVIEWS)}
@@ -1786,10 +1786,7 @@ const pagesFor = (view) => ({
       <p class="small muted">${live ? 'At sea: tap Released, Kept or Lost as each fish comes aboard; the spot is taken there and then.' : 'An earlier day: add its fish here (no GPS spot), or mark it as no catch.'}
         Every fish goes on your boat's line in the regional log; exact spots stay with your crew.</p>
       <div class="card pad stack fishon">
-        <div class="row">
-          <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
-          <label>Estimated weight (${unit('weight')}) <input id="fo-weight" type="number" min="0" step="0.5" inputmode="decimal" placeholder="optional"></label>
-        </div>
+        <label>Species <select id="fo-species">${raw(speciesOptions(lastSpecies, 'Choose species…'))}</select></label>
         <div class="fates">
           <button type="button" class="fate released" data-fate="released">Released</button>
           <button type="button" class="fate kept" data-fate="kept">Kept</button>
@@ -1812,25 +1809,17 @@ const pagesFor = (view) => ({
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
     const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
     // A fish worth showing off: a post with it filled in, ready for the photo.
-    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.scaleKg ?? l.weightKg ? { weight: l.scaleKg ?? l.weightKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
+    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.scaleKg ? { weight: l.scaleKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
-      const est = (w) => (Number(w) > 0 ? ` · ~${fmtWeight(Number(w))}` : '');
-      // Registered at the weigh station: the scale weight replaces the estimate.
-      const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}${l.scaleStatus === 'approved' ? '' : ' (awaiting approval)'}` : est(l.weightKg));
-      // More than one registered fish of a species that day: pick which weight is this fish's.
-      const swap = (l) => {
-        const same = (trip?.registered || []).filter((k) => k.speciesId === l.speciesId && k.weightKg != null);
-        if (!l.catchId || same.length < 2) return '';
-        return html` · <select class="swap" data-swap="${l.id}" aria-label="Which registered ${l.species} is this?">${raw(options(same.map((k) => [k.id, fmtWeight(k.weightKg)]), l.catchId))}</select>`;
-      };
+      // Registered at the weigh station: its scale weight.
+      const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : '');
       list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate !== 'lost' ? raw(html`· <a class="link small" href="${shareHref(l)}">Share to feed</a>`) : ''}
-            ${l.scaleKg != null ? raw(swap(l)) : raw(html`· <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Add estimate'}</button>`)}
             ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></li>`),
-        ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b>${est(x.weightKg)} <span class="pill ${x.fate}">${x.fate}</span>
+        ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
         || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today. Pick the species and tap Released, Kept or Lost when one is landed.' : 'No fish logged that day.'}</li>`;
@@ -1889,30 +1878,7 @@ const pagesFor = (view) => ({
         if (view.contains(list)) draw();
       }
     }
-    list.addEventListener('change', async (e) => {
-      const sel = e.target.closest('[data-swap]');
-      if (!sel) return;
-      try {
-        trip = (await api(`/outings/fish/${sel.dataset.swap}/registration`, { method: 'PATCH', body: { catchId: sel.value } })).trip;
-        toast('Weight moved.');
-      } catch (err) {
-        toast(err.message);
-      }
-      draw();
-    });
     list.addEventListener('click', async (e) => {
-      const weigh = e.target.closest('[data-weigh]');
-      if (weigh) {
-        const typed = prompt(`Estimated weight (${unit('weight')})`, toUnit('weight', weigh.dataset.kg || null));
-        if (typed === null) return;
-        try {
-          trip = (await api(`/outings/fish/${weigh.dataset.weigh}`, { method: 'PATCH', body: { weightKg: fromUnit('weight', typed) } })).trip;
-          draw();
-        } catch (err) {
-          toast(err.message);
-        }
-        return;
-      }
       const undo = e.target.closest('[data-undo]');
       const drop = e.target.closest('[data-drop]');
       if (drop) {
@@ -1984,11 +1950,6 @@ const pagesFor = (view) => ({
         return;
       }
       try { localStorage.setItem('fishon-species', sel.value); } catch {}
-      const weight = view.querySelector('#fo-weight');
-      if (weight.value && !(Number(weight.value) > 0)) {
-        err.textContent = 'Check the estimated weight.';
-        return;
-      }
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
       // Fish added for an earlier day get no spot (the boat isn't there now).
       const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(8000);
@@ -1996,11 +1957,9 @@ const pagesFor = (view) => ({
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
         speciesId: sel.value, species: sel.selectedOptions[0].textContent, fate: btn.dataset.fate,
-        weightKg: fromUnit('weight', weight.value),
         lat: spot?.lat ?? '', lng: spot?.lng ?? '', landedAt: now.toISOString(), date: day,
       }]);
       toast(`${sel.selectedOptions[0].textContent} ${btn.dataset.fate}${spot ? ', spot taken' : ''}.`);
-      weight.value = '';
       draw();
       flush();
     });
@@ -2068,7 +2027,7 @@ const pagesFor = (view) => ({
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, fmtDepth(o.depthM)].filter(Boolean).join(', '), fmtTemp(o.waterC), o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
         ${state.me?.teamId && o.teamId === state.me.teamId ? raw(html`<a href="#/fishon?date=${o.date}">Open</a>`) : ''}

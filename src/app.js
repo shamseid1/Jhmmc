@@ -978,8 +978,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // A fish registered at the weigh station is the same fish its boat logged at
   // sea: link them (same boat, day and species; a released one to a released
   // one first), so the log shows the scale weight. Works whichever comes first.
-  // Five tunas: each goes to the logged one whose estimate is closest to its
-  // scale weight; without estimates, in the order they were logged.
+  // Five tunas: in the order they were logged.
   function linkRegistrationToLog(catchId) {
     const k = db.prepare("SELECT id, team_id, caught_on, species_id, released, weight_kg, logged_by FROM catches WHERE id = ? AND status <> 'unofficial'").get(catchId);
     if (!k?.team_id || !k.species_id || db.prepare('SELECT 1 FROM outing_landings WHERE catch_id = ?').get(k.id)) return;
@@ -1979,11 +1978,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const o = db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(outingId);
     if (!o) return null;
     const out = presentOuting(o, viewer);
-    // The boat's registered fish that day, so a weight can be moved to the right logged fish.
-    const registered = o.teamId ? db.prepare(`SELECT k.id, k.species_id AS speciesId, k.weight_kg AS weightKg, k.released
-      FROM catches k WHERE k.team_id = ? AND k.caught_on = ? AND k.status NOT IN ('unofficial', 'rejected') ORDER BY k.id`)
-      .all(o.teamId, o.date).map((k) => ({ ...k, released: !!k.released })) : [];
-    return { ...out, line: outingLine(out), landings: landingsOf(outingId), registered };
+    return { ...out, line: outingLine(out), landings: landingsOf(outingId) };
   };
   // The crew of the boat (and whoever logged the line, and the admin) work on the trip.
   const onTrip = (user, o) => isAdminUser(user) || o.user_id === user.id || (o.team_id != null && o.team_id === user.teamId);
@@ -2050,36 +2045,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? '') ? req.query.date : new Date().toISOString().slice(0, 10);
     const o = req.user.teamId && db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(req.user.teamId, date);
     res.json({ trip: o ? tripFor(o.id, req.user) : null });
-  });
-
-  // The estimated weight, given or changed after the fish was logged.
-  api.patch('/outings/fish/:id', auth.requireUser, (req, res) => {
-    const l = db.prepare(`SELECT l.id, l.outing_id, o.user_id, o.team_id
-      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
-    if (!l) return res.status(404).json({ error: 'Fish not found.' });
-    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
-    const weightKg = estimate(req.body.weightKg);
-    if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
-    db.prepare('UPDATE outing_landings SET weight_kg = ? WHERE id = ?').run(weightKg, l.id);
-    res.json({ trip: tripFor(l.outing_id, req.user) });
-  });
-
-  // Five tunas: put a registered weight on the right logged fish. If another
-  // logged fish had it, the two swap.
-  api.patch('/outings/fish/:id/registration', auth.requireUser, (req, res) => {
-    const l = db.prepare(`SELECT l.id, l.outing_id, l.species_id, l.catch_id, o.user_id, o.team_id, o.date
-      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
-    if (!l) return res.status(404).json({ error: 'Fish not found.' });
-    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
-    const catchId = intId(req.body.catchId);
-    const k = catchId && db.prepare(`SELECT id FROM catches WHERE id = ? AND team_id = ? AND caught_on = ? AND species_id = ?
-      AND status NOT IN ('unofficial', 'rejected')`).get(catchId, l.team_id, l.date, l.species_id);
-    if (!k) return res.status(400).json({ error: 'Choose one of the boat\'s registered fish of that species, that day.' });
-    db.exec('BEGIN');
-    db.prepare('UPDATE outing_landings SET catch_id = ? WHERE catch_id = ? AND id <> ?').run(l.catch_id, k.id, l.id);
-    db.prepare('UPDATE outing_landings SET catch_id = ? WHERE id = ?').run(k.id, l.id);
-    db.exec('COMMIT');
-    res.json({ trip: tripFor(l.outing_id, req.user) });
   });
 
   // Logged by mistake: take the fish back off the line.
