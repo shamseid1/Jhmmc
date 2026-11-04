@@ -821,7 +821,8 @@ function reviewForm(c) {
 const pagesFor = (view) => ({
   async home() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const type = ['weighins', 'logged', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
+    // Fish logged at sea show under All; Weigh-ins and Announcements have their own tabs.
+    const type = ['weighins', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
     const tab = (key, label) => html`<a role="tab" href="#/${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
     // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
     const officer = !!state.me?.canReview;
@@ -833,7 +834,7 @@ const pagesFor = (view) => ({
           <p class="error"></p>
           <div><button type="submit" class="primary">Post announcement</button></div>
         </form></details>`) : ''}
-      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('logged', 'Logged'))}${raw(tab('announcements', 'Announcements'))}</div>
+      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
     // Until this phone has notifications on, offer them here (announcements, reminders).
