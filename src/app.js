@@ -392,7 +392,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   // What each person wants to be told about (More → Notifications).
-  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: false, logged: false, review: true };
+  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: true, logged: true, review: true };
   const notifyPrefs = (json) => {
     let saved = {};
     try { saved = JSON.parse(json || '{}'); } catch {}
