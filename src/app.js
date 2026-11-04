@@ -459,7 +459,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const team = db.prepare('SELECT id, club_id AS clubId, weigh_station AS station, division FROM teams WHERE id = ?')
       .get(intId(req.params.id) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
-    if ('weighStation' in req.body && team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats have a weigh station; others weigh at their home port.' });
+    if ('weighStation' in req.body && team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats choose a JHMMC weigh station; other boats have their own.' });
     const station = 'weighStation' in req.body ? req.body.weighStation || null : team.station;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
     const division = 'division' in req.body ? req.body.division : team.division;
@@ -960,13 +960,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const released = bool(b.released);
     let station = null;
     if (official) {
-      // JHMMC boats weigh at a JHMMC weigh station; boats elsewhere at their home port.
+      // JHMMC boats weigh at a JHMMC weigh station; boats elsewhere at their own (their home port).
       if (jhmmcBoat) {
         const s = stationFor(user, str(b.weighStation, 40), team.weigh_station);
         if (s.error) return s;
         station = s.station;
       } else {
-        station = team.home_port || (team.country ? `Home port (${team.country})` : 'Home port');
+        station = team.home_port || (team.country ? `${team.country} weigh station` : 'Weigh station');
       }
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
       // Rule 8: every fish weighed is photographed hanging on the scale;

@@ -513,7 +513,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
       caughtOn: TODAY, weightKg: '30', declared: 'yes', deviceLat: '5.6', deviceLng: '-0.2' }));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(r.body.catch.status, 'pending_review');
-    assert.match(r.body.catch.weighStation, /Home port/);
+    assert.match(r.body.catch.weighStation, /weigh station/i);
     await sec('DELETE', `/catches/${r.body.catch.id}`);
     // Once its club runs its own weigh-ins, its fish no longer come to JHMMC.
     const theirClub = (await other('GET', `/teams/${visitor.id}`)).body.team.clubId;

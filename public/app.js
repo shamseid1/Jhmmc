@@ -427,7 +427,7 @@ function boatOptions(boats, mine) {
   const opts = (list) => list.map((t) => `<option value="${esc(t.id)}">${esc(label(t))}</option>`).join('');
   if (groups.length < 2) return `<option value="">Choose…</option>${opts(boats)}`;
   return `<option value="">Choose…</option>${groups.map(([w, list]) =>
-    `<optgroup label="${esc(w ? (w === mine ? `${w} (your station)` : w) : 'Other boats (weighed at home port)')}">${opts(list)}</optgroup>`).join('')}`;
+    `<optgroup label="${esc(w ? (w === mine ? `${w} (your station)` : w) : 'Other weigh stations')}">${opts(list)}</optgroup>`).join('')}`;
 }
 
 function speciesOptions(selected, placeholder) {
@@ -912,7 +912,7 @@ const pagesFor = (view) => ({
             <label>Make / model <input name="make" maxlength="60" placeholder="e.g. Bertram"></label>
           </div>
           <div class="row">
-            <label class="homeport-field">Home port <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
+            <label class="homeport-field">Weigh station <input name="homePort" maxlength="80" placeholder="e.g. Dakar"></label>
             <label class="station-field" hidden>Home port (weigh station) <select name="weighStation">${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
             <label>Country <select name="country">${raw(options(state.meta.countries, state.me.country, 'Choose…'))}</select></label>
           </div>
@@ -1032,7 +1032,7 @@ const pagesFor = (view) => ({
         </div>
         <label>Boat photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
         <div class="row">
-          <label class="homeport-field" ${isJhmmc(team.clubId) ? 'hidden' : ''}>Home port <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
+          <label class="homeport-field" ${isJhmmc(team.clubId) ? 'hidden' : ''}>Weigh station <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
           <label class="station-field" ${isJhmmc(team.clubId) ? '' : 'hidden'}>Home port (weigh station) <select name="weighStation">${raw(options(state.meta.weighStations, team.weighStation, 'Choose…'))}</select></label>
           <label>Country <select name="country">${raw(options(state.meta.countries, team.country, 'Choose…'))}</select></label>
         </div>
@@ -1367,7 +1367,7 @@ const pagesFor = (view) => ({
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
         </div>
-        ${atHomePort(own) ? raw(html`<p class="station-fixed">Weighed at: <b>${own.homePort || 'your home port'}</b></p>`)
+        ${atHomePort(own) ? raw(html`<p class="station-fixed">Weigh station: <b>${own.homePort || (own.country ? `${own.country} weigh station` : 'your boat\'s weigh station')}</b></p>`)
           : own?.weighStation ? raw(html`<p class="station-fixed">Weigh station: <b>${own.weighStation}</b></p>`)
           : raw(html`<label id="station-pick">Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
             <p class="station-fixed" id="home-port" hidden></p>`)}
@@ -1544,7 +1544,7 @@ const pagesFor = (view) => ({
         sheet.weighStation.required = !home;
         const note = view.querySelector('#home-port');
         note.hidden = !home;
-        note.textContent = home ? `Weighed at: ${boat.homePort || `home port (${boat.country || 'not set'})`}` : '';
+        note.textContent = home ? `Weigh station: ${boat.homePort || (boat.country ? `${boat.country} weigh station` : 'not set')}` : '';
       }
       if (onNow) view.querySelector('#entry-note').textContent = entryNote(boat?.id);
       crew = boat ? (await api(`/teams/${boat.id}`)).team.members : [];
