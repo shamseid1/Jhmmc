@@ -1189,7 +1189,7 @@ const pagesFor = (view) => ({
     const byBoat = q.has('team');
     view.innerHTML = html`<p class="back"><a href="#/" data-back>‹ Back</a></p>
       <h1>${title || 'Fish'}</h1>
-      <p class="muted">${scope === 'tournaments' ? 'JHMMC tournament points' : board === 'jhmmc' ? 'JHMMC trophy' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
+      <p class="muted">${scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
       <div class="stats3">
         <div class="card s"><b>${fish.length}</b><span>fish</span></div>
         <div class="card s"><b>${total}</b><span>points</span></div>
@@ -1211,7 +1211,7 @@ const pagesFor = (view) => ({
   // The club leaderboard (West Africa side): choose a club and see its points
   // leaderboard, laid out like JHMMC's. Only JHMMC keeps points in the app so far.
   // For now JHMMC is West Africa Big Game: one points board for every boat
-  // weighed in through JHMMC, and the JHMMC trophy (JHMMC boats only).
+  // weighed in through JHMMC, and the JHMMC Season (JHMMC boats only).
   async leaderboard() {
     await this.points(undefined, { base: '#/leaderboard', top: html`<h1>Leaderboard</h1>${raw(boardTabs('board'))}` });
   },
@@ -1236,16 +1236,16 @@ const pagesFor = (view) => ({
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Which table">${raw(options([
           [link(`board=all&division=${division}`), 'All of West Africa'],
-          [link(`board=jhmmc&division=${division}`), 'JHMMC trophy'],
-          [link(`scope=tournaments&division=${division}`), 'JHMMC tournaments'],
+          [link(`board=jhmmc&division=${division}`), 'JHMMC Season'],
+          [link(`scope=tournaments&division=${division}`), 'JHMMC Tournaments'],
         ], link(scope === 'tournaments' ? `scope=tournaments&division=${division}` : `board=${board}&division=${division}`)))}</select>
         <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${key}`), label]),
           link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${division}`)))}</select>
       </div>
       <p class="small muted">${scope === 'tournaments'
-        ? `JHMMC tournament trophy: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
-        : board === 'jhmmc' ? `JHMMC trophy: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
-          : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats can win the JHMMC trophies.`}
+        ? `JHMMC Tournaments: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
+        : board === 'jhmmc' ? `JHMMC Season: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
+          : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
         Fish registered at the weigh station (or the boat's home port) and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>

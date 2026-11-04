@@ -148,7 +148,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   markAdminMember();
   // For now JHMMC is West Africa Big Game: every boat's fish are weighed in and
   // approved through JHMMC, unless its club runs its own weigh-ins (self_run).
-  // Only JHMMC's own boats can win the JHMMC trophies.
+  // Only JHMMC's own boats compete in the JHMMC Season and Tournaments.
   const THROUGH_JHMMC = 'NOT EXISTS (SELECT 1 FROM clubs sc WHERE sc.id = k.club_id AND sc.self_run = 1)';
   const throughJhmmc = (clubId) => !clubId || !db.prepare('SELECT 1 FROM clubs WHERE id = ? AND self_run = 1').get(clubId);
   const captainsJhmmcBoat = (u) => !!u && !!db.prepare(`SELECT 1 FROM teams t LEFT JOIN clubs c ON c.id = t.club_id
@@ -1388,7 +1388,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function pointsFilter(query) {
     const division = query.division === 'river' ? 'river' : 'ocean';
     const scope = query.scope === 'tournaments' ? 'tournaments' : 'overall';
-    // Every boat weighed through JHMMC, or the JHMMC trophy (JHMMC boats only;
+    // Every boat weighed through JHMMC, or the JHMMC Season (JHMMC boats only;
     // tournaments are JHMMC's, so their trophy is too).
     const board = query.board === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
     const start = setting('season_start');
