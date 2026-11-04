@@ -2,10 +2,11 @@ const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// West Africa, and the Gulf of Guinea coast down to Gabon.
 const COUNTRIES = [
-  'Benin', 'Burkina Faso', 'Cabo Verde', "Côte d'Ivoire", 'The Gambia', 'Ghana',
+  'Benin', 'Burkina Faso', 'Cabo Verde', 'Cameroon', "Côte d'Ivoire", 'Equatorial Guinea', 'Gabon', 'The Gambia', 'Ghana',
   'Guinea', 'Guinea-Bissau', 'Liberia', 'Mali', 'Mauritania', 'Niger', 'Nigeria',
-  'Senegal', 'Sierra Leone', 'Togo',
+  'São Tomé and Príncipe', 'Senegal', 'Sierra Leone', 'Togo',
 ];
 
 // Big game species commonly targeted off the West African coast, with the

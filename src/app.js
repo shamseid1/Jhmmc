@@ -2047,6 +2047,19 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ trip: o ? tripFor(o.id, req.user) : null });
   });
 
+  // A released fish's estimated weight (it never sees a scale), given whenever there's a moment.
+  api.patch('/outings/fish/:id', auth.requireUser, (req, res) => {
+    const l = db.prepare(`SELECT l.id, l.outing_id, l.fate, o.user_id, o.team_id
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
+    if (!l) return res.status(404).json({ error: 'Fish not found.' });
+    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    if (l.fate !== 'released') return res.status(400).json({ error: 'Kept fish get their weight on the scale.' });
+    const weightKg = estimate(req.body.weightKg);
+    if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
+    db.prepare('UPDATE outing_landings SET weight_kg = ? WHERE id = ?').run(weightKg, l.id);
+    res.json({ trip: tripFor(l.outing_id, req.user) });
+  });
+
   // Logged by mistake: take the fish back off the line.
   api.delete('/outings/fish/:id', auth.requireUser, (req, res) => {
     const l = db.prepare(`SELECT l.id, l.outing_id, l.species_id, l.fate, o.user_id, o.team_id
