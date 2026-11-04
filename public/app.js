@@ -330,6 +330,24 @@ function mediaHtml(item, alt = '') {
 const ROLE_OPTIONS = [['', 'Member'], ['president', 'President'], ['vice_president', 'Vice President'], ['secretary', 'Secretary'], ['treasurer', 'Treasurer']];
 const roleLabel = (role) => ROLE_OPTIONS.find(([k]) => k === role)?.[1] || role;
 
+// A photo field that shows the photo already saved (a plain file box always
+// says "No file chosen"), and the new one as soon as it's picked.
+const photoField = (label, current) => html`<div class="photo-field"><span class="spot-head">${label}</span>
+  <div class="photo-field-row">
+    <img class="photo-field-img" src="${current || ''}" alt="" ${current ? '' : 'hidden'}>
+    <label class="btn">${raw(icon('camera'))} <span>${current ? 'Change photo' : 'Add a photo'}</span>
+      <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></label>
+  </div></div>`;
+document.addEventListener('change', (e) => {
+  const input = e.target.closest('.photo-field input[type=file]');
+  const file = input?.files?.[0];
+  if (!file) return;
+  const img = input.closest('.photo-field').querySelector('img');
+  img.src = URL.createObjectURL(file);
+  img.hidden = false;
+  input.closest('label').querySelector('span').textContent = 'Change photo';
+});
+
 // The registration record, one entry per fish: where it stands now, and
 // everything that happened to it, in order.
 const LOG_ACTIONS = {
@@ -1031,7 +1049,7 @@ const pagesFor = (view) => ({
           <label>Length (feet) <input name="lengthFt" type="number" min="10" max="200" step="1" inputmode="numeric" value="${team.lengthFt ?? ''}"></label>
           <label>Make / model <input name="make" maxlength="60" value="${team.make || ''}" placeholder="e.g. Bertram 42"></label>
         </div>
-        <label>Boat photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        ${raw(photoField('Boat photo', team.photoUrl))}
         <div class="row">
           <label class="homeport-field" ${isJhmmc(team.clubId) ? 'hidden' : ''}>Weigh station <input name="homePort" maxlength="80" value="${team.homePort || ''}"></label>
           <label class="station-field" ${isJhmmc(team.clubId) ? '' : 'hidden'}>Home port (weigh station) <select name="weighStation">${raw(options(state.meta.weighStations, team.weighStation, 'Choose…'))}</select></label>
@@ -2856,7 +2874,7 @@ const pagesFor = (view) => ({
           <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
         <label>About you <textarea name="bio" maxlength="500">${me.bio || ''}</textarea></label>
-        <label>Your photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        ${raw(photoField('Your photo', me.photoUrl))}
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>
       </form>

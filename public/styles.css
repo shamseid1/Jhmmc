@@ -774,3 +774,8 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .qs input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .qs input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quick-species[hidden] { display: none; }
+/* Boat and profile photo: the saved one, and a button to change it. */
+.photo-field { display: grid; gap: 6px; }
+.photo-field-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.photo-field-img { width: 72px; height: 72px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); }
+.photo-field-img[hidden] { display: none; }
