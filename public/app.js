@@ -836,9 +836,25 @@ const pagesFor = (view) => ({
           <div><button type="submit" class="primary">Post announcement</button></div>
         </form></details>`) : ''}
       <div id="tournament-call"></div>
+      <div id="weigh-call"></div>
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
+    // Back at the dock: the boat boarded fish today that aren't weighed in yet.
+    // Captains (and officials on a boat) get a way to the weigh-in, first thing.
+    if (state.me?.canWeigh && state.me.teamId) {
+      api(`/outings/trip?date=${today()}`).then(({ trip }) => {
+        const waiting = (trip?.landings || []).filter((l) => l.fate === 'kept' && !l.catchId);
+        const box = view.querySelector('#weigh-call');
+        if (!waiting.length || !box) return;
+        const counts = {};
+        for (const l of waiting) counts[l.species] = (counts[l.species] || 0) + 1;
+        box.innerHTML = html`<a class="card pad weigh-call" href="#/weigh">${raw(icon('weight'))}
+          <span><b>${plural(waiting.length, 'fish')} boarded today</b>
+            <span class="small muted">${Object.entries(counts).map(([sp, n]) => `${n} ${sp.toLowerCase()}`).join(', ')}</span></span>
+          <span class="btn primary">Go to the weigh-in</span></a>`;
+      }).catch(() => {});
+    }
     // A tournament coming up or under way: JHMMC captains see it first thing, with
     // a big Enter your boat until they're in.
     if (state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId)) {
@@ -1361,7 +1377,7 @@ const pagesFor = (view) => ({
       <h1>How points work</h1>
       <div class="card pad rulebook">
         <ul>
-          <li><b>Season points:</b> every fishing day scores. A captain can only register fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
+          <li><b>Season points:</b> every fishing day scores. A captain can only weigh in fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
           <li><b>Tournament points:</b> each tournament has its own results from its days only, with its own winner. Those fish count for the season too.</li>
           <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
@@ -1395,7 +1411,7 @@ const pagesFor = (view) => ({
   // boat's fish for today; the secretary any JHMMC boat, any earlier day.
   // One boat and day, as many fish as it brought in, submitted together.
   async weigh() {
-    if (!state.me?.canWeigh) return needLogin(view, 'register fish (boat captains)');
+    if (!state.me?.canWeigh) return needLogin(view, 'do the weigh-in (boat captains)');
     const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
     // Fish on a tournament day count for the season and for that tournament.
     const onNow = events.find((e) => e.kind === 'tournament' && e.date <= today() && today() <= e.endDate);
@@ -1412,7 +1428,8 @@ const pagesFor = (view) => ({
     const atHomePort = (t) => t && !isJhmmc(t.clubId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Register fish</h1>
+      <h1>Weigh-in</h1>
+      <p class="small"><b>At the weigh station, for points.</b> Fish logged at sea with Log fish don't score until they're weighed in here.</p>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
       <p class="small"><b>Weigh in the order they were caught</b> (first caught, first on this sheet): each weight then goes on the right fish in the boat's log.</p>
@@ -1621,7 +1638,7 @@ const pagesFor = (view) => ({
       const spot = await phoneSpot(15000);
       btn.textContent = label;
       if (!spot) {
-        throw new Error("Your phone's location is needed to register fish. Turn on location (GPS) and allow it for this site in the browser's settings, then send again.");
+        throw new Error("Your phone's location is needed for the weigh-in. Turn on location (GPS) and allow it for this site in the browser's settings, then send again.");
       }
       fd.set('deviceLat', spot.lat);
       fd.set('deviceLng', spot.lng);
@@ -2306,12 +2323,12 @@ const pagesFor = (view) => ({
       <h2>Fishing</h2><div class="card menu">
         ${me.teamId ? item('#/spots', 'pin', 'My catch map', 'Your crew\'s fish, where they were caught') : ''}
         ${item('#/log', 'history', 'Regional log', "Every boat's trips, and the season at a glance")}
-        ${me.canWeigh && !me.canReview ? item('#/weigh', 'weight', 'Register fish', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`) : ''}
+        ${me.canWeigh && !me.canReview ? item('#/weigh', 'weight', 'Weigh-in', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`) : ''}
         ${me.canWeigh && !me.canReview ? item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours') : ''}
       </div>`) : ''}
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
-        ${me.canReview ? item('#/weigh', 'weight', 'Register fish', 'For any boat') : ''}
+        ${me.canReview ? item('#/weigh', 'weight', 'Weigh-in', 'For any boat') : ''}
         ${item('#/tournaments?sheets=1', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
@@ -3246,7 +3263,7 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
 function renderNav(active = state.navActive) {
   state.navActive = active;
   syncHeader();
-  // One bar for everyone. JHMMC captains and officials register fish from More.
+  // One bar for everyone. Captains and officials do the weigh-in from More (or the feed's card).
   const me0 = state.me;
   const links = [
     ['#/', 'Feed', 'home', 'feed'],

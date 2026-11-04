@@ -1194,7 +1194,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const DECLARATION = 'Tick the declaration that these fish are true before sending.';
   const declared = (user, b) => canReview(user) || b.declared === 'yes';
   // Every registration takes the phone's location, officials' included.
-  const LOCATION_NEEDED = "The phone's location is needed to register fish. Turn on location for this site and send again.";
+  const LOCATION_NEEDED = "The phone's location is needed for the weigh-in. Turn on location for this site and send again.";
   const located = (user, b) => !!deviceSpot(b);
   // What stops an official registration before the fish are checked, if anything.
   const sheetProblem = (user, b) => (!declared(user, b) ? DECLARATION : !located(user, b) ? LOCATION_NEEDED : null);

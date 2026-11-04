@@ -813,3 +813,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 .tournament-in .icon { color: var(--good); }
 .tournament-in > span:nth-of-type(1) { flex: 1; }
 .tournament-in .small { color: var(--accent); font-weight: 700; white-space: nowrap; }
+/* Fish boarded today, not weighed in yet: the way to the weigh-in. */
+.weigh-call { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; color: var(--text); text-decoration: none; flex-wrap: wrap; }
+.weigh-call > .icon { width: 28px; height: 28px; color: var(--accent); }
+.weigh-call > span:nth-of-type(1) { flex: 1; display: grid; min-width: 150px; }
