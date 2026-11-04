@@ -2173,6 +2173,7 @@ const pagesFor = (view) => ({
       ['announcements', 'Announcements from JHMMC', 'Tournaments, membership reminders and other news from the officers.'],
       ...(me.canWeigh ? [['myFish', 'Your fish approved or not counted', 'When the secretary decides on a fish you registered.']] : []),
       ['weighins', 'Every weigh-in', 'Each time any boat\'s fish is approved. Can be a lot on a busy day.'],
+      ['logged', 'Fish logged at sea', 'Each time a boat logs a fish: "Liberian Girl boarded a blue marlin". Never the spot.'],
       ...(me.canApprove ? [['review', 'Fish to review', 'When a captain registers fish waiting for you.']] : []),
     ];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>

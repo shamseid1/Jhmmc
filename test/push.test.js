@@ -114,7 +114,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.deepEqual([sent[0].title, sent[0].body, sent[0].url], ['JHMMC: Tournament Saturday', 'Pay your membership by Friday.', '/#/?type=announcements']);
 
     // Each person chooses what they're told about (More → Notifications).
-    assert.deepEqual((await cap('GET', '/me')).body.user.notify, { announcements: true, myFish: true, weighins: false, review: true });
+    assert.deepEqual((await cap('GET', '/me')).body.user.notify, { announcements: true, myFish: true, weighins: false, logged: false, review: true });
     await cap('PATCH', '/me', { notify: { announcements: false, nonsense: true } });
     await crew('PATCH', '/me', { notify: { weighins: true } });
     sent.length = 0;
@@ -132,6 +132,14 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.equal(got['cap-phone'].title, 'Fish approved');
     assert.match(got['cap-phone'].body, /^Your Wahoo \(\d+ kg\) was approved: [\d.]+ points\.$/);
     assert.match(got['crew-phone'].body, /weighed a \d+ kg wahoo/);
+
+    // Fish logged at sea: only to those who asked, never the spot.
+    await boss('PATCH', '/me', { notify: { logged: true } });
+    sent.length = 0;
+    await cap('POST', '/outings/fish', { speciesId: wahoo, fate: 'kept', lat: 6.31, lng: -10.8 });
+    await settle();
+    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title, s.body]), [['boss-phone', 'Fish on', 'Sea Hunter boarded a wahoo.']]);
+    assert.equal(JSON.stringify(sent).includes('6.31'), false);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

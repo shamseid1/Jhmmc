@@ -392,7 +392,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   // What each person wants to be told about (More → Notifications).
-  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: false, review: true };
+  const NOTIFY_DEFAULTS = { announcements: true, myFish: true, weighins: false, logged: false, review: true };
   const notifyPrefs = (json) => {
     let saved = {};
     try { saved = JSON.parse(json || '{}'); } catch {}
@@ -2193,6 +2193,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, weightKg, spot.lat, spot.lng, landedAt, clientId || null);
       linkLogToRegistration(Number(db.prepare('SELECT last_insert_rowid() AS id').get().id));
       db.exec('COMMIT');
+      // Fish on! For those who asked: boat, species and what happened, never the spot.
+      // Only for today's fish, not ones added afterwards for an earlier trip.
+      if (date === new Date().toISOString().slice(0, 10)) {
+        const sp = db.prepare('SELECT name FROM species WHERE id = ?').get(speciesId).name.toLowerCase();
+        const article = /^[aeiou]/.test(sp) ? 'an' : 'a';
+        pushWhere('logged', {
+          title: 'Fish on',
+          body: `${team.name} ${{ released: 'released', kept: 'boarded', lost: 'lost' }[b.fate]} ${article} ${sp}.`,
+          url: '/#/',
+        }, u, (p) => p.id !== u.id);
+      }
       res.status(201).json({ trip: tripFor(outing.id, u) });
     } catch (err) {
       db.exec('ROLLBACK');
