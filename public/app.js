@@ -835,9 +835,28 @@ const pagesFor = (view) => ({
           <p class="error"></p>
           <div><button type="submit" class="primary">Post announcement</button></div>
         </form></details>`) : ''}
+      <div id="tournament-call"></div>
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
+    // A tournament coming up or under way: JHMMC captains see it first thing, with
+    // a big Enter your boat until they're in.
+    if (state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId)) {
+      api('/tournaments').then(({ tournaments }) => {
+        const t = tournaments.find((x) => x.open);
+        const box = view.querySelector('#tournament-call');
+        if (!t || !box) return;
+        box.innerHTML = t.mine
+          ? html`<a class="card pad tournament-in" href="#/enter/${t.id}">${raw(icon('check'))}
+              <span>Your boat is entered in <b>${t.name}</b> · ${fmtDays(t)}</span><span class="small">Anglers ›</span></a>`
+          : html`<div class="card pad tournament-call">
+              <div class="tc-head">${raw(icon('trophy'))}<span class="small">Tournament</span></div>
+              <b class="tc-name">${t.name}</b>
+              <span class="muted">${fmtDays(t)}</span>
+              <a class="btn primary" href="#/enter/${t.id}">Enter your boat</a>
+            </div>`;
+      }).catch(() => {});
+    }
     // Until this phone has notifications on, offer them here (announcements, reminders).
     if (state.me) renderNotify(view.querySelector('#notify'), { what: 'announcements from JHMMC, like tournament reminders', hideWhenOn: true });
     const form = view.querySelector('#ann');

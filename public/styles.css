@@ -804,3 +804,12 @@ input.switch:checked::after { transform: translateX(20px); }
 .row-buttons { display: flex; gap: 8px; margin-top: 8px; }
 a.me-card { color: var(--text); text-decoration: none; }
 .me-link { color: var(--accent); font-weight: 700; margin-top: 2px; }
+/* A tournament coming up: the captain's way in, at the top of the feed. */
+.tournament-call { display: grid; gap: 4px; margin-bottom: 12px; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.tournament-call .tc-head { display: flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.tournament-call .tc-name { font-size: 22px; line-height: 1.2; }
+.tournament-call .btn { justify-self: start; margin-top: 8px; padding: 12px 22px; font-size: 17px; }
+.tournament-in { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--text); text-decoration: none; }
+.tournament-in .icon { color: var(--good); }
+.tournament-in > span:nth-of-type(1) { flex: 1; }
+.tournament-in .small { color: var(--accent); font-weight: 700; white-space: nowrap; }
