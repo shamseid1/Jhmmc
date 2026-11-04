@@ -1359,7 +1359,7 @@ const pagesFor = (view) => ({
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
       <p class="small"><b>Weigh in the order they were caught</b> (first caught, first on this sheet): each weight then goes on the right fish in the boat's log.</p>
-      ${onNow ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
+      ${onNow && (official || !atHomePort(own)) ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
       <form class="card pad stack" id="sheet">
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
@@ -2385,14 +2385,15 @@ const pagesFor = (view) => ({
   // registration sheet for officials.
   async tournaments() {
     const official = !!state.me?.canHandleMoney;
-    const captain = !!state.me?.canWeigh && !official;
+    // Tournaments are JHMMC's (for now): only JHMMC boats' captains enter; everyone sees the results.
+    const captain = !!state.me?.canWeigh && !official && isJhmmc(state.me.clubId);
     const { tournaments, fee } = await api('/tournaments');
     const go = (t) => (official ? `#/sheet/${t.id}` : captain ? `#/enter/${t.id}` : `#/tournament/${t.id}`);
     view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}
       <p class="small muted">${official
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
         : captain ? `Enter your boat and say who's fishing on it. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
-          : "This season's JHMMC tournaments. Tap one for its results, Ocean and River."}</p>
+          : "This season's JHMMC tournaments, for JHMMC boats (for now). Tap one for its results, Ocean and River."}</p>
       ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="${go(t)}">
         <span class="mi-icon">${raw(icon('trophy'))}</span>
         <span class="mi-text"><b>${t.name}</b><span>${fmtDays(t)}${t.open ? '' : ' · over'}</span>
