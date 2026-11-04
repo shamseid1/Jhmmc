@@ -545,11 +545,11 @@ const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 const DIVISIONS = [['ocean', 'Ocean'], ['river', 'River']];
 const isJhmmc = (clubId) => clubId != null && String(clubId) === String(state.meta.homeClubId);
 
-// Ocean / River is only asked for JHMMC boats, and their home port is their
-// weigh station: switch the fields when the club picked is (or isn't) JHMMC.
+// Every boat is Ocean or River. A JHMMC boat's home port is one of the JHMMC
+// weigh stations; other boats type their own: switch with the club picked.
 function syncDivision(form) {
   const jhmmc = isJhmmc(form.clubId.value);
-  for (const f of form.querySelectorAll('.division-field, .station-field')) f.hidden = !jhmmc;
+  for (const f of form.querySelectorAll('.station-field')) f.hidden = !jhmmc;
   const port = form.querySelector('.homeport-field');
   if (port) port.hidden = jhmmc;
 }
@@ -918,7 +918,7 @@ const pagesFor = (view) => ({
           </div>
           <div class="row">
             <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), null, 'No club'))}</select></label>
-            <label class="division-field" hidden>Registered for <select name="division">${raw(options(DIVISIONS, 'ocean'))}</select></label>
+            <label class="division-field">Registered for <select name="division">${raw(options(DIVISIONS, 'ocean'))}</select></label>
           </div>
           <p class="error"></p>
           <div><button type="submit" class="primary">Register boat</button></div>
@@ -1039,7 +1039,7 @@ const pagesFor = (view) => ({
         </div>
         <div class="row">
           <label>Club <select name="clubId">${raw(options(clubs.map((c) => [c.id, c.name]), team.clubId, 'No club'))}</select></label>
-          <label class="division-field" ${isJhmmc(team.clubId) ? '' : 'hidden'}>Registered for <select name="division">${raw(options(DIVISIONS, team.division))}</select></label>
+          <label class="division-field">Registered for <select name="division">${raw(options(DIVISIONS, team.division))}</select></label>
         </div>
         <p class="error"></p>
         <div><button type="submit" class="primary">Save</button></div>

@@ -492,7 +492,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await other('POST', '/auth/register', { name: 'Tema Captain', email: 'tc@example.com', password: 'password1' });
     const tema = (await other('POST', '/clubs', { name: 'Tema Game Fishing', country: 'Ghana' })).body.club;
     const visitor = (await other('POST', '/teams', { name: 'Black Star', division: 'river', clubId: tema.id })).body.team;
-    assert.equal(visitor.division, 'ocean', 'division only applies to JHMMC boats');
+    assert.equal(visitor.division, 'river', 'any boat can be Ocean or River');
 
     const species = (await cap('GET', '/meta')).body.species;
     const sp = (n) => species.find((x) => x.name === n);

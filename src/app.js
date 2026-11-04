@@ -600,7 +600,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const clubId = intId(req.body.clubId);
     const length = lengthFt(req.body.lengthFt);
     const jhmmc = clubId === homeClubId();
-    const division = jhmmc && req.body.division === 'river' ? 'river' : 'ocean';
+    // Every boat is Ocean or River (most are Ocean).
+    const division = req.body.division === 'river' ? 'river' : 'ocean';
     // A JHMMC boat's home port is its weigh station.
     const station = jhmmc ? req.body.weighStation || null : null;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
@@ -710,8 +711,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const length = 'lengthFt' in req.body ? lengthFt(req.body.lengthFt) : cur.length_ft;
     const make = 'make' in req.body ? str(req.body.make, 60) : cur.make;
     const jhmmc = clubId === homeClubId();
-    const division = !jhmmc ? 'ocean'
-      : 'division' in req.body ? (req.body.division === 'river' ? 'river' : 'ocean') : cur.division;
+    const division = 'division' in req.body ? (req.body.division === 'river' ? 'river' : 'ocean') : cur.division;
     // A JHMMC boat's home port is its weigh station; only JHMMC boats have one.
     const station = !jhmmc ? null : 'weighStation' in req.body ? req.body.weighStation || null : cur.weigh_station;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
