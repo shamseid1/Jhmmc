@@ -1326,6 +1326,8 @@ const pagesFor = (view) => ({
       </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
       <h2>${side} boats entered (${entries.length})</h2>
       <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
+      ${state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId) && tournament.endDate >= today()
+        ? raw(html`<p><a class="btn primary" href="#/enter/${id}">${raw(icon('trophy'))} Enter your boat</a></p>`) : ''}
       ${state.me?.canHandleMoney ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
       ${raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
           : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}`;
@@ -2291,7 +2293,7 @@ const pagesFor = (view) => ({
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/weigh', 'weight', 'Register fish', 'For any boat') : ''}
-        ${item('#/tournaments', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
+        ${item('#/tournaments?sheets=1', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
@@ -2440,15 +2442,17 @@ const pagesFor = (view) => ({
   // The season's tournaments: results for everyone, entry for captains, the
   // registration sheet for officials.
   async tournaments() {
-    const official = !!state.me?.canHandleMoney;
+    // On the Leaderboard everyone opens a tournament's results; officials reach
+    // the registration sheets from More (Tournament sheets: ?sheets=1).
+    const official = !!state.me?.canHandleMoney && new URLSearchParams(location.hash.split('?')[1] || '').get('sheets') === '1';
     // Tournaments are JHMMC's (for now): only JHMMC boats' captains enter; everyone sees the results.
-    const captain = !!state.me?.canWeigh && !official && isJhmmc(state.me.clubId);
+    const captain = !!state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId);
     const { tournaments, fee } = await api('/tournaments');
-    const go = (t) => (official ? `#/sheet/${t.id}` : captain ? `#/enter/${t.id}` : `#/tournament/${t.id}`);
-    view.innerHTML = html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}
+    const go = (t) => (official ? `#/sheet/${t.id}` : `#/tournament/${t.id}`);
+    view.innerHTML = html`${official ? raw('<p class="back"><a href="#/more">‹ More</a></p><h1>Tournament sheets</h1>') : raw(html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}`)}
       <p class="small muted">${official
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
-        : captain ? `Enter your boat and say who's fishing on it. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
+        : captain ? `Tap a tournament for its results, and to enter your boat. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
           : "This season's JHMMC tournaments, for JHMMC boats (for now). Tap one for its results, Ocean and River."}</p>
       ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="${go(t)}">
         <span class="mi-icon">${raw(icon('trophy'))}</span>
@@ -2464,7 +2468,7 @@ const pagesFor = (view) => ({
   async enter(id) {
     if (!state.me?.canWeigh) return needLogin(view, 'enter tournaments (captains of JHMMC boats)');
     const { tournament, team, crew, named, entered, anglers, open, fee } = await api(`/tournaments/${id}/my-entry`);
-    view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/tournament/${id}">‹ ${tournament.name}</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)} · <b>${team.name}</b> · ${team.division === 'river' ? 'River' : 'Ocean'}${team.station ? ` · ${team.station}` : ''}</p>
       <p class="tournament-now">${raw(icon(entered ? 'check' : 'trophy'))} ${entered ? 'Your boat is entered.' : 'Your boat is not entered yet.'}</p>
@@ -2508,7 +2512,7 @@ const pagesFor = (view) => ({
     const stations = [...new Set(inBoats.map((b) => b.station || 'No station'))];
     const count = (st, div) => inBoats.filter((b) => (b.station || 'No station') === st && (!div || b.division === div)).length;
     let n = 0;
-    view.innerHTML = html`<p class="back"><a href="#/tournaments">‹ Tournaments</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/tournaments?sheets=1">‹ Tournament sheets</a></p>
       <h1>${tournament.name}</h1>
       <p class="muted">${fmtDays(tournament)} · <a href="#/tournament/${tournament.id}">Results</a></p>
       <div class="sheet-totals">
