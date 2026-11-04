@@ -1219,7 +1219,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released,
+    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
       WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
@@ -1232,6 +1232,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         item.day = x.title;
         item.title = null;
         item.fish = fishOfDay.all(x.teamId, x.title, user, user).map((f) => ({ ...f, released: !!f.released }));
+        item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
     });

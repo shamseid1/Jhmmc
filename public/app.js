@@ -711,7 +711,9 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   </div>
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
-    <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span><span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}</span></a></li>`))}</ul>
+    <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
+    <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
+    <li class="weighin-total"><span>Total</span><span>${fmtPoints(x.points)}</span></li></ul>
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boarded' : 'Lost'}</span>
 </article>`);

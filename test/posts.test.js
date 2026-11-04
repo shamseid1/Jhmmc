@@ -147,6 +147,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const daily = weighins.find((x) => x.day === today);
     assert.ok(daily.fish.length >= 1 && daily.fish.some((f) => f.angler === 'Guest' && f.species === 'Wahoo' && f.weightKg));
     assert.deepEqual(daily.fish.map((f) => f.weightKg ?? -1), [...daily.fish.map((f) => f.weightKg ?? -1)].sort((a, b) => b - a));
+    assert.equal(daily.points, Math.round(daily.fish.reduce((n, f) => n + f.points, 0) * 10) / 10, 'the sheet\'s total points');
 
     // The log and the scale: three tunas logged at sea, then registered.
     // Each logged tuna gets a scale weight, in the order they were logged.

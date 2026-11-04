@@ -799,3 +799,5 @@ input.switch:checked::after { transform: translateX(20px); }
 .weighin-fish li + li { border-top: 1px solid var(--line); }
 .weighin-fish a { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; color: var(--text); text-decoration: none; }
 .weighin-fish a span:last-child { font-weight: 700; white-space: nowrap; }
+.weighin-fish small { font-weight: 600; margin-left: 6px; }
+.weighin-total { display: flex; justify-content: space-between; padding: 8px 12px; font-weight: 800; background: var(--accent-soft); color: var(--accent); }
