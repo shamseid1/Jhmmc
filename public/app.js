@@ -1812,15 +1812,23 @@ const pagesFor = (view) => ({
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
     const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : 'added afterwards');
     // A fish worth showing off: a post with it filled in, ready for the photo.
-    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.weightKg ? { weight: l.weightKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
+    const shareHref = (l) => `#/new?${new URLSearchParams({ species: l.speciesId, ...(l.scaleKg ?? l.weightKg ? { weight: l.scaleKg ?? l.weightKg } : {}), ...(l.fate === 'released' ? { released: 1 } : {}) })}`;
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
       const est = (w) => (Number(w) > 0 ? ` · ~${fmtWeight(Number(w))}` : '');
-      list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${est(l.weightKg)} <span class="pill ${l.fate}">${l.fate}</span>
+      // Registered at the weigh station: the scale weight replaces the estimate.
+      const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}${l.scaleStatus === 'approved' ? '' : ' (awaiting approval)'}` : est(l.weightKg));
+      // More than one registered fish of a species that day: pick which weight is this fish's.
+      const swap = (l) => {
+        const same = (trip?.registered || []).filter((k) => k.speciesId === l.speciesId && k.weightKg != null);
+        if (!l.catchId || same.length < 2) return '';
+        return html` · <select class="swap" data-swap="${l.id}" aria-label="Which registered ${l.species} is this?">${raw(options(same.map((k) => [k.id, fmtWeight(k.weightKg)]), l.catchId))}</select>`;
+      };
+      list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate !== 'lost' ? raw(html`· <a class="link small" href="${shareHref(l)}">Share to feed</a>`) : ''}
-            · <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change weight' : 'Add weight'}</button>
+            ${l.scaleKg != null ? raw(swap(l)) : raw(html`· <button type="button" class="link small" data-weigh="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Add estimate'}</button>`)}
             · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button></div></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b>${est(x.weightKg)} <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
@@ -1881,6 +1889,17 @@ const pagesFor = (view) => ({
         if (view.contains(list)) draw();
       }
     }
+    list.addEventListener('change', async (e) => {
+      const sel = e.target.closest('[data-swap]');
+      if (!sel) return;
+      try {
+        trip = (await api(`/outings/fish/${sel.dataset.swap}/registration`, { method: 'PATCH', body: { catchId: sel.value } })).trip;
+        toast('Weight moved.');
+      } catch (err) {
+        toast(err.message);
+      }
+      draw();
+    });
     list.addEventListener('click', async (e) => {
       const weigh = e.target.closest('[data-weigh]');
       if (weigh) {
@@ -2049,7 +2068,7 @@ const pagesFor = (view) => ({
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, fmtDepth(o.depthM)].filter(Boolean).join(', '), fmtTemp(o.waterC), o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.released, 'released'))}${raw(tag(f.kept, 'kept'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
         ${state.me?.teamId && o.teamId === state.me.teamId ? raw(html`<a href="#/fishon?date=${o.date}">Open</a>`) : ''}
@@ -2095,7 +2114,7 @@ const pagesFor = (view) => ({
     const chip = (y, label) => html`<a role="tab" href="#/spots${y ? `?year=${y}` : ''}" aria-selected="${y === year}">${label}</a>`;
     const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
     // Weights logged at sea are estimates.
-    const kg = (x) => (x.weightKg ? ` · ${x.kind === 'log' ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
+    const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
     const when = (x) => fmtDate(x.date);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>My catch map</h1>

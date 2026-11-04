@@ -128,6 +128,34 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.deepEqual([byAngler.fish.length, byAngler.total], [guestRow.catches, guestRow.points]);
     assert.equal((await as()('GET', `/points/fish?division=ocean&scope=tournaments&team=${boat.id}`)).body.fish.length, 0, 'no tournament entered');
     assert.equal((await as()('GET', '/points/fish')).status, 400);
+
+    // The log and the scale: three tunas logged at sea without estimates, then
+    // registered. Each logged tuna gets a scale weight, and a weight can be
+    // moved to the right fish.
+    const tuna = sp['Yellowfin tuna'];
+    for (const n of [1, 2, 3]) await cap('POST', '/outings/fish', { speciesId: tuna, fate: 'kept', lat: 6 + n / 10, lng: -10.5, date: today });
+    for (const kg of ['41', '28', '35']) {
+      const t = registration({ speciesId: tuna, weightKg: kg });
+      t.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 's.png');
+      assert.equal((await cap('POST', '/weigh', t)).status, 201);
+    }
+    let trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
+    const tunas = trip.landings.filter((l) => l.speciesId === tuna);
+    assert.deepEqual(tunas.map((l) => l.scaleKg), [41, 28, 35], 'in the order they were logged');
+    trip = (await cap('PATCH', `/outings/fish/${tunas[0].id}/registration`, { catchId: tunas[1].catchId })).body.trip;
+    assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).map((l) => l.scaleKg), [28, 41, 35], 'the two swap');
+    const wahoo = (await cap('GET', '/meta')).body.species.find((x) => x.name === 'Wahoo').id;
+    assert.equal((await cap('PATCH', `/outings/fish/${tunas[0].id}/registration`, { catchId: trip.registered.find((k) => k.speciesId === wahoo)?.id ?? 999 })).status, 400, 'a tuna takes a tuna\'s weight');
+    // With estimates, each registration finds the closest one.
+    for (const est of [20, 60]) await cap('POST', '/outings/fish', { speciesId: sp['Atlantic sailfish'], fate: 'kept', weightKg: est, date: today });
+    const sail = registration({ speciesId: sp['Atlantic sailfish'], weightKg: '55' });
+    sail.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 's.png');
+    await cap('POST', '/weigh', sail);
+    trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
+    assert.deepEqual(trip.landings.filter((l) => l.species === 'Atlantic sailfish').map((l) => [l.weightKg, l.scaleKg]), [[20, null], [60, 55]]);
+    // The catch map shows the tunas once each, with their scale weights.
+    const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
+    assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', 28, false], ['log', 35, false], ['log', 41, false]]);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

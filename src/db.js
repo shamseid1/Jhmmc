@@ -60,7 +60,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 35;
+const SCHEMA_VERSION = 36;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -371,7 +371,9 @@ CREATE TABLE IF NOT EXISTS outing_landings (
   lat REAL,
   lng REAL,
   landed_at TEXT NOT NULL,
-  client_id TEXT UNIQUE
+  client_id TEXT UNIQUE,
+  -- The same fish registered at the weigh station: its scale weight.
+  catch_id INTEGER REFERENCES catches(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS outing_landings_outing ON outing_landings(outing_id, id);
 
@@ -548,6 +550,9 @@ function openDb(file) {
   const landingCols = db.prepare('PRAGMA table_info(outing_landings)').all();
   if (landingCols.length && !landingCols.some((c) => c.name === 'weight_kg')) {
     db.exec('ALTER TABLE outing_landings ADD COLUMN weight_kg REAL');
+  }
+  if (landingCols.length && !landingCols.some((c) => c.name === 'catch_id')) {
+    db.exec('ALTER TABLE outing_landings ADD COLUMN catch_id INTEGER REFERENCES catches(id) ON DELETE SET NULL');
   }
   if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'units')) {
     db.exec('ALTER TABLE users ADD COLUMN units TEXT');

@@ -975,6 +975,31 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(...values).lastInsertRowid);
 
+  // A fish registered at the weigh station is the same fish its boat logged at
+  // sea: link them (same boat, day and species; a released one to a released
+  // one first), so the log shows the scale weight. Works whichever comes first.
+  // Five tunas: each goes to the logged one whose estimate is closest to its
+  // scale weight; without estimates, in the order they were logged.
+  function linkRegistrationToLog(catchId) {
+    const k = db.prepare("SELECT id, team_id, caught_on, species_id, released, weight_kg FROM catches WHERE id = ? AND status <> 'unofficial'").get(catchId);
+    if (!k?.team_id || !k.species_id || db.prepare('SELECT 1 FROM outing_landings WHERE catch_id = ?').get(k.id)) return;
+    const l = db.prepare(`SELECT l.id FROM outing_landings l JOIN outings o ON o.id = l.outing_id
+      WHERE o.team_id = ? AND o.date = ? AND l.species_id = ? AND l.catch_id IS NULL AND l.fate <> 'lost'
+      ORDER BY (l.fate = ?) DESC, (l.weight_kg IS NULL OR ? IS NULL), ABS(l.weight_kg - ?), l.id LIMIT 1`)
+      .get(k.team_id, k.caught_on, k.species_id, k.released ? 'released' : 'kept', k.weight_kg, k.weight_kg);
+    if (l) db.prepare('UPDATE outing_landings SET catch_id = ? WHERE id = ?').run(k.id, l.id);
+  }
+  function linkLogToRegistration(landingId) {
+    const l = db.prepare(`SELECT l.id, l.species_id, l.fate, l.weight_kg, o.team_id, o.date FROM outing_landings l JOIN outings o ON o.id = l.outing_id
+      WHERE l.id = ? AND l.catch_id IS NULL AND l.fate <> 'lost'`).get(landingId);
+    if (!l) return;
+    const k = db.prepare(`SELECT k.id FROM catches k WHERE k.team_id = ? AND k.caught_on = ? AND k.species_id = ?
+      AND k.status NOT IN ('unofficial', 'rejected') AND NOT EXISTS (SELECT 1 FROM outing_landings x WHERE x.catch_id = k.id)
+      ORDER BY (k.released = ?) DESC, (k.weight_kg IS NULL OR ? IS NULL), ABS(k.weight_kg - ?), k.id LIMIT 1`)
+      .get(l.team_id, l.date, l.species_id, l.fate === 'released' ? 1 : 0, l.weight_kg, l.weight_kg);
+    if (k) db.prepare('UPDATE outing_landings SET catch_id = ? WHERE id = ?').run(k.id, l.id);
+  }
+
   function insertCatch(req, res, opts) {
     const problem = opts.official && sheetProblem(req.user, req.body);
     const [photoField, videoField] = opts.official ? ['scalePhoto', 'scaleVideo'] : ['photo', 'video'];
@@ -987,6 +1012,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const id = insertCatchRow(checked.values);
     if (checked.noAngler) db.prepare('UPDATE catches SET no_angler = 1 WHERE id = ?').run(id);
     if (opts.official) {
+      linkRegistrationToLog(id);
       scoreRegistration(id);
       logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
       notifyReviewers(opts.teamId, 1, req.user);
@@ -1119,6 +1145,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       const ids = rows.map(insertCatchRow);
       const where = deviceSpot(req.body);
       for (const id of ids) {
+        linkRegistrationToLog(id);
         scoreRegistration(id);
         logRegistration(id, 'registered', req.user, { where });
       }
@@ -1803,7 +1830,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outings o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN teams t ON t.id = o.team_id`;
   // Each fish logged at sea, for everyone: no spots here.
-  const fishLanded = db.prepare(`SELECT l.id, s.name AS species, l.fate, l.weight_kg AS weightKg, l.landed_at AS landedAt
+  // scaleKg: the weight on the weigh-station scale, once the same fish is registered (not if rejected).
+  const SCALE = `(SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleKg,
+      (SELECT k.status FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleStatus`;
+  const fishLanded = db.prepare(`SELECT l.id, s.name AS species, l.fate, l.weight_kg AS weightKg, l.landed_at AS landedAt, ${SCALE}
     FROM outing_landings l JOIN species s ON s.id = l.species_id WHERE l.outing_id = ? ORDER BY l.id`);
   const presentOuting = (o, viewer) => ({
     ...o, noCatch: !!o.noCatch, technique: o.technique ? o.technique.split('|') : [],
@@ -1905,7 +1935,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
-  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, s.name AS species, l.fate, l.weight_kg AS weightKg, l.lat, l.lng, l.landed_at AS landedAt,
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
@@ -1913,7 +1943,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const o = db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(outingId);
     if (!o) return null;
     const out = presentOuting(o, viewer);
-    return { ...out, line: outingLine(out), landings: landingsOf(outingId) };
+    // The boat's registered fish that day, so a weight can be moved to the right logged fish.
+    const registered = o.teamId ? db.prepare(`SELECT k.id, k.species_id AS speciesId, k.weight_kg AS weightKg, k.released
+      FROM catches k WHERE k.team_id = ? AND k.caught_on = ? AND k.status NOT IN ('unofficial', 'rejected') ORDER BY k.id`)
+      .all(o.teamId, o.date).map((k) => ({ ...k, released: !!k.released })) : [];
+    return { ...out, line: outingLine(out), landings: landingsOf(outingId), registered };
   };
   // The crew of the boat (and whoever logged the line, and the admin) work on the trip.
   const onTrip = (user, o) => isAdminUser(user) || o.user_id === user.id || (o.team_id != null && o.team_id === user.teamId);
@@ -1966,6 +2000,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       bump(outing.id, speciesId, b.fate, 1);
       db.prepare(`INSERT INTO outing_landings (outing_id, user_id, species_id, fate, weight_kg, lat, lng, landed_at, client_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, weightKg, spot.lat, spot.lng, landedAt, clientId || null);
+      linkLogToRegistration(Number(db.prepare('SELECT last_insert_rowid() AS id').get().id));
       db.exec('COMMIT');
       res.status(201).json({ trip: tripFor(outing.id, u) });
     } catch (err) {
@@ -1990,6 +2025,24 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const weightKg = estimate(req.body.weightKg);
     if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
     db.prepare('UPDATE outing_landings SET weight_kg = ? WHERE id = ?').run(weightKg, l.id);
+    res.json({ trip: tripFor(l.outing_id, req.user) });
+  });
+
+  // Five tunas: put a registered weight on the right logged fish. If another
+  // logged fish had it, the two swap.
+  api.patch('/outings/fish/:id/registration', auth.requireUser, (req, res) => {
+    const l = db.prepare(`SELECT l.id, l.outing_id, l.species_id, l.catch_id, o.user_id, o.team_id, o.date
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
+    if (!l) return res.status(404).json({ error: 'Fish not found.' });
+    if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    const catchId = intId(req.body.catchId);
+    const k = catchId && db.prepare(`SELECT id FROM catches WHERE id = ? AND team_id = ? AND caught_on = ? AND species_id = ?
+      AND status NOT IN ('unofficial', 'rejected')`).get(catchId, l.team_id, l.date, l.species_id);
+    if (!k) return res.status(400).json({ error: 'Choose one of the boat\'s registered fish of that species, that day.' });
+    db.exec('BEGIN');
+    db.prepare('UPDATE outing_landings SET catch_id = ? WHERE catch_id = ? AND id <> ?').run(l.catch_id, k.id, l.id);
+    db.prepare('UPDATE outing_landings SET catch_id = ? WHERE id = ?').run(k.id, l.id);
+    db.exec('COMMIT');
     res.json({ trip: tripFor(l.outing_id, req.user) });
   });
 
@@ -2095,17 +2148,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const posts = db.prepare(`
       SELECT 'catch' AS kind, k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.caught_on AS date,
         k.lat, k.lng, k.location, COALESCE(NULLIF(au.nickname, ''), au.name, k.angler_name) AS angler, t.name AS boat,
-        COALESCE(k.photo, k.scale_photo) AS photo
+        COALESCE(k.photo, k.scale_photo) AS photo, 0 AS estimate
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users au ON au.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
-      WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))
+      WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND NOT EXISTS (SELECT 1 FROM outing_landings x WHERE x.catch_id = k.id)
+        AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))
       UNION ALL
       SELECT 'club', p.id, s.name, p.weight_kg, p.released, date(p.created_at), p.lat, p.lng, NULL,
-        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo
+        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo, 0
       FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
       WHERE p.lat IS NOT NULL AND p.user_id = :me
       UNION ALL
-      SELECT 'log', l.id, s.name, l.weight_kg, l.fate = 'released', o.date, l.lat, l.lng, NULL,
-        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL
+      SELECT 'log', l.id, s.name, COALESCE((SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected'), l.weight_kg),
+        l.fate = 'released', o.date, l.lat, l.lng, NULL,
+        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL,
+        NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected')
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
         LEFT JOIN users au ON au.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
       WHERE l.lat IS NOT NULL AND l.fate <> 'lost' AND (l.user_id = :me OR (:crew IS NOT NULL AND o.team_id = :crew))
@@ -2117,7 +2173,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    }).map(({ photo, ...x }) => ({ ...x, released: !!x.released, photoUrl: photoUrl(photo) }));
+    }).map(({ photo, ...x }) => ({ ...x, released: !!x.released, estimate: !!x.estimate && x.weightKg != null, photoUrl: photoUrl(photo) }));
     const years = [...new Set(spots.map((x) => x.date.slice(0, 4)))].sort().reverse();
     const year = years.includes(req.query.year) ? req.query.year : null;
     res.json({ years, year, spots: year ? spots.filter((x) => x.date.startsWith(year)) : spots });
