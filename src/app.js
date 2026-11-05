@@ -1238,6 +1238,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
           s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, l.photo AS body
         FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
         WHERE COALESCE(l.client_id, '') NOT LIKE 'reg-%'
+          -- Weighed in and approved: the fish is in its boat's weigh-in post instead (one fish, one place).
+          AND NOT EXISTS (SELECT 1 FROM catches w WHERE w.id = l.catch_id AND w.status = 'approved')
           AND (:team IS NULL OR o.team_id = :team) AND (:user IS NULL OR l.user_id = :user) AND (:club IS NULL OR t.club_id = :club)`);
     }
     // Announcements belong to the whole feed, not to one boat or angler.
@@ -1249,7 +1251,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
+    // One picture per fish: the crew's own photo from Log fish if there is one,
+    // else the scale photo, else the scale or release video.
     const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
+        (SELECT x.photo FROM outing_landings x WHERE x.catch_id = k.id AND x.photo IS NOT NULL LIMIT 1) AS crewPhoto,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
       WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
@@ -1265,8 +1270,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         // The day's fish for that boat, heaviest first.
         item.day = x.title;
         item.title = null;
-        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
-          photoUrl: photoUrl(scalePhoto), videoUrl: photoUrl(scaleVideo) }));
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ scalePhoto, scaleVideo, crewPhoto, ...f }) => ({ ...f, released: !!f.released,
+          photoUrl: photoUrl(crewPhoto || scalePhoto), videoUrl: crewPhoto || scalePhoto ? null : photoUrl(scaleVideo) }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
