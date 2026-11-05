@@ -1693,6 +1693,42 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ division, scope, board, season: { start, end }, boats, anglers, tournaments, pending });
   });
 
+  // A boat's or an angler's page: their approved fish (to show off), with the
+  // highlights: fish weighed, releases, the biggest, and the season points and
+  // place on the All of West Africa table (the boat's division).
+  api.get('/trophies', (req, res) => {
+    const team = intId(req.query.team);
+    const user = intId(req.query.user);
+    if (!team && !user) return res.status(400).json({ error: 'Choose a boat or an angler.' });
+    const rows = db.prepare(`${CATCH_SELECT} WHERE k.status = 'approved' AND ${team ? 'k.team_id = :who' : 'k.user_id = :who'}
+      ORDER BY k.caught_on DESC, k.id DESC`).all({ who: team || user, viewer: req.user?.id ?? 0 });
+    const fish = rows.map((r) => {
+      const c = present(r, req.user);
+      return { id: c.id, species: c.species, speciesId: c.speciesId, weightKg: c.weightKg, released: c.released, points: c.points,
+        caughtOn: c.caughtOn, angler: c.angler, userId: c.userId, teamName: c.teamName, photoUrl: c.photoUrl, ownPhoto: c.ownPhoto, canAddPhoto: c.canAddPhoto };
+    });
+    const division = team
+      ? db.prepare('SELECT division FROM teams WHERE id = ?').get(team)?.division
+      : db.prepare('SELECT t.division FROM users u JOIN teams t ON t.id = u.team_id WHERE u.id = ?').get(user)?.division;
+    const { base, params } = pointsFilter({ division });
+    const table = team
+      ? db.prepare(`SELECT t.id AS who, ROUND(SUM(k.points), 1) AS points ${base} GROUP BY t.id ORDER BY points DESC`).all(params)
+      : db.prepare(`SELECT k.user_id AS who, ROUND(SUM(k.points), 1) AS points ${base} AND k.user_id IS NOT NULL GROUP BY k.user_id ORDER BY points DESC`).all(params);
+    const at = table.findIndex((x) => x.who === (team || user));
+    const biggest = fish.filter((f) => f.weightKg).sort((a, b) => b.weightKg - a.weightKg)[0] ?? null;
+    res.json({
+      fish,
+      stats: {
+        weighed: fish.filter((f) => !f.released).length,
+        releases: fish.filter((f) => f.released).length,
+        points: at >= 0 ? table[at].points : 0,
+        place: at >= 0 ? at + 1 : null,
+        division: division === 'river' ? 'river' : 'ocean',
+      },
+      biggest,
+    });
+  });
+
   // One tournament's results: boats ranked, with their approved catches.
   api.get('/tournaments/:id', (req, res) => {
     const event = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events WHERE id = ? AND kind = 'tournament'`).get(intId(req.params.id));

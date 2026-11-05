@@ -922,6 +922,57 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
 // Several of a species weighed the same day: their weights together, heaviest first.
 const weighedLine = (f) => html`⚖️ <b>${f.weighedKg.length} ${f.species.toLowerCase()}</b> weighed: ${f.weighedKg.map((kg) => fmtWeight(kg)).join(', ')} · ${fmtWeight(f.weighedKg.reduce((a, b) => a + b, 0))} in all`;
 
+// A boat's or angler's page: their fish to show off. Highlights, the biggest
+// fish, species chips and Newest/Biggest, and a photo grid; tap a fish for its page.
+async function renderTrophies(box, query) {
+  const { fish, stats, biggest } = await api(`/trophies?${new URLSearchParams(query)}`);
+  let species = '';
+  let sort = 'newest';
+  const counts = new Map();
+  for (const f of fish) counts.set(f.species, (counts.get(f.species) || 0) + 1);
+  const kinds = [...counts].sort((a, b) => b[1] - a[1]);
+  const place = stats.place ? ` · ${ordinal(stats.place)}` : '';
+  const tile = (f) => html`<div class="trophy">
+    <a href="#/catch/${f.id}" aria-label="${f.species}${f.weightKg ? `, ${fmtWeight(f.weightKg)}` : f.released ? ', released' : ''}">
+      ${f.photoUrl ? raw(html`<img src="${f.photoUrl}" alt="" loading="lazy">`) : raw(`<span class="ph">${MARLIN}</span>`)}
+      ${f.released ? raw('<span class="tag">Released</span>') : ''}
+      <span class="cap"><b>${f.species}</b>${f.released ? fmtPoints(f.points) : `${fmtWeight(f.weightKg)} · ${fmtPoints(f.points)}`}</span></a>
+    ${f.canAddPhoto && !f.ownPhoto ? raw(html`<label class="trophy-add" aria-label="Add your photo of the ${f.species}">${raw(icon('camera'))}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`) : ''}
+  </div>`;
+  function draw() {
+    const shown = fish.filter((f) => !species || f.species === species);
+    if (sort === 'biggest') shown.sort((a, b) => (b.weightKg ?? -1) - (a.weightKg ?? -1) || (b.points ?? 0) - (a.points ?? 0));
+    box.innerHTML = html`<div class="trophy-stats">
+        <div class="card"><b>${stats.weighed}</b><span>fish weighed</span></div>
+        <div class="card"><b>${stats.releases}</b><span>releases</span></div>
+        <div class="card"><b>${fmtPoints(stats.points).replace(' pts', '')}</b><span>season points${place}</span></div>
+      </div>
+      ${biggest ? raw(html`<a class="card trophy-best" href="#/catch/${biggest.id}">
+        ${biggest.photoUrl ? raw(html`<img src="${biggest.photoUrl}" alt="">`) : raw(`<span class="ph">${MARLIN}</span>`)}
+        <span><span class="small muted">Biggest fish</span><b>${biggest.species} · ${fmtWeight(biggest.weightKg)}</b>
+        <span class="small muted">${biggest.angler || biggest.teamName || ''} · ${fmtDate(biggest.caughtOn)}</span></span></a>`) : ''}
+      ${fish.length ? raw(html`<div class="trophy-chips" role="group" aria-label="Species">
+          <button type="button" class="${species ? '' : 'on'}" data-species="">All ${fish.length}</button>
+          ${kinds.map(([k, n]) => raw(html`<button type="button" class="${species === k ? 'on' : ''}" data-species="${k}">${k} ${n}</button>`))}
+        </div>
+        <div class="trophy-chips" role="group" aria-label="Order">
+          <button type="button" class="${sort === 'newest' ? 'on' : ''}" data-sort="newest">Newest</button>
+          <button type="button" class="${sort === 'biggest' ? 'on' : ''}" data-sort="biggest">Biggest</button>
+        </div>
+        <div class="trophy-grid">${shown.map((f) => raw(tile(f)))}</div>`)
+        : raw('<div class="card pad empty muted">No fish weighed in yet. Fish show here once the secretary approves them.</div>')}`;
+  }
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-species], [data-sort]');
+    if (!b) return;
+    if (b.dataset.sort) sort = b.dataset.sort;
+    else species = b.dataset.species;
+    draw();
+  });
+  draw();
+}
+const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'}`;
+
 // A weigh-in post's pictures, swiped sideways: each fish's weigh station
 // photo, then the crew's own.
 function feedGallery(slides) {
@@ -1301,11 +1352,8 @@ const pagesFor = (view) => ({
           ${team.canManage ? raw('<button data-act="new-code">New code</button>') : ''}
         </div>
       </div>`) : ''}
-      <div class="stats">
-        <div class="card stat"><b>${stats.catches}</b><span>fish weighed in</span></div>
-        <div class="card stat"><b>${stats.released}</b><span>released</span></div>
-        <div class="card stat"><b>${stats.heaviestKg ? fmtWeight(stats.heaviestKg) : '—'}</b><span>heaviest</span></div>
-      </div>
+      <h2>Catches</h2>
+      <div id="trophies"></div>
       <h2>Crew (${team.members.length})</h2>
       <div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
         <span><a href="#/user/${m.id}">${m.name}</a> ${m.id === team.captainId ? raw('<span class="badge">Captain</span>') : ''}
@@ -1342,19 +1390,7 @@ const pagesFor = (view) => ({
         <div><button type="submit" class="primary">Save</button></div>
       </form>`) : ''}
       ${team.isMember ? raw('<p><button data-act="leave" class="danger">Leave this boat</button></p>') : ''}
-      ${isJhmmc(team.clubId) ? raw(html`<h2>JHMMC registrations</h2>
-      <p class="small muted">Fish the captain registered at the weigh station for JHMMC points.</p>
-      <div class="card"><ul class="list" id="regs"><li class="muted">Loading…</li></ul></div>`) : ''}
-      <h2>Posts</h2>
-      <div id="feed"></div>`;
-    if (isJhmmc(team.clubId)) {
-      api(`/catches?team=${team.id}&official=1&limit=50`).then(({ catches }) => {
-        view.querySelector('#regs').innerHTML = catches.length ? catches.map((c) => html`<li>
-          <a href="#/catch/${c.id}"><b>${c.species}</b></a> · ${c.angler} ${raw(statusBadge(c))}
-          <div class="muted small">${fmtDay(c.caughtOn)} · ${c.released ? 'released' : fmtWeight(c.weightKg)}</div></li>`).join('')
-          : '<li class="muted">No registrations yet.</li>';
-      }).catch(() => {});
-    }
+`;
 
     view.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-act]');
@@ -1416,7 +1452,7 @@ const pagesFor = (view) => ({
       toast('Boat saved');
       route();
     });
-    await renderFeed(view.querySelector('#feed'), { team: team.id });
+    await renderTrophies(view.querySelector('#trophies'), { team: team.id });
   },
 
   // Clubs: JHMMC (the admin) opens them; anyone else asks, and the admin decides.
@@ -3392,13 +3428,9 @@ const pagesFor = (view) => ({
       <p class="muted">${user.teamName ? raw(html`<a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
       ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
-      <div class="stats">
-        <div class="card stat"><b>${stats.catches}</b><span>fish weighed in</span></div>
-        <div class="card stat"><b>${stats.released}</b><span>released</span></div>
-        <div class="card stat"><b>${stats.heaviestKg ? fmtWeight(stats.heaviestKg) : '—'}</b><span>heaviest</span></div>
-      </div>
-      <div id="feed"></div>`;
-    await renderFeed(view.querySelector('#feed'), { user: user.id });
+      <h2>Catches</h2>
+      <div id="trophies"></div>`;
+    await renderTrophies(view.querySelector('#trophies'), { user: user.id });
   },
 
   async profile() {

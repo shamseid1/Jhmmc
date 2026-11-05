@@ -121,6 +121,13 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     const onBoat = (await as()('GET', `/feed?team=${seaHunter.id}&type=weighins`)).body.items;
     assert.deepEqual(onBoat.map((x) => [x.single, x.fish.map((f) => f.species)]).sort(), [[true, ['Blue marlin']], [true, ['Sailfish']]]);
     assert.equal((await as()('GET', '/feed?type=weighins')).body.items.filter((x) => x.teamId === seaHunter.id).length, 1, 'the main feed keeps the day together');
+    // The boat's page: its fish to show off, with the highlights.
+    const wall = (await as()('GET', `/trophies?team=${seaHunter.id}`)).body;
+    assert.deepEqual(wall.fish.map((f) => f.species).sort(), ['Blue marlin', 'Sailfish']);
+    assert.deepEqual([wall.stats.weighed, wall.stats.releases, wall.stats.place], [1, 1, 1]);
+    assert.equal(wall.biggest.species, 'Blue marlin');
+    assert.equal(wall.fish.find((f) => f.species === 'Blue marlin').photoUrl, pub.photoUrl, 'the crew\'s photo on the tile');
+    assert.equal((await as()('GET', '/trophies')).status, 400);
     // The "boated" line keeps the crew's photo from the log, as its own post.
     const all = (await as()('GET', '/feed')).body.items;
     const boated = all.find((x) => x.kind === 'log' && x.species === 'Blue marlin');
