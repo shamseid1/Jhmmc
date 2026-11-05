@@ -2356,9 +2356,11 @@ const pagesFor = (view) => ({
       <h2>Fishing</h2><div class="card menu">
         ${me.teamId ? item('#/spots', 'pin', 'My catch map', 'Your crew\'s fish, where they were caught') : ''}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
-        ${me.canWeigh && !me.canReview ? item('#/weigh', 'weight', 'Weigh-in', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`) : ''}
-        ${me.canWeigh && !me.canReview ? item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours') : ''}
-      </div>`) : ''}
+      </div>
+      ${me.canWeigh && !me.canReview ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
+        ${item('#/weigh', 'weight', 'Weigh-in', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+        ${item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours')}
+      </div>` : ''}`) : ''}
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/weigh', 'weight', 'Weigh-in', 'For any boat') : ''}
