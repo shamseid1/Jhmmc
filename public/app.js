@@ -543,7 +543,7 @@ async function renderGridMap(box, q, link) {
   const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
   for (const c of g.cells) {
     // A circle on each 10 km area's centre, drawn a bit larger than the area so it reads well.
-    L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2], { radius: 8000, color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
+    L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2], { radius: 12000, color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
       .addTo(map).bindPopup(`<b>${c.fish} ${c.fish === 1 ? 'fish' : 'fish'}</b><br>${c.boats === 1 ? '1 boat' : `${c.boats} boats`}`);
   }
   map.fitBounds(L.latLngBounds(g.cells.flatMap((c) => [[c.south, c.west], [c.north, c.east]])).pad(0.4), { maxZoom: 10 });
