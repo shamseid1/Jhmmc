@@ -11,7 +11,7 @@ const PNG = Buffer.from(
   'base64'
 );
 
-test('a fish shows two photos at most, the weigh station one first; videos only for officers and the crew', async () => {
+test('boated line with the log photo, weigh-in with the weigh station photo; videos only for officers and the crew', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-disputes-'));
   const dbFile = path.join(tmp, 'fishing.db');
   const pusher = { publicKey: 'k', send: async () => true };
@@ -86,9 +86,8 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.deepEqual(day.landings.filter((l) => l.species === 'Blue marlin').map((l) => [l.scaleKg, l.scaleShared]), [[210, false]]);
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;
     const pub = await asSeenBy(as());
-    assert.equal(pub.photos.length, 2, 'the weigh station photo and the crew photo');
+    assert.equal(pub.photos.length, 1, 'a weighed fish shows its weigh station photo only');
     assert.equal(pub.photoUrl, pub.scalePhotoUrl, 'the weigh station photo is the main one');
-    assert.notEqual(pub.photos[1].url, pub.scalePhotoUrl);
     assert.equal(pub.scaleVideoUrl, null, 'no video for the public');
     assert.equal((await asSeenBy(capB)).scaleVideoUrl, null, 'nor for another boat');
     assert.ok((await asSeenBy(sec)).scaleVideoUrl, 'the secretary sees it');
@@ -99,7 +98,11 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.match(rel.videoUrl, /\.mp4$/);
     const post = (await as()('GET', '/feed?type=weighins')).body.items[0];
     const [m, s2] = ['Blue marlin', 'Sailfish'].map((n) => post.fish.find((f) => f.species === n));
-    assert.equal(m.photos.length, 2);
+    assert.equal(m.photos.length, 1);
+    // The "boated" line keeps the crew's photo from the log, as its own post.
+    const all = (await as()('GET', '/feed')).body.items;
+    const boated = all.find((x) => x.kind === 'log' && x.species === 'Blue marlin');
+    assert.ok(boated?.photoUrl && boated.photoUrl !== pub.scalePhotoUrl, 'the crew photo, on the boated line');
     assert.equal(m.photos[0], pub.scalePhotoUrl);
     assert.equal(m.videoUrl, null, 'no scale video in the feed');
     assert.equal(s2.videoUrl, rel.videoUrl, 'the release video is');

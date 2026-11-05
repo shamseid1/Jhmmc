@@ -200,13 +200,13 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const wPost = feedNow.find((x) => x.kind === 'weighin' && x.day === today);
     assert.ok(wPost.fish.filter((f) => f.weightKg).every((f) => f.photos.length), 'the scale photos');
     assert.ok(wPost.fish.every((f) => !f.videoUrl || f.released), 'only release videos in the feed; scale videos are for the secretary');
-    // Once that tuna is approved it shows once, in the weigh-in post, with the crew's photo.
+    // Once that tuna is approved there are two posts: boated (crew photo) and the weigh-in (weigh station photo).
     assert.equal((await sec('POST', `/catches/${someTuna.catchId}/review`, { decision: 'approve' })).status, 200);
     const after = (await as()('GET', `/feed?team=${boat.id}`)).body.items;
-    assert.equal(after.some((x) => x.kind === 'log' && x.id === someTuna.id), false, 'no second line at sea');
+    assert.equal(after.find((x) => x.kind === 'log' && x.id === someTuna.id)?.photoUrl, withPic.photoUrl, 'the boated line stays, with the crew photo');
     const tunaPics = after.find((x) => x.kind === 'weighin' && x.day === today).fish.find((f) => f.id === someTuna.catchId).photos;
-    assert.equal(tunaPics.length, 2, 'the weigh station photo first, then the crew photo');
-    assert.equal(tunaPics[1], withPic.photoUrl);
+    assert.equal(tunaPics.length, 1, 'the weigh-in has the weigh station photo only');
+    assert.notEqual(tunaPics[0], withPic.photoUrl);
     // The catch map shows the tunas once each, without weights (which was which isn't known).
     const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
     assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', null, false], ['log', null, false], ['log', null, false], ['log', null, false]]);

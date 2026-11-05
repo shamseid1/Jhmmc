@@ -877,7 +877,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
   ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length || f.videoUrl) ? raw(feedGallery(x.fish.flatMap((f) => [
-    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`),
+    ...f.photos.map((url) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species} at the weigh station" loading="lazy"></a>`),
     ...(f.videoUrl ? [html`<video class="catch-photo" src="${f.videoUrl}" controls playsinline preload="metadata" aria-label="${f.species} released"></video>`] : []),
   ]))) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
