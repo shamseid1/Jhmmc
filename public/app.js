@@ -2177,13 +2177,20 @@ const pagesFor = (view) => ({
       watch = navigator.geolocation.watchPosition((pos) => {
         fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
+        gps.classList.remove('gps-wait');
+        view.querySelector('.fates')?.classList.remove('waiting');
       }, (err) => {
         gps.textContent = err.code === 1
-          ? 'Location is blocked: allow it for this site in your phone settings so each fish gets its spot.'
-          : 'No GPS fix yet. Fish still log, and get the spot once the phone finds one.';
+          ? 'Location is blocked: allow it for this site in your phone settings. Fish can only be logged with their spot.'
+          : 'Finding GPS… Fish can be logged as soon as the spot is taken.';
       }, { enableHighAccuracy: true, maximumAge: 10000 });
     } else {
-      gps.textContent = "This phone or browser can't share its location.";
+      gps.textContent = "This phone or browser can't share its location, so fish can't be logged at sea from it.";
+    }
+    // At sea a fish is only logged with its spot: the buttons wait for the GPS.
+    if (live) {
+      gps.classList.add('gps-wait');
+      view.querySelector('.fates')?.classList.add('waiting');
     }
     const stop = () => {
       if (watch != null) navigator.geolocation.clearWatch(watch);
@@ -2214,7 +2221,11 @@ const pagesFor = (view) => ({
       // A fix more than two minutes old is from somewhere else: ask for a fresh one.
       // Fish added for an earlier day get no spot (the boat isn't there now).
       // No waiting around: at most a few seconds for a fix if the phone hasn't one yet.
-      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(3000);
+      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(5000);
+      if (live && !spot) {
+        err.textContent = 'No GPS spot yet: a fish is only logged with its spot. Wait a moment for the GPS (out in the open helps), then tap again.';
+        return;
+      }
       const now = live ? new Date() : new Date(`${day}T12:00:00Z`);
       saveQueue([...queued(), {
         clientId: `${state.me.id}-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,

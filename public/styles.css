@@ -860,3 +860,6 @@ a.me-card { color: var(--text); text-decoration: none; }
 .tr-legend .tr-s1 i { background: var(--series-1); } .tr-legend .tr-s2 i { background: var(--series-2); } .tr-legend .tr-s3 i { background: var(--series-3); }
 .tr-legend a { margin-left: auto; font-weight: 600; }
 .biting { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+/* Log fish at sea: the buttons wait for the GPS spot. */
+.fates.waiting .fate { opacity: .45; }
+.gps-wait { color: var(--accent); font-weight: 700; }
