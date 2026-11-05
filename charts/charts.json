@@ -1,24 +1,18 @@
 [
   {
-    "id": "monrovia",
-    "name": "Off Monrovia",
-    "file": "monrovia.png",
-    "bounds": {
-      "south": 5.08893,
-      "west": -11.04775,
-      "north": 6.56852,
-      "east": -10.19607
-    }
-  },
-  {
     "id": "coast",
     "name": "Liberia to Guinea",
-    "file": "coast.png",
     "bounds": {
-      "south": 5.58181,
+      "south": 5.08893,
       "west": -15.49231,
       "north": 9.3258,
       "east": -10.06964
+    },
+    "tiles": {
+      "pack": "coast.tiles",
+      "index": "coast.index.json",
+      "minZoom": 7,
+      "maxZoom": 12
     }
   }
 ]

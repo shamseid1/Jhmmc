@@ -181,8 +181,9 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');
     const { charts } = (await deckhand('GET', '/charts')).body;
     assert.ok(charts.length && charts[0].bounds.north > charts[0].bounds.south);
-    const img = await fetch(at + charts[0].url.replace('/api', ''), { headers: {} });
-    assert.equal(img.status, 401, 'the image needs signing in too');
+    const chart = charts[0];
+    const tile = (chart.tiles || chart.url).replace('/api', '').replace('{z}', 7).replace('{x}', 58).replace('{y}', 61);
+    assert.equal((await fetch(at + tile)).status, 401, 'the chart needs signing in too');
     // The spots go on the crew's catch maps.
     const mine = (await deckhand('GET', '/me/spots')).body.spots;
     assert.deepEqual(mine.filter((x) => x.kind === 'log').map((x) => [x.species, x.released]), [['Sailfish', true], ['Sailfish', true]]);

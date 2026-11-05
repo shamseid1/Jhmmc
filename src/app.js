@@ -2726,7 +2726,37 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const forCrews = (req, res, next) => (req.user.teamId || isAdminUser(req.user) ? next()
     : res.status(403).json({ error: 'Depth charts are for boat crews.' }));
   api.get('/charts', auth.requireUser, forCrews, (_req, res) => {
-    res.json({ charts: chartList().map(({ id, name, bounds }) => ({ id, name, bounds, url: `/api/charts/${id}` })) });
+    res.json({ charts: chartList().map(({ id, name, bounds, tiles }) => (tiles
+      ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom }
+      : { id, name, bounds, url: `/api/charts/${id}` })) });
+  });
+  // A tiled chart is one packed file of map tiles and an index ("z/x/y": [offset, length]).
+  const packs = new Map();
+  const packFor = (chart) => {
+    if (!packs.has(chart.id)) {
+      const index = JSON.parse(fs.readFileSync(path.join(CHART_DIR, path.basename(chart.tiles.index)), 'utf8'));
+      packs.set(chart.id, { index, file: path.join(CHART_DIR, path.basename(chart.tiles.pack)) });
+    }
+    return packs.get(chart.id);
+  };
+  const EMPTY_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  api.get('/charts/:id/:z/:x/:y.png', auth.requireUser, forCrews, (req, res) => {
+    const chart = chartList().find((c) => c.id === req.params.id && c.tiles);
+    if (!chart) return res.status(404).json({ error: 'Chart not found.' });
+    const { index, file } = packFor(chart);
+    const { z, x, y } = req.params;
+    const at = [z, x, y].every((v) => /^\d{1,7}$/.test(v)) ? index[`${+z}/${+x}/${+y}`] : null;
+    res.set('Cache-Control', 'private, max-age=604800');
+    res.type('png');
+    if (!at) return res.send(EMPTY_TILE); // outside the chart: nothing to draw
+    const buf = Buffer.alloc(at[1]);
+    const fd = fs.openSync(file, 'r');
+    try {
+      fs.readSync(fd, buf, 0, at[1], at[0]);
+    } finally {
+      fs.closeSync(fd);
+    }
+    res.send(buf);
   });
   api.get('/charts/:id', auth.requireUser, forCrews, (req, res) => {
     const chart = chartList().find((c) => c.id === req.params.id);

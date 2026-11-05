@@ -297,6 +297,15 @@ const MAP_PLACES = [
 ];
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
+// The depth charts as one map layer: map tiles (sharp at every zoom, only the
+// part in view is loaded) or, for an older chart, one picture.
+const depthLayer = (L, charts) => L.layerGroup(charts.map((c) => {
+  const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
+  return c.tiles
+    ? L.tileLayer(c.tiles, { bounds, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' })
+    : L.imageOverlay(c.url, bounds, { opacity: 0.95 });
+}));
+
 async function drawSpotMaps(root) {
   const boxes = [...root.querySelectorAll('.spot-map-view:not(.leaflet-container)')];
   if (!boxes.length) return;
@@ -541,7 +550,7 @@ async function renderGridMap(box, q, link) {
   // The depth chart (crews only), under the circles; on unless switched off.
   if (charts.length) {
     // All the chart areas are one layer, "Depth contours".
-    const contours = L.layerGroup(charts.map((c) => L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }))).addTo(map);
+    const contours = depthLayer(L, charts).addTo(map);
     L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
   }
   const most = Math.max(...g.cells.map((c) => c.fish));
@@ -2708,7 +2717,7 @@ const pagesFor = (view) => ({
     // Depth charts sit over the satellite, under the pins; on unless switched off.
     if (charts.length) {
       // All the chart areas are one layer, "Depth contours".
-      const contours = L.layerGroup(charts.map((c) => L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }))).addTo(map);
+      const contours = depthLayer(L, charts).addTo(map);
       L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
     }
     if (!spots.length) {
