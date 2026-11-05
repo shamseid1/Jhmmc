@@ -530,13 +530,13 @@ async function renderGridMap(box, q, link) {
       ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
     </div>
     ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}
-    <p class="small muted">Each circle is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth chart switches on and off with the layers button.' : ''}</p>`;
+    <p class="small muted">Each circle is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`;
   if (!g.cells.length || !L) return;
   const map = L.map('grid-map', { zoomControl: true });
   addSatellite(L, map);
   // The depth chart (crews only), under the circles; on unless switched off.
   if (charts.length) {
-    const layers = Object.fromEntries(charts.map((c) => [`Depth chart: ${c.name}`,
+    const layers = Object.fromEntries(charts.map((c) => [`Depth contours: ${c.name}`,
       L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
     L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
   }
@@ -2428,7 +2428,7 @@ const pagesFor = (view) => ({
           [[spotsLink(year, species, ''), 'All months'], ...monthsHere.map((m) => [spotsLink(year, species, String(m)), MONTH_SHORT[m - 1]])], spotsLink(year, species, month)))}</select>`) : ''}
       </div>`) : ''}
       ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
-      ${charts.length ? raw('<p class="small muted">Depth chart: switch it on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
+      ${charts.length ? raw('<p class="small muted">Depth contours: switch them on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
       ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
@@ -2444,7 +2444,7 @@ const pagesFor = (view) => ({
     addSatellite(L, map);
     // Depth charts sit over the satellite, under the pins; on unless switched off.
     if (charts.length) {
-      const layers = Object.fromEntries(charts.map((c) => [`Depth chart: ${c.name}`,
+      const layers = Object.fromEntries(charts.map((c) => [`Depth contours: ${c.name}`,
         L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
       L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
     }
