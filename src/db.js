@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 43;
+const SCHEMA_VERSION = 44;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS registration_log (
   id INTEGER PRIMARY KEY,
   catch_id INTEGER NOT NULL,
   team_id INTEGER,
-  action TEXT NOT NULL CHECK (action IN ('registered', 'withdrawn', 'deleted', 'disputed', 'approved', 'rejected')),
+  action TEXT NOT NULL CHECK (action IN ('registered', 'withdrawn', 'deleted', 'disputed', 'approved', 'rejected', 'repointed', 'uncounted')),
   user_id INTEGER,
   user_name TEXT NOT NULL,
   details TEXT NOT NULL,
@@ -610,6 +610,18 @@ function openDb(file) {
       const list = [...new Set(o.technique.split('|').map((t) => (t.startsWith('Trolling') ? 'Trolling' : t)))];
       db.prepare('UPDATE outings SET technique = ? WHERE id = ?').run(list.join('|'), o.id);
     }
+  }
+  // The secretary can change an approved fish's points or take it off them:
+  // two more actions in the registration record (a CHECK can't be altered, so copy the table).
+  const logSql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'registration_log'").get()?.sql;
+  if (logSql && !logSql.includes('repointed')) {
+    db.exec(`BEGIN;
+      ALTER TABLE registration_log RENAME TO registration_log_old;
+      DROP INDEX IF EXISTS registration_log_catch; DROP INDEX IF EXISTS registration_log_team;
+      ${SCHEMA.slice(SCHEMA.indexOf('CREATE TABLE IF NOT EXISTS registration_log'), SCHEMA.indexOf('CREATE INDEX IF NOT EXISTS registration_log_catch'))}
+      INSERT INTO registration_log SELECT * FROM registration_log_old;
+      DROP TABLE registration_log_old;
+      COMMIT;`);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

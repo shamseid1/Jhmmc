@@ -871,3 +871,6 @@ a.me-card { color: var(--text); text-decoration: none; }
 .offline-note { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-2, rgba(127,127,127,.12)); }
 /* Several of a species weighed: their weights together, under the list. */
 .fo-weighed { font-size: 14px; background: var(--surface-2, rgba(127,127,127,.08)); }
+/* The secretary's box on an approved fish. */
+.secretary-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border, rgba(127,127,127,.25)); }
+.secretary-box h3 { margin: 0; font-size: 16px; }

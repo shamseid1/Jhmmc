@@ -355,9 +355,11 @@ document.addEventListener('change', (e) => {
 // everything that happened to it, in order.
 const LOG_ACTIONS = {
   registered: 'Registered', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
+  repointed: 'Points changed', uncounted: 'Taken off the points',
 };
 const LOG_STATUS = {
   registered: 'Waiting', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
+  repointed: 'Approved', uncounted: 'Not counted',
 };
 function logItems(fish) {
   if (!fish.length) return '<li class="muted">Nothing recorded yet.</li>';
@@ -781,6 +783,14 @@ function catchCard(c, { full = false } = {}) {
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
+      ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
+        <h3>Secretary</h3>
+        <p class="small muted">Changing the points or taking the fish off them needs a note; the crew is told.</p>
+        <label>Points <input name="points" type="number" step="0.1" value="${c.points}"></label>
+        <label>Note <input name="note" maxlength="300" placeholder="Why"></label>
+        <div class="row-buttons"><button type="button" data-act="repoint">Change points</button>
+          <button type="button" data-act="uncount" class="danger">Not counted</button></div>
+      </form>`) : ''}
     </div>
   </article>`;
 }
@@ -805,9 +815,29 @@ function wireCards(root, byId) {
         toast(ex.message);
       }
     }
-    if (btn.dataset.act === 'delete' && confirm('Delete this catch? This cannot be undone.')) {
+    if (btn.dataset.act === 'repoint' || btn.dataset.act === 'uncount') {
+      const box = btn.closest('[data-secretary]');
+      const note = box.querySelector('[name=note]').value.trim();
+      if (!note) return toast(btn.dataset.act === 'uncount' ? 'Give the reason it isn\'t counted.' : 'Add a note explaining the change.');
+      if (btn.dataset.act === 'uncount' && !confirm('Take this fish off the points? The crew is told why.')) return;
       try {
-        await api(`/catches/${c.id}`, { method: 'DELETE' });
+        const { catch: fresh } = await api(`/catches/${c.id}/review`, { method: 'POST', body: btn.dataset.act === 'uncount'
+          ? { decision: 'reject', note } : { decision: 'points', points: box.querySelector('[name=points]').value, note } });
+        toast(btn.dataset.act === 'uncount' ? 'Taken off the points.' : 'Points changed.');
+        Object.assign(c, fresh);
+        route();
+      } catch (ex) {
+        toast(ex.message);
+      }
+      return;
+    }
+    // The secretary deleting a registration gives a reason: it stays on record.
+    const official = c.status !== 'unofficial' && state.me?.canReview;
+    const reason = btn.dataset.act === 'delete' && official ? prompt('Delete this fish? It comes off the points and the log. Why? (kept in the record, and the crew is told)') : '';
+    if (btn.dataset.act === 'delete' && official && !reason?.trim()) return;
+    if (btn.dataset.act === 'delete' && (official || confirm('Delete this catch? This cannot be undone.'))) {
+      try {
+        await api(`/catches/${c.id}`, { method: 'DELETE', body: official ? { reason: reason.trim() } : undefined });
         toast('Catch deleted');
         location.hash = '#/';
       } catch (ex) {

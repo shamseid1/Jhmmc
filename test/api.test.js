@@ -532,7 +532,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(-3), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
     assert.equal(r.status, 201, 'the secretary may enter an earlier day');
     assert.equal((await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(2), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }))).status, 400, 'but not a future one');
-    assert.equal((await sec('DELETE', `/catches/${r.body.catch.id}`)).status, 200, 'the secretary can remove it');
+    assert.equal((await sec('DELETE', `/catches/${r.body.catch.id}`, { reason: 'Entered by mistake' })).status, 200, 'the secretary can remove it');
     assert.equal((await wm('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }))).status, 403);
     r = await rcap('POST', '/weigh', weighed({ ...reg, speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
     assert.match(r.body.error, /own boat/, "captains register their own boat's fish only");

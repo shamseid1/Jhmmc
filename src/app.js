@@ -1498,6 +1498,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (!note) return res.status(400).json({ error: 'Give a reason so the crew knows why.' });
       db.prepare(`UPDATE catches SET status = 'rejected', points = NULL, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`)
         .run(note, req.user.id, new Date().toISOString(), id);
+    } else if (req.body.decision === 'points') {
+      // An approved fish's points corrected afterwards, always with a note.
+      if (row.status !== 'approved') return res.status(400).json({ error: 'Only an approved fish has points to change.' });
+      const given = Number(req.body.points);
+      if (req.body.points === '' || req.body.points == null || !Number.isFinite(given)) return res.status(400).json({ error: 'Points must be a number.' });
+      if (!note) return res.status(400).json({ error: 'Add a note explaining the changed points.' });
+      db.prepare('UPDATE catches SET points = ?, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
+        .run(given, note, req.user.id, new Date().toISOString(), id);
     } else if (req.body.decision === 'approve') {
       const suggested = suggestPoints(id);
       const given = req.body.points === undefined || req.body.points === '' ? suggested.points : Number(req.body.points);
@@ -1509,14 +1517,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     } else {
       return res.status(400).json({ error: 'Approve or reject.' });
     }
-    logRegistration(id, req.body.decision === 'reject' ? 'rejected' : 'approved', req.user, { note });
+    const action = { reject: row.status === 'approved' ? 'uncounted' : 'rejected', points: 'repointed' }[req.body.decision] ?? 'approved';
+    logRegistration(id, action, req.user, { note });
     // Tell whoever registered it, and (if they want it) everyone about a new weigh-in.
     const k = db.prepare(`SELECT k.logged_by, k.weight_kg, k.released, k.points, k.points_note, s.name AS species, t.name AS boat,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?`).get(id);
     const fish = `${k.species}${k.weight_kg ? ` (${Math.round(k.weight_kg * 10) / 10} kg)` : k.released ? ' (released)' : ''}`;
-    const approved = req.body.decision !== 'reject';
-    pushWhere('myFish', {
+    const approved = req.body.decision === 'approve';
+    pushWhere('myFish', action === 'repointed' ? {
+      title: 'Points changed',
+      body: `Your ${fish} now has ${k.points} points: ${k.points_note}`,
+    } : {
       title: approved ? 'Fish approved' : 'Fish not counted',
       body: approved ? `Your ${fish} was approved: ${k.points} points.` : `Your ${fish} wasn't counted: ${k.points_note}`,
       url: `/#/catch/${id}`,
@@ -2049,8 +2061,19 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         : 'Only the angler, whoever logged it, or the boat captain can delete this catch.' });
     }
     if (item.status !== 'unofficial') {
-      logRegistration(id, item.loggedBy === req.user.id && !canReview(req.user) ? 'withdrawn' : 'deleted', req.user);
+      const withdrawn = item.loggedBy === req.user.id && !canReview(req.user);
+      // The secretary (or admin) deleting a registration says why: it stays on record.
+      const reason = str(req.body?.reason, 300);
+      if (!withdrawn && !reason) return res.status(400).json({ error: 'Give a reason for deleting it; it stays in the registration record.' });
+      logRegistration(id, withdrawn ? 'withdrawn' : 'deleted', req.user, { note: reason });
       unlogRegistration(id);
+      if (!withdrawn && item.loggedBy && item.loggedBy !== req.user.id) {
+        pushWhere('myFish', {
+          title: 'Fish removed',
+          body: `Your ${item.species}${item.weightKg ? ` (${Math.round(item.weightKg * 10) / 10} kg)` : ''} was removed by the secretary: ${reason}`,
+          url: '/#/more',
+        }, req.user, (p) => p.id === item.loggedBy);
+      }
     }
     db.prepare('DELETE FROM catches WHERE id = ?').run(id);
     // A registration's scale photo and video stay as evidence in the record.

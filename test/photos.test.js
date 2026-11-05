@@ -103,6 +103,23 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.equal(m.photos[0], pub.scalePhotoUrl);
     assert.equal(m.videoUrl, null, 'no scale video in the feed');
     assert.equal(s2.videoUrl, rel.videoUrl, 'the release video is');
+
+    // The secretary changes their mind after approving: points, not counted, deleted.
+    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000 })).body.error, /note/);
+    let k = (await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000, note: 'Line class rule' })).body.catch;
+    assert.equal((await capB('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000, note: 'x' })).status, 403);
+    assert.deepEqual([k.status, k.points, k.pointsNote], ['approved', 1000, 'Line class rule']);
+    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'reject' })).body.error, /reason/);
+    const rj = await sec('POST', `/catches/${marlin.id}/review`, { decision: 'reject', note: 'Late dispute upheld' }); k = rj.body.catch; assert.ok(k, JSON.stringify(rj));
+    assert.deepEqual([k.status, k.points], ['rejected', null]);
+    assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 5, note: 'x' })).status, 400, 'no points to change once not counted');
+    assert.ok(!(await as()('GET', '/feed?type=weighins')).body.items[0].fish.some((f) => f.id === marlin.id), 'off the weigh-in post');
+    assert.match((await sec('DELETE', `/catches/${sailfish.id}`)).body.error, /reason/);
+    assert.equal((await sec('DELETE', `/catches/${sailfish.id}`, { reason: 'Registered twice' })).status, 200);
+    const record = (await sec('GET', `/registrations/log?catch=${marlin.id}`)).body.fish[0].steps.map((e) => [e.action, e.note]);
+    assert.deepEqual(record.slice(-3), [['approved', null], ['repointed', 'Line class rule'], ['uncounted', 'Late dispute upheld']]);
+    const gone = (await sec('GET', `/registrations/log?catch=${sailfish.id}`)).body.fish[0].steps.at(-1);
+    assert.deepEqual([gone.action, gone.note], ['deleted', 'Registered twice']);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });
