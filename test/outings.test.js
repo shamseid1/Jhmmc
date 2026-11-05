@@ -137,6 +137,15 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await marwan('GET', `/outings/season?team=${exocet}&year=2026`)).body.outings, own.filter((o) => o.date.startsWith('2026')).length);
     assert.match((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Exocet/);
     assert.doesNotMatch((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Bottom Line/);
+    // Trends: year against year, what's biting now, water and billfish by week.
+    const tr = (await as()('GET', '/outings/trends?species=Sailfish')).body;
+    assert.equal(tr.species, 'Sailfish');
+    const y2026 = tr.years.find((y) => y.year === '2026');
+    const sameSeason = (await as()('GET', '/outings/season?year=2026&species=Sailfish')).body;
+    assert.equal(y2026.months[9].count, sameSeason.months[9].count, 'the same October count as the Season tab');
+    assert.equal(y2026.first, '2026-10-20', 'the first sailfish still in the log (the 18th was removed)');
+    assert.equal(tr.weeks.length, 26);
+    assert.ok(Array.isArray(tr.now.biting));
     // Depth charts: crews only, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
     assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');

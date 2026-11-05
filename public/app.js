@@ -427,6 +427,94 @@ function phoneSpot(timeout = 8000) {
   });
 }
 
+// ---- trends (Log → Trends) ---------------------------------------------------
+// Year against year by month, what's biting now, and water against billfish by
+// week. Lines and bars in plain SVG; colours from --series-1..3 (validated,
+// colour-blind safe), every series also named in a legend and at its line end.
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function trendsHtml(tr, { perBoat, link, mine }) {
+  const W = 340; const H = 150; const L = 28; const R = 44; const T = 10; const B = 22;
+  const x = (i, n) => L + (i * (W - L - R)) / (n - 1);
+  const value = (m) => (perBoat ? (m.boats ? m.count / m.boats : 0) : m.count);
+  const top = Math.max(1, ...tr.years.flatMap((y) => y.months.map(value)));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const nice = (v) => (perBoat ? (Math.round(v * 10) / 10) : Math.round(v));
+  const grid = [0, top / 2, top].map((g) => `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" class="tr-grid"/><text x="${L - 4}" y="${y(g) + 4}" class="tr-axis" text-anchor="end">${nice(g)}</text>`).join('');
+  // This year's line stops at this month: the months to come aren't zeros.
+  const thisYear = String(new Date().getFullYear());
+  const thisMonth = new Date().getMonth();
+  const lines = tr.years.map((yr, k) => {
+    const pts = yr.months.slice(0, yr.year === thisYear ? thisMonth + 1 : 12).map((m, i) => [x(i, 12), y(value(m))]);
+    const last = pts[pts.length - 1];
+    return `<g class="tr-s${k + 1}"><polyline points="${pts.map((p) => p.join(',')).join(' ')}" class="tr-line"/>
+      ${pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="4" class="tr-dot"><title>${esc(`${MONTH_SHORT[i]} ${yr.year}: ${nice(value(yr.months[i]))} ${tr.species ? tr.species.toLowerCase() : 'fish'}${perBoat ? ' per boat' : ''}`)}</title></circle>`).join('')}
+      <text x="${last[0] + 6}" y="${last[1] + 4}" class="tr-label">${yr.year}</text></g>`;
+  }).join('');
+  const months = MONTH_SHORT.map((m, i) => (i % 2 ? '' : `<text x="${x(i, 12)}" y="${H - 6}" class="tr-axis" text-anchor="middle">${m[0]}</text>`)).join('');
+  // "Sailfish arrived 3 weeks earlier than last year"
+  const [cur, prev] = tr.years;
+  let arrival = '';
+  if (cur?.first && prev?.first) {
+    const doy = (d) => (Date.parse(d) - Date.parse(`${d.slice(0, 4)}-01-01`)) / 864e5;
+    const weeks = Math.round((doy(prev.first) - doy(cur.first)) / 7);
+    arrival = weeks === 0 ? `${tr.species} arrived about the same time as in ${prev.year}.`
+      : `${tr.species} arrived ${Math.abs(weeks)} week${Math.abs(weeks) === 1 ? '' : 's'} ${weeks > 0 ? 'earlier' : 'later'} than in ${prev.year} (first caught ${fmtDate(cur.first)}).`;
+  } else if (cur?.first) arrival = `First ${tr.species.toLowerCase()} this year: ${fmtDate(cur.first)}.`;
+  const yearChart = tr.species ? `<h2>Year against year</h2><div class="card pad">
+    <label class="season-species">${esc(tr.species)} caught, by month
+      <select id="trend-species">${options(tr.speciesList.map((v) => [v, v]), tr.species)}</select></label>
+    <div class="tr-legend">${tr.years.map((yr, k) => `<span class="tr-s${k + 1}"><i></i>${yr.year}</span>`).join('')}
+      <a class="small" href="${link({ per: perBoat ? '' : 'boat' })}">${perBoat ? 'Show totals' : 'Per boat logging fish'}</a></div>
+    <svg viewBox="0 0 ${W} ${H}" class="tr-svg" role="img" aria-label="${esc(tr.species)} by month, year against year">${grid}${months}${lines}</svg>
+    ${arrival ? `<p class="small">${esc(arrival)}</p>` : ''}
+    <p class="small muted">${perBoat ? 'Fish per boat that logged fish that month, so more boats on the app doesn\'t look like more fish.' : 'Fish caught each month. Tap “Per boat logging fish” to allow for more boats using the app.'}</p>
+    <table class="sr-only"><thead><tr><th>Month</th>${tr.years.map((yr) => `<th>${yr.year}</th>`).join('')}</tr></thead>
+      <tbody>${MONTH_SHORT.map((m, i) => `<tr><td>${m}</td>${tr.years.map((yr) => `<td>${nice(value(yr.months[i]))}</td>`).join('')}</tr>`).join('')}</tbody></table>
+  </div>` : '<div class="card pad empty">Trends start once fish are logged.</div>';
+
+  // What's biting now
+  const arrow = (r) => (r.now > r.before ? '↑ up' : r.now < r.before ? '↓ down' : '= same');
+  const biting = `<h2>What's biting now</h2><div class="card">
+    ${tr.now.biting.length ? `<ul class="list">${tr.now.biting.slice(0, 8).map((r) => `<li class="biting">
+      <span><b>${esc(r.species)}</b>${r.area ? ` <span class="small muted">· mostly ${esc(r.area)}</span>` : ''}</span>
+      <span class="small"><b>${r.now}</b> <span class="muted">vs ${r.before}</span> · ${arrow(r)}</span></li>`).join('')}</ul>`
+      : '<p class="pad muted">No fish logged in the last four weeks.</p>'}
+    <p class="small muted pad">Fish caught in the last 14 days against the 14 before${mine ? '' : `, from ${plural(tr.now.boats, 'boat')} (${tr.now.boatsBefore} before)`}.</p></div>`;
+
+  // Water and billfish by week: two charts on the same weeks (never two scales on one chart).
+  const n = tr.weeks.length;
+  const temps = tr.weeks.map((w) => (w.water == null ? null : toUnit('temp', w.water)));
+  const tv = temps.filter((v) => v != null);
+  const SW = 340; const SH = 90;
+  const sx = (i) => L + (i * (SW - L - 8)) / (n - 1);
+  let water = '';
+  if (tv.length) {
+    const lo = Math.floor(Math.min(...tv)) - 1; const hi = Math.ceil(Math.max(...tv)) + 1;
+    const sy = (v) => 8 + (SH - 22) * (1 - (v - lo) / (hi - lo || 1));
+    const segs = []; let cur2 = [];
+    temps.forEach((v, i) => { if (v == null) { if (cur2.length) segs.push(cur2); cur2 = []; } else cur2.push(`${sx(i)},${sy(v)}`); });
+    if (cur2.length) segs.push(cur2);
+    water = `<svg viewBox="0 0 ${SW} ${SH}" class="tr-svg" role="img" aria-label="Water temperature by week">
+      <line x1="${L}" x2="${SW - 8}" y1="${sy(hi)}" y2="${sy(hi)}" class="tr-grid"/><line x1="${L}" x2="${SW - 8}" y1="${sy(lo)}" y2="${sy(lo)}" class="tr-grid"/>
+      <text x="${L - 4}" y="${sy(hi) + 4}" class="tr-axis" text-anchor="end">${hi}</text><text x="${L - 4}" y="${sy(lo) + 4}" class="tr-axis" text-anchor="end">${lo}</text>
+      <g class="tr-s1">${segs.map((sg) => `<polyline points="${sg.join(' ')}" class="tr-line"/>`).join('')}
+      ${temps.map((v, i) => (v == null ? '' : `<circle cx="${sx(i)}" cy="${sy(v)}" r="3.5" class="tr-dot"><title>Week of ${fmtDate(tr.weeks[i].start)}: ${v}${unit('temp')}</title></circle>`)).join('')}</g></svg>`;
+  }
+  const bTop = Math.max(1, ...tr.weeks.map((w) => w.billfish));
+  const bw = (SW - L - 8) / n - 2;
+  const bars = `<svg viewBox="0 0 ${SW} ${SH}" class="tr-svg" role="img" aria-label="Billfish caught by week">
+    <line x1="${L}" x2="${SW - 8}" y1="${SH - 14}" y2="${SH - 14}" class="tr-grid"/>
+    <text x="${L - 4}" y="${12}" class="tr-axis" text-anchor="end">${bTop}</text><text x="${L - 4}" y="${SH - 10}" class="tr-axis" text-anchor="end">0</text>
+    <g class="tr-s1">${tr.weeks.map((w, i) => (w.billfish ? `<rect x="${sx(i) - bw / 2}" y="${(SH - 14) - ((SH - 22) * w.billfish) / bTop}" width="${bw}" height="${((SH - 22) * w.billfish) / bTop}" rx="2" class="tr-bar"><title>Week of ${fmtDate(w.start)}: ${w.billfish} billfish</title></rect>` : '')).join('')}</g>
+    ${[0, Math.floor(n / 2), n - 1].map((i) => `<text x="${sx(i)}" y="${SH - 1}" class="tr-axis" text-anchor="middle">${new Date(`${tr.weeks[i].start}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</text>`).join('')}</svg>`;
+  const weekly = `<h2>Water and billfish, week by week</h2><div class="card pad">
+    <p class="small"><b>Water temperature (${unit('temp')})</b>, average of the trips that logged it</p>
+    ${water || '<p class="small muted">No water temperatures logged in the last 26 weeks. Add them in Finish the trip.</p>'}
+    <p class="small"><b>Billfish caught</b></p>${bars}
+    <p class="small muted">The last 26 weeks, on the same weeks, so you can see the fish come as the water changes.</p></div>`;
+  return yearChart + biting + weekly;
+}
+
 // Leaderboard: points, tournaments and the record book, one tab each.
 // A dropdown chip whose choices are pages: picking one goes there.
 document.addEventListener('change', (e) => {
@@ -2126,7 +2214,7 @@ const pagesFor = (view) => ({
   // The regional log: everyone's outings, and the season at a glance.
   async log() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const tab = q.get('tab') === 'season' ? 'season' : 'outings';
+    const tab = ['season', 'trends'].includes(q.get('tab')) ? q.get('tab') : 'outings';
     const country = q.get('country') || '';
     const link = (changes) => {
       const p = new URLSearchParams(q);
@@ -2144,12 +2232,20 @@ const pagesFor = (view) => ({
       <div class="seg" role="tablist">
         <a role="tab" href="${link({ tab: '' })}" aria-selected="${tab === 'outings'}">Outings</a>
         <a role="tab" href="${link({ tab: 'season' })}" aria-selected="${tab === 'season'}">Season</a>
+        <a role="tab" href="${link({ tab: 'trends' })}" aria-selected="${tab === 'trends'}">Trends</a>
       </div>`;
     const listQ = new URLSearchParams({ ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
     const { outings, countries, nextBefore } = await api(`/outings${listQ.size ? `?${listQ}` : ''}`);
     const chips = scope === 'mine' ? '' : html`<div class="chips log-chips">
       <a class="chip2 ${country ? '' : 'on'}" href="${link({ country: '' })}">All countries</a>
       ${countries.map((c) => raw(html`<a class="chip2 ${c === country ? 'on' : ''}" href="${link({ country: c })}">${c}</a>`))}</div>`;
+    if (tab === 'trends') {
+      const tq = new URLSearchParams({ ...(q.get('species') && { species: q.get('species') }), ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
+      const tr = await api(`/outings/trends?${tq}`);
+      view.innerHTML = html`${raw(head)}${raw(chips)}${raw(trendsHtml(tr, { perBoat: q.get('per') === 'boat', link, mine: scope === 'mine' }))}`;
+      view.querySelector('#trend-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
+      return;
+    }
     if (tab === 'season') {
       const year = q.get('year') || '';
       const species = q.get('species') || '';

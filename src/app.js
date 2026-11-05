@@ -2423,6 +2423,76 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     });
   });
 
+  // Trends: the same species month by month, year against year; what's biting
+  // now (the last 14 days against the 14 before); water temperature and
+  // billfish week by week. Counts of fish caught, with the number of boats
+  // that logged fish, so more boats on the app isn't mistaken for more fish.
+  api.get('/outings/trends', (req, res) => {
+    const team = intId(req.query.team);
+    const country = str(req.query.country, 60);
+    const outings = db.prepare(`${OUTING_SELECT} WHERE (:country IS NULL OR o.country = :country) AND (:team IS NULL OR o.team_id = :team)`)
+      .all({ country, team }).map((o) => presentOuting(o, req.user));
+    const caughtOf = (o, pick = () => true) => o.fish.filter(pick).reduce((n, f) => n + f.released + f.kept, 0);
+    const billfish = (f) => f.category === 'Billfish';
+    const speciesList = [...new Set(outings.flatMap((o) => o.fish.filter((f) => f.released + f.kept).map((f) => f.species)))].sort();
+    const species = speciesList.includes(req.query.species) ? req.query.species : speciesList.includes('Sailfish') ? 'Sailfish' : speciesList[0] ?? null;
+    const isIt = (f) => f.species === species;
+
+    // 1. Year against year, by month (the last three years with fish).
+    const yearsAll = [...new Set(outings.map((o) => o.date.slice(0, 4)))].sort().reverse().slice(0, 3);
+    const years = yearsAll.map((y) => {
+      const inYear = outings.filter((o) => o.date.startsWith(y));
+      const months = Array.from({ length: 12 }, (_, m) => {
+        const inMonth = inYear.filter((o) => Number(o.date.slice(5, 7)) === m + 1);
+        return { count: inMonth.reduce((n, o) => n + caughtOf(o, isIt), 0),
+          boats: new Set(inMonth.filter((o) => caughtOf(o) > 0).map((o) => o.teamId)).size };
+      });
+      const first = inYear.filter((o) => caughtOf(o, isIt) > 0).map((o) => o.date).sort()[0] ?? null;
+      return { year: y, months, first };
+    });
+
+    // 2. What's biting now.
+    const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+    const inWindow = (from, to) => outings.filter((o) => o.date >= from && o.date <= to);
+    const now = inWindow(day(13), day(0));
+    const before = inWindow(day(27), day(14));
+    const tally = (list) => {
+      const t = {};
+      for (const o of list) for (const f of o.fish) {
+        const n = f.released + f.kept;
+        if (!n) continue;
+        const row = (t[f.species] ||= { count: 0, areas: {} });
+        row.count += n;
+        if (o.area?.trim()) row.areas[o.area.trim()] = (row.areas[o.area.trim()] || 0) + n;
+      }
+      return t;
+    };
+    const tNow = tally(now);
+    const tBefore = tally(before);
+    const biting = [...new Set([...Object.keys(tNow), ...Object.keys(tBefore)])].map((sp) => ({
+      species: sp, now: tNow[sp]?.count ?? 0, before: tBefore[sp]?.count ?? 0,
+      area: Object.entries(tNow[sp]?.areas ?? {}).sort((a, b2) => b2[1] - a[1])[0]?.[0] ?? null,
+    })).sort((a, b2) => b2.now - a.now || b2.before - a.before);
+    const boatsWith = (list) => new Set(list.filter((o) => caughtOf(o) > 0).map((o) => o.teamId)).size;
+
+    // 3. Water temperature and billfish, week by week (the last 26 weeks, weeks from Monday).
+    const monday = (d) => {
+      const x = new Date(`${d}T12:00:00Z`);
+      x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7));
+      return x.toISOString().slice(0, 10);
+    };
+    const thisWeek = monday(day(0));
+    const weeks = Array.from({ length: 26 }, (_, i) => {
+      const start = new Date(Date.parse(`${thisWeek}T12:00:00Z`) - (25 - i) * 7 * 864e5).toISOString().slice(0, 10);
+      const list = outings.filter((o) => monday(o.date) === start);
+      const temps = list.map((o) => o.waterC).filter((v) => v != null);
+      return { start, billfish: list.reduce((n, o) => n + caughtOf(o, billfish), 0),
+        water: temps.length ? Math.round((temps.reduce((a, b2) => a + b2, 0) / temps.length) * 10) / 10 : null };
+    });
+
+    res.json({ species, speciesList, years, now: { biting, boats: boatsWith(now), boatsBefore: boatsWith(before) }, weeks });
+  });
+
   // ---- my catch map ---------------------------------------------------------
 
   // Every fish you caught or logged with its spot (and, for a captain, the

@@ -288,7 +288,7 @@ button.more[hidden] { display: none; }
 
 /* ---- participants ---- */
 .center { text-align: center; }
-.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 5px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); margin-bottom: 12px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 5px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); margin-bottom: 12px; }
 .seg a { text-align: center; padding: 10px; border-radius: 999px; font-weight: 700; text-decoration: none; color: var(--muted); }
 .seg a[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
 .search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); margin-bottom: 16px; font-weight: 400; }
@@ -843,3 +843,20 @@ a.me-card { color: var(--text); text-decoration: none; }
 .hour-bars .mb { height: 100%; display: flex; align-items: end; }
 .hour-bars i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); }
 .hour-names { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+/* Trends: validated categorical series (light / dark), thin lines, recessive grid. */
+:root { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; }
+:root[data-theme="light"] { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; }
+.tr-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.tr-grid { stroke: var(--line); stroke-width: 1; }
+.tr-axis { font-size: 10px; fill: var(--muted); }
+.tr-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tr-dot { stroke: var(--bg); stroke-width: 2; }
+.tr-label { font-size: 11px; font-weight: 700; fill: var(--text); }
+.tr-s1 .tr-line { stroke: var(--series-1); } .tr-s1 .tr-dot, .tr-s1 .tr-bar { fill: var(--series-1); }
+.tr-s2 .tr-line { stroke: var(--series-2); } .tr-s2 .tr-dot { fill: var(--series-2); }
+.tr-s3 .tr-line { stroke: var(--series-3); } .tr-s3 .tr-dot { fill: var(--series-3); }
+.tr-legend { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 8px 0 4px; font-size: 13px; font-weight: 700; }
+.tr-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.tr-legend .tr-s1 i { background: var(--series-1); } .tr-legend .tr-s2 i { background: var(--series-2); } .tr-legend .tr-s3 i { background: var(--series-3); }
+.tr-legend a { margin-left: auto; font-weight: 600; }
+.biting { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
