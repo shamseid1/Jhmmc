@@ -2359,13 +2359,16 @@ const pagesFor = (view) => ({
     const sq = new URLSearchParams(location.hash.split('?')[1] || '');
     const year = sq.get('year') || '';
     const species = sq.get('species') || '';
+    const month = sq.get('month') || '';
     const [{ years, spots: allSpots }, L, { charts }] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null),
       state.me.teamId || state.me.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
     // Filter by species: only the species on the map that year are offered.
+    // and by month, to see where the fish were as the season went on.
     const speciesHere = [...new Set(allSpots.map((x) => x.species))].sort();
-    const spots = species ? allSpots.filter((x) => x.species === species) : allSpots;
-    const spotsLink = (y, sp) => { const p = new URLSearchParams({ ...(y && { year: y }), ...(sp && { species: sp }) }); return `#/spots${p.size ? `?${p}` : ''}`; };
-    const chip = (y, label) => html`<a role="tab" href="${spotsLink(y, species)}" aria-selected="${y === year}">${label}</a>`;
+    const monthsHere = [...new Set(allSpots.filter((x) => !species || x.species === species).map((x) => Number(x.date.slice(5, 7))))].sort((a, b2) => a - b2);
+    const spots = allSpots.filter((x) => (!species || x.species === species) && (!month || Number(x.date.slice(5, 7)) === Number(month)));
+    const spotsLink = (y, sp, m = month) => { const p = new URLSearchParams({ ...(y && { year: y }), ...(sp && { species: sp }), ...(m && { month: m }) }); return `#/spots${p.size ? `?${p}` : ''}`; };
+    const chip = (y, label) => html`<a role="tab" href="${spotsLink(y, species, '')}" aria-selected="${y === year}">${label}</a>`;
     const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
     // Weights logged at sea are estimates.
     const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
@@ -2374,11 +2377,15 @@ const pagesFor = (view) => ({
       <h1>My catch map</h1>
       <p class="small muted">Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
-      ${speciesHere.length > 1 || species ? raw(html`<div class="filter-chips"><select class="chip-select" data-go aria-label="Species">${raw(options(
-        [[spotsLink(year, ''), 'All species'], ...speciesHere.map((sp) => [spotsLink(year, sp), sp])], spotsLink(year, species)))}</select></div>`) : ''}
+      ${speciesHere.length > 1 || species || monthsHere.length > 1 || month ? raw(html`<div class="filter-chips">
+        ${speciesHere.length > 1 || species ? raw(html`<select class="chip-select" data-go aria-label="Species">${raw(options(
+          [[spotsLink(year, '', ''), 'All species'], ...speciesHere.map((sp) => [spotsLink(year, sp, ''), sp])], spotsLink(year, species, '')))}</select>`) : ''}
+        ${monthsHere.length > 1 || month ? raw(html`<select class="chip-select" data-go aria-label="Month">${raw(options(
+          [[spotsLink(year, species, ''), 'All months'], ...monthsHere.map((m) => [spotsLink(year, species, String(m)), MONTH_SHORT[m - 1]])], spotsLink(year, species, month)))}</select>`) : ''}
+      </div>`) : ''}
       ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
       ${charts.length ? raw('<p class="small muted">Depth chart: switch it on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
-      ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${year ? ` in ${year}` : ''}. Tap a pin for the fish.</p>
+      ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
           <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
