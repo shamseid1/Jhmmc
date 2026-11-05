@@ -770,11 +770,10 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${c.notes ? raw(html`<p class="notes${full ? '' : ' clamp'}">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
-      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
+      ${full && (c.weighStation || c.pointsNote || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
-        ${c.scalePhotoUrl || (c.scaleVideoUrl && !c.released) ? raw(html`<p class="small muted">Weigh station ${c.scalePhotoUrl ? 'photo' : 'video'} (only the secretary, the crew and JHMMC captains see it)</p>`) : ''}
-        ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img class="scale-photo" src="${c.scalePhotoUrl}" alt="Fish on the scale" loading="lazy"></a>`) : ''}
+        ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video (only the secretary, the crew and JHMMC captains see it)</p>`) : ''}
         ${c.scaleVideoUrl && !c.released ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
@@ -783,7 +782,7 @@ function catchCard(c, { full = false } = {}) {
         <button data-act="share">Share</button>
         <a class="btn" href="${whatsapp(`${shareText(c)} ${location.origin}/#/catch/${c.id}`)}" target="_blank" rel="noopener">WhatsApp</a>
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
-        ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.photoUrl ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
+        ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.ownPhoto ? 'Change your photo' : 'Add your photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
       ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
@@ -899,16 +898,16 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
   ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length || f.videoUrl) ? raw(feedGallery(x.fish.flatMap((f) => [
-    ...f.photos.map((url) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species} at the weigh station" loading="lazy"></a>`),
+    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`),
     ...(f.videoUrl ? [html`<video class="catch-photo" src="${f.videoUrl}" controls playsinline preload="metadata" aria-label="${f.species} released"></video>`] : []),
   ]))) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
     <li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li></ul>
-    ${state.me?.teamId && state.me.teamId === x.teamId && x.fish.some((f) => !f.photos.length) ? raw(html`<div class="add-photos">
-      <span class="small muted">Your crew's fish: add the photos everyone will see.</span>
-      ${x.fish.filter((f) => !f.photos.length).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}
+    ${state.me?.teamId && state.me.teamId === x.teamId && x.fish.some((f) => !f.ownPhoto) ? raw(html`<div class="add-photos">
+      <span class="small muted">Your crew's fish: add your own photo, next to the weigh station's.</span>
+      ${x.fish.filter((f) => !f.ownPhoto).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}
     </div>`) : ''}
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>

@@ -198,14 +198,15 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const feedNow = (await as()('GET', `/feed?team=${boat.id}`)).body.items;
     assert.equal(feedNow.find((x) => x.kind === 'log' && x.id === someTuna.id).photoUrl, withPic.photoUrl);
     const wPost = feedNow.find((x) => x.kind === 'weighin' && x.day === today);
-    assert.ok(wPost.fish.every((f) => !f.photos.length), 'no photos for the feed added: the scale photos are evidence, not shown');
+    assert.ok(wPost.fish.filter((f) => f.weightKg).every((f) => f.photos.length === 1), 'each weighed fish: its weigh station photo');
     assert.ok(wPost.fish.every((f) => !f.videoUrl || f.released), 'only release videos in the feed; scale videos are for the secretary');
-    // Once that tuna is approved there are two posts: boated (crew photo) and the weigh-in (its photo for the feed, none here).
+    // Once that tuna is approved there are two posts: boated (crew photo) and the weigh-in (its weigh station photo).
     assert.equal((await sec('POST', `/catches/${someTuna.catchId}/review`, { decision: 'approve' })).status, 200);
     const after = (await as()('GET', `/feed?team=${boat.id}`)).body.items;
     assert.equal(after.find((x) => x.kind === 'log' && x.id === someTuna.id)?.photoUrl, withPic.photoUrl, 'the boated line stays, with the crew photo');
     const tunaPics = after.find((x) => x.kind === 'weighin' && x.day === today).fish.find((f) => f.id === someTuna.catchId).photos;
-    assert.deepEqual(tunaPics, [], 'never the crew photo or the scale photo');
+    assert.equal(tunaPics.length, 1, 'the weigh station photo, never the log photo');
+    assert.notEqual(tunaPics[0], withPic.photoUrl);
     // The catch map shows the tunas once each, without weights (which was which isn't known).
     const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
     assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', null, false], ['log', null, false], ['log', null, false], ['log', null, false]]);

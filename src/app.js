@@ -928,11 +928,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       || (row.status !== 'unofficial' && canReview(viewer));
   }
 
-  // A weighed fish's picture is its photo for the feed (added at the weigh-in or
-  // later by the angler or crew). The weigh station photo and video are evidence:
-  // the secretary, JHMMC captains (to dispute), the boat's crew and whoever
-  // registered it. A release video shows to everyone once the secretary has
-  // approved the fish. The crew's photo from Log fish stays on the "boated" line.
+  // A weighed fish's pictures: the weigh station photo (the main one), and a
+  // second photo if the angler or crew adds one later, swiped between. A video of
+  // a fish on the scale is evidence: the secretary, JHMMC captains (to dispute),
+  // the boat's crew and whoever registered it. A release video shows to everyone
+  // once the secretary has approved the fish. The log photo stays on the "boated" line.
   const seesEvidence = (row, viewer) => !!viewer && (canWeigh(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
   const seesVideo = seesEvidence;
   const canAddFeedPhoto = (row, viewer) => !!viewer && row.status !== 'unofficial' && row.status !== 'rejected'
@@ -941,8 +941,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function present(row, viewer) {
     const showSpot = row.lat != null && canSeeSpot(row, viewer);
     const official = row.status !== 'unofficial';
-    const photos = official ? (row.photo ? [{ url: photoUrl(row.photo) }] : []) : postPhotos('catch', row.id, row.photo);
-    const evidence = official && seesEvidence(row, viewer);
+    const photos = official ? [row.scalePhoto, row.photo].filter(Boolean).map((f) => ({ url: photoUrl(f) })) : postPhotos('catch', row.id, row.photo);
     const releaseVideo = !!row.released && row.status === 'approved';
     const video = releaseVideo || seesVideo(row, viewer);
     return {
@@ -960,7 +959,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       // Shown with the photos: a post's own video, or the release video.
       videoUrl: photoUrl(row.video || (row.released && video ? row.scaleVideo : null)),
       canEdit: row.status === 'unofficial' && canDelete(row, viewer),
-      scalePhotoUrl: !official || evidence ? photoUrl(row.scalePhoto) : null,
+      scalePhotoUrl: photoUrl(row.scalePhoto),
+      ownPhoto: official && !!row.photo,
       canAddPhoto: canAddFeedPhoto(row, viewer),
       scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
       canDelete: canDelete(row, viewer),
@@ -1270,9 +1270,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    // Each fish's photo for the feed, and a released fish's release video.
-    // The weigh station photo and video are evidence, never in the feed.
-    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.photo AS feedPhoto, k.scale_video AS scaleVideo,
+    // Each fish's weigh station photo, then the crew's own if they added one,
+    // and a released fish's release video. Videos of the scale are evidence.
+    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.photo AS feedPhoto, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
       WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
@@ -1288,8 +1288,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         // The day's fish for that boat, heaviest first.
         item.day = x.title;
         item.title = null;
-        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ feedPhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
-          photos: feedPhoto ? [photoUrl(feedPhoto)] : [], videoUrl: f.released ? photoUrl(scaleVideo) : null }));
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ feedPhoto, scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
+          photos: [scalePhoto, feedPhoto].filter(Boolean).map(photoUrl), ownPhoto: !!feedPhoto, videoUrl: f.released ? photoUrl(scaleVideo) : null }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
@@ -1544,7 +1544,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       body: `Your ${fish} weight was corrected: now ${k.points} points. ${note}`,
     } : {
       title: approved ? 'Fish approved' : 'Fish not counted',
-      body: approved ? `Your ${fish} was approved: ${k.points} points.${k.photo ? '' : ' Add a photo for the feed.'}` : `Your ${fish} wasn't counted: ${k.points_note}`,
+      body: approved ? `Your ${fish} was approved: ${k.points} points.` : `Your ${fish} wasn't counted: ${k.points_note}`,
       url: `/#/catch/${id}`,
     }, req.user, (p) => p.id === k.logged_by);
     if (approved) {
@@ -2693,7 +2693,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const posts = db.prepare(`
       SELECT 'catch' AS kind, k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.caught_on AS date,
         k.lat, k.lng, k.location, COALESCE(NULLIF(au.nickname, ''), au.name, k.angler_name) AS angler, t.name AS boat,
-        k.photo, 0 AS estimate
+        COALESCE(k.photo, k.scale_photo) AS photo, 0 AS estimate
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users au ON au.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
       WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND NOT EXISTS (SELECT 1 FROM outing_landings x WHERE x.catch_id = k.id)
         AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))
