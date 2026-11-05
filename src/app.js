@@ -1244,13 +1244,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const parts = [];
     if (type === 'all' || type === 'weighins') {
       // One post per boat per day: all its fish approved for that day together.
+      // On a boat's or angler's own page, one post per fish (a tuna and a marlin apart).
       parts.push(`SELECT 'weighin' AS kind, MAX(k.id) AS id, MAX(datetime(COALESCE(k.reviewed_at, k.created_at))) AS at, t.id AS teamId,
           t.name AS boat, t.photo AS boatPhoto, NULL AS species, NULL AS weightKg, NULL AS fate, NULL AS angler, NULL AS userId,
           k.caught_on AS title, NULL AS body
         FROM catches k LEFT JOIN teams t ON t.id = k.team_id
         WHERE k.status = 'approved' AND (:team IS NULL OR k.team_id = :team) AND (:user IS NULL OR k.user_id = :user)
           AND (:club IS NULL OR t.club_id = :club)
-        GROUP BY k.team_id, k.caught_on`);
+        GROUP BY k.team_id, k.caught_on${team || user ? ', k.id' : ''}`);
     }
     if (!['weighins', 'announcements'].includes(type)) {
       parts.push(`SELECT 'log' AS kind, l.id, datetime(l.landed_at) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
@@ -1288,7 +1289,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         // The day's fish for that boat, heaviest first.
         item.day = x.title;
         item.title = null;
-        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ feedPhoto, scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
+        item.single = !!(team || user);
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).filter((f) => !item.single || f.id === x.id).map(({ feedPhoto, scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
           photos: [feedPhoto, scalePhoto].filter(Boolean).map(photoUrl), ownPhoto: !!feedPhoto, videoUrl: f.released ? photoUrl(scaleVideo) : null }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }

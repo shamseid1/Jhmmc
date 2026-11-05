@@ -872,9 +872,16 @@ function wireCards(root, byId) {
 // A paginated feed of catches with optional fixed filters.
 // The feed fills itself: fish approved at the weigh-in and fish logged at sea,
 // under the boat's name and photo. Never a spot.
-const withArticle = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
+// "an" before a vowel sound, also "an 8 kg", "an 11 kg", "an 18 kg", "an 80 kg".
+const withArticle = (word) => `${/^([aeiou]|8|11(?!\d)|18(?!\d)|11\.|18\.)/i.test(word) ? 'an' : 'a'} ${word}`;
 function feedLine(x) {
   const fish = (x.species || '').toLowerCase();
+  if (x.kind === 'weighin' && x.single && x.fish[0]) {
+    // One fish, on a boat's or angler's own page.
+    const f = x.fish[0];
+    const who = f.angler || x.boat || 'A boat';
+    return f.weightKg ? `${who} weighed ${withArticle(`${fmtWeight(f.weightKg)} ${f.species.toLowerCase()}`)}.` : `${who} released ${withArticle(f.species.toLowerCase())}.`;
+  }
   if (x.kind === 'weighin') return `${x.boat || 'A boat'} weighed in ${plural(x.fish.length, 'fish')}.`;
   const boat = x.boat || 'A boat';
   return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boated ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
@@ -904,7 +911,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
-    <li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li></ul>
+    ${x.single ? '' : raw(html`<li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li>`)}</ul>
     ${state.me?.teamId && state.me.teamId === x.teamId && x.fish.some((f) => !f.ownPhoto) ? raw(html`<div class="add-photos">
       <span class="small muted">Your crew's fish: add your own photo. It shows first, then the weigh station's.</span>
       ${x.fish.filter((f) => !f.ownPhoto).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}

@@ -117,6 +117,10 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     const added = (await capA('POST', `/catches/${sailfish.id}/photo`, later)).body.catch;
     assert.match(added.photoUrl, /^\/uploads\//);
     assert.equal((await as()('GET', '/feed?type=weighins')).body.items[0].fish.find((f) => f.species === 'Sailfish').photos[0], added.photoUrl);
+    // On the boat's own page, each fish is its own post.
+    const onBoat = (await as()('GET', `/feed?team=${seaHunter.id}&type=weighins`)).body.items;
+    assert.deepEqual(onBoat.map((x) => [x.single, x.fish.map((f) => f.species)]).sort(), [[true, ['Blue marlin']], [true, ['Sailfish']]]);
+    assert.equal((await as()('GET', '/feed?type=weighins')).body.items.filter((x) => x.teamId === seaHunter.id).length, 1, 'the main feed keeps the day together');
     // The "boated" line keeps the crew's photo from the log, as its own post.
     const all = (await as()('GET', '/feed')).body.items;
     const boated = all.find((x) => x.kind === 'log' && x.species === 'Blue marlin');
