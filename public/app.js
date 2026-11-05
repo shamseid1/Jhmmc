@@ -355,7 +355,7 @@ document.addEventListener('change', (e) => {
 // everything that happened to it, in order.
 const LOG_ACTIONS = {
   registered: 'Registered', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
-  repointed: 'Points changed', uncounted: 'Taken off the points',
+  repointed: 'Weight corrected', uncounted: 'Taken off the points',
 };
 const LOG_STATUS = {
   registered: 'Waiting', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
@@ -783,12 +783,13 @@ function catchCard(c, { full = false } = {}) {
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
-      ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
+      ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
         <h3>Secretary</h3>
-        <p class="small muted">Changing the points or taking the fish off them needs a note; the crew is told.</p>
-        <label>Points <input name="points" type="number" step="0.1" value="${c.points}"></label>
+        <p class="small" data-rules><b>Rules give ${fmtPoints(c.points)}</b></p>
+        <p class="small muted">Correcting the weight (the points follow from the rules) or taking the fish off the points needs a note; the crew is told.</p>
+        ${c.released ? '' : raw(html`<label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" value="${toUnit('weight', c.weightKg)}"></label>`)}
         <label>Note <input name="note" maxlength="300" placeholder="Why"></label>
-        <div class="row-buttons"><button type="button" data-act="repoint">Change points</button>
+        <div class="row-buttons">${c.released ? '' : raw('<button type="button" data-act="repoint">Correct weight</button>')}
           <button type="button" data-act="uncount" class="danger">Not counted</button></div>
       </form>`) : ''}
     </div>
@@ -818,12 +819,12 @@ function wireCards(root, byId) {
     if (btn.dataset.act === 'repoint' || btn.dataset.act === 'uncount') {
       const box = btn.closest('[data-secretary]');
       const note = box.querySelector('[name=note]').value.trim();
-      if (!note) return toast(btn.dataset.act === 'uncount' ? 'Give the reason it isn\'t counted.' : 'Add a note explaining the change.');
+      if (!note) return toast(btn.dataset.act === 'uncount' ? 'Give the reason it isn\'t counted.' : 'Add a note explaining the corrected weight.');
       if (btn.dataset.act === 'uncount' && !confirm('Take this fish off the points? The crew is told why.')) return;
       try {
         const { catch: fresh } = await api(`/catches/${c.id}/review`, { method: 'POST', body: btn.dataset.act === 'uncount'
-          ? { decision: 'reject', note } : { decision: 'points', points: box.querySelector('[name=points]').value, note } });
-        toast(btn.dataset.act === 'uncount' ? 'Taken off the points.' : 'Points changed.');
+          ? { decision: 'reject', note } : { decision: 'weight', weightKg: fromUnit('weight', box.querySelector('[name=weightKg]').value), note } });
+        toast(btn.dataset.act === 'uncount' ? 'Taken off the points.' : `Weight corrected: ${fmtPoints(fresh.points)}.`);
         Object.assign(c, fresh);
         route();
       } catch (ex) {
@@ -998,15 +999,29 @@ const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { 
 // A tournament's days: "Sat, 14 Nov 2026" or "Sat, 14 Nov 2026 to Sun, 15 Nov 2026".
 const fmtDays = (ev) => (ev.endDate && ev.endDate !== ev.date ? `${fmtDay(ev.date)} to ${fmtDay(ev.endDate)}` : fmtDay(ev.date));
 
+// A corrected weight shows its points as it's typed: the same rules as the server.
+const rescoreAttrs = (c) => html`data-rescore data-species-id="${c.speciesId}" data-division="${c.division || 'ocean'}"`;
+document.addEventListener('input', (e) => {
+  const form = e.target.matches('[name=weightKg]') && e.target.closest('[data-rescore]');
+  if (!form) return;
+  const sp = state.meta.species.find((x) => String(x.id) === form.dataset.speciesId);
+  const kg = Number(fromUnit('weight', e.target.value));
+  const out = form.querySelector('[data-rules]');
+  if (!sp || !out || !(kg > 0)) return;
+  const r = scoring.scoreCatch({ species: sp.name, pointsPerKg: sp.pointsPerKg, weightKg: kg, released: false, division: form.dataset.division });
+  out.innerHTML = html`<b>Rules give ${fmtPoints(r.points)}</b> · ${r.note}`;
+});
+
 // Points form for a catch waiting for the secretary.
 function reviewForm(c) {
-  return html`<form class="review" data-id="${c.id}">
-    <p class="small"><b>Rules give ${fmtPoints(c.suggested.points)}</b> · ${c.suggested.note}
+  return html`<form class="review" data-id="${c.id}" ${raw(rescoreAttrs(c))}>
+    <p class="small"><span data-rules><b>Rules give ${fmtPoints(c.suggested.points)}</b> · ${c.suggested.note}</span>
       ${c.events.length ? ` · ${c.events.map((e) => e.name).join(', ')}` : ''}</p>
     <div class="row">
-      <label>Points <input name="points" type="number" step="0.1" value="${c.suggested.points}"></label>
-      <label>Note <input name="note" maxlength="300" placeholder="Needed if you change the points or reject"></label>
+      ${c.released ? '' : raw(html`<label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" value="${toUnit('weight', c.weightKg)}"></label>`)}
+      <label>Note <input name="note" maxlength="300" placeholder="Needed if you correct the weight or reject"></label>
     </div>
+    ${c.released ? '' : raw('<p class="small muted">A wrong weight (a missed 0)? Correct it here: the points follow from the rules.</p>')}
     <div class="actions"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></div>
     <p class="error"></p>
   </form>`;
@@ -1946,7 +1961,9 @@ const pagesFor = (view) => ({
       const err = form.querySelector('.error');
       err.textContent = '';
       try {
-        await api(`/catches/${form.dataset.id}/review`, { method: 'POST', body: { ...formData(form), decision: form.dataset.decision } });
+        const body = { ...formData(form), decision: form.dataset.decision };
+        if (body.weightKg !== undefined) body.weightKg = fromUnit('weight', body.weightKg);
+        await api(`/catches/${form.dataset.id}/review`, { method: 'POST', body });
         const station = form.closest('.station').dataset.station;
         form.closest('.review-item').remove();
         recount(station);

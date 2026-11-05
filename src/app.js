@@ -1491,34 +1491,45 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Secretary: approve (with the rules' points or a corrected figure) or reject.
   api.post('/catches/:id/review', requireApprove, (req, res) => {
     const id = intId(req.params.id);
-    const row = id && db.prepare('SELECT status FROM catches WHERE id = ?').get(id);
+    const row = id && db.prepare('SELECT status, weight_kg AS weightKg, released FROM catches WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Catch not found.' });
     const note = str(req.body.note, 300);
+    // Points always come from the rules: the secretary corrects the weight (a
+    // missed 0), never the points, so there's no sum to get wrong.
+    const typed = req.body.weightKg === undefined || req.body.weightKg === '' ? null : Number(req.body.weightKg);
+    if (typed !== null && !(typed > 0 && typed < 2000)) return res.status(400).json({ error: 'Enter the weight in kg.' });
+    const newWeight = typed !== null && !row.released && Math.abs(typed - (row.weightKg ?? 0)) > 0.001 ? Math.round(typed * 10) / 10 : null;
+    if (newWeight !== null && !note) return res.status(400).json({ error: 'Add a note explaining the corrected weight.' });
+    const fixWeight = () => {
+      if (newWeight === null) return null;
+      db.prepare('UPDATE catches SET weight_kg = ? WHERE id = ?').run(newWeight, id);
+      return `Weight corrected from ${row.weightKg} to ${newWeight} kg: ${note}`;
+    };
+    let said = null; // what goes in the registration record
     if (req.body.decision === 'reject') {
       if (!note) return res.status(400).json({ error: 'Give a reason so the crew knows why.' });
       db.prepare(`UPDATE catches SET status = 'rejected', points = NULL, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`)
         .run(note, req.user.id, new Date().toISOString(), id);
-    } else if (req.body.decision === 'points') {
-      // An approved fish's points corrected afterwards, always with a note.
-      if (row.status !== 'approved') return res.status(400).json({ error: 'Only an approved fish has points to change.' });
-      const given = Number(req.body.points);
-      if (req.body.points === '' || req.body.points == null || !Number.isFinite(given)) return res.status(400).json({ error: 'Points must be a number.' });
-      if (!note) return res.status(400).json({ error: 'Add a note explaining the changed points.' });
+    } else if (req.body.decision === 'weight') {
+      // An approved fish's weight corrected afterwards; the points follow.
+      if (row.status !== 'approved') return res.status(400).json({ error: 'Only an approved fish can have its weight corrected here.' });
+      if (row.released) return res.status(400).json({ error: 'A released fish has no weight to correct.' });
+      if (newWeight === null) return res.status(400).json({ error: typed === null ? 'Enter the corrected weight.' : 'That is already its weight.' });
+      said = fixWeight();
+      const s = suggestPoints(id);
       db.prepare('UPDATE catches SET points = ?, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
-        .run(given, note, req.user.id, new Date().toISOString(), id);
+        .run(s.points, s.note, req.user.id, new Date().toISOString(), id);
     } else if (req.body.decision === 'approve') {
-      const suggested = suggestPoints(id);
-      const given = req.body.points === undefined || req.body.points === '' ? suggested.points : Number(req.body.points);
-      if (!Number.isFinite(given)) return res.status(400).json({ error: 'Points must be a number.' });
-      if (given !== suggested.points && !note) return res.status(400).json({ error: 'Add a note explaining the changed points.' });
       if (!note && disputesFor.all(id).length) return res.status(400).json({ error: 'This fish was disputed: add a note on how the dispute was settled.' });
+      said = fixWeight();
+      const s = suggestPoints(id);
       db.prepare(`UPDATE catches SET status = 'approved', points = ?, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?`)
-        .run(given, note || suggested.note, req.user.id, new Date().toISOString(), id);
+        .run(s.points, note && !said ? `${note}. ${s.note}` : s.note, req.user.id, new Date().toISOString(), id);
     } else {
       return res.status(400).json({ error: 'Approve or reject.' });
     }
-    const action = { reject: row.status === 'approved' ? 'uncounted' : 'rejected', points: 'repointed' }[req.body.decision] ?? 'approved';
-    logRegistration(id, action, req.user, { note });
+    const action = { reject: row.status === 'approved' ? 'uncounted' : 'rejected', weight: 'repointed' }[req.body.decision] ?? 'approved';
+    logRegistration(id, action, req.user, { note: said || note });
     // Tell whoever registered it, and (if they want it) everyone about a new weigh-in.
     const k = db.prepare(`SELECT k.logged_by, k.weight_kg, k.released, k.points, k.points_note, s.name AS species, t.name AS boat,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
@@ -1526,8 +1537,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const fish = `${k.species}${k.weight_kg ? ` (${Math.round(k.weight_kg * 10) / 10} kg)` : k.released ? ' (released)' : ''}`;
     const approved = req.body.decision === 'approve';
     pushWhere('myFish', action === 'repointed' ? {
-      title: 'Points changed',
-      body: `Your ${fish} now has ${k.points} points: ${k.points_note}`,
+      title: 'Weight corrected',
+      body: `Your ${fish} weight was corrected: now ${k.points} points. ${note}`,
     } : {
       title: approved ? 'Fish approved' : 'Fish not counted',
       body: approved ? `Your ${fish} was approved: ${k.points} points.` : `Your ${fish} wasn't counted: ${k.points_note}`,

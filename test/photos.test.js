@@ -105,19 +105,23 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.equal(s2.videoUrl, rel.videoUrl, 'the release video is');
 
     // The secretary changes their mind after approving: points, not counted, deleted.
-    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000 })).body.error, /note/);
-    let k = (await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000, note: 'Line class rule' })).body.catch;
-    assert.equal((await capB('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 1000, note: 'x' })).status, 403);
-    assert.deepEqual([k.status, k.points, k.pointsNote], ['approved', 1000, 'Line class rule']);
+    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 2100 })).body.error, /kg/);
+    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 21 })).body.error, /note/);
+    assert.equal((await capB('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 21, note: 'x' })).status, 403);
+    // Typed wrong: the scale said 250. The points follow from the rules.
+    let k = (await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 250, note: 'Scale photo says 250' })).body.catch;
+    assert.deepEqual([k.status, k.weightKg, k.points], ['approved', 250, 1250]);
+    assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 250, note: 'x' })).status, 400, 'already its weight');
+    assert.equal((await sec('POST', `/catches/${sailfish.id}/review`, { decision: 'weight', weightKg: 30, note: 'x' })).status, 400, 'a released fish has no weight');
     assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'reject' })).body.error, /reason/);
     const rj = await sec('POST', `/catches/${marlin.id}/review`, { decision: 'reject', note: 'Late dispute upheld' }); k = rj.body.catch; assert.ok(k, JSON.stringify(rj));
     assert.deepEqual([k.status, k.points], ['rejected', null]);
-    assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'points', points: 5, note: 'x' })).status, 400, 'no points to change once not counted');
+    assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 50, note: 'x' })).status, 400, 'no weight to correct once not counted');
     assert.ok(!(await as()('GET', '/feed?type=weighins')).body.items[0].fish.some((f) => f.id === marlin.id), 'off the weigh-in post');
     assert.match((await sec('DELETE', `/catches/${sailfish.id}`)).body.error, /reason/);
     assert.equal((await sec('DELETE', `/catches/${sailfish.id}`, { reason: 'Registered twice' })).status, 200);
     const record = (await sec('GET', `/registrations/log?catch=${marlin.id}`)).body.fish[0].steps.map((e) => [e.action, e.note]);
-    assert.deepEqual(record.slice(-3), [['approved', null], ['repointed', 'Line class rule'], ['uncounted', 'Late dispute upheld']]);
+    assert.deepEqual(record.slice(-3), [['approved', null], ['repointed', 'Weight corrected from 210 to 250 kg: Scale photo says 250'], ['uncounted', 'Late dispute upheld']]);
     const gone = (await sec('GET', `/registrations/log?catch=${sailfish.id}`)).body.fish[0].steps.at(-1);
     assert.deepEqual([gone.action, gone.note], ['deleted', 'Registered twice']);
   } finally {

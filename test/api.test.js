@@ -669,7 +669,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.ok(capQueue.length > 0 && capQueue.every((c) => c.loggedBy === capId), 'captains see only their own registrations');
 
     assert.equal((await cap('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' })).status, 403);
-    assert.equal((await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve', points: 90 })).status, 400, 'changed points need a note');
+    assert.equal((await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve', weightKg: 2.1 })).status, 400, 'a corrected weight needs a note');
     r = await sec('POST', `/catches/${wahoo.id}/review`, { decision: 'approve' });
     assert.deepEqual([r.body.catch.status, r.body.catch.points], ['approved', 105]);
     await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' });
