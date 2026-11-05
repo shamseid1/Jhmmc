@@ -2251,10 +2251,18 @@ const pagesFor = (view) => ({
         gps.classList.remove('gps-wait');
         view.querySelector('.fates')?.classList.remove('waiting');
       }, (err) => {
+        // The phone only sends a new spot when the boat moves: a still boat keeps
+        // its last one. A spot is dropped only once the GPS has been lost a while.
+        if (err.code === 1 || (fix && Date.now() - fix.at > 120000)) {
+          fix = null;
+          gps.classList.add('gps-wait');
+          view.querySelector('.fates')?.classList.add('waiting');
+        }
+        if (fix) return;
         gps.textContent = err.code === 1
           ? 'Location is blocked: allow it for this site in your phone settings. Fish can only be logged with their spot.'
           : 'Finding GPS… Fish can be logged as soon as the spot is taken.';
-      }, { enableHighAccuracy: true, maximumAge: 10000 });
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 });
     } else {
       gps.textContent = "This phone or browser can't share its location, so fish can't be logged at sea from it.";
     }
@@ -2289,13 +2297,27 @@ const pagesFor = (view) => ({
         err.textContent = 'Choose the species first.';
         return;
       }
-      // A fix more than two minutes old is from somewhere else: ask for a fresh one.
+      // The phone's current spot (kept up to date while the page is open).
       // Fish added for an earlier day get no spot (the boat isn't there now).
-      // No waiting around: at most a few seconds for a fix if the phone hasn't one yet.
-      const spot = !live ? null : fix && Date.now() - fix.at < 120000 ? fix : await phoneSpot(5000);
-      if (live && !spot) {
-        err.textContent = 'No GPS spot yet: a fish is only logged with its spot. Wait a moment for the GPS (out in the open helps), then tap again.';
-        return;
+      // No GPS yet: say so at once, and give it a few seconds.
+      let spot = null;
+      if (live) {
+        spot = fix;
+        if (!spot) {
+          const was = btn.textContent;
+          btn.textContent = 'Getting spot…';
+          btn.disabled = true; // a second tap while waiting would log it twice
+          err.textContent = 'Waiting for the GPS…';
+          spot = await phoneSpot(5000);
+          if (spot) fix = { ...spot, at: Date.now() };
+          btn.textContent = was;
+          btn.disabled = false;
+          err.textContent = '';
+        }
+        if (!spot) {
+          err.textContent = 'No GPS spot yet, so the fish isn\'t logged. GPS works without signal, but needs open sky (it won\'t find you indoors) and can take a minute or two after airplane mode is turned on. Tap again once the GPS line above shows your spot.';
+          return;
+        }
       }
       const now = live ? new Date() : new Date(`${day}T12:00:00Z`);
       saveQueue([...queued(), {
