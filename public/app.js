@@ -898,7 +898,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
   ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length || f.videoUrl) ? raw(feedGallery(x.fish.flatMap((f) => [
-    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`),
+    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i === f.photos.length - 1 ? ' at the weigh station' : ''}" loading="lazy"></a>`),
     ...(f.videoUrl ? [html`<video class="catch-photo" src="${f.videoUrl}" controls playsinline preload="metadata" aria-label="${f.species} released"></video>`] : []),
   ]))) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
@@ -906,7 +906,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
     <li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li></ul>
     ${state.me?.teamId && state.me.teamId === x.teamId && x.fish.some((f) => !f.ownPhoto) ? raw(html`<div class="add-photos">
-      <span class="small muted">Your crew's fish: add your own photo, next to the weigh station's.</span>
+      <span class="small muted">Your crew's fish: add your own photo. It shows first, then the weigh station's.</span>
       ${x.fish.filter((f) => !f.ownPhoto).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}
     </div>`) : ''}
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}

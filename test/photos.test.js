@@ -92,7 +92,8 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;
     const pub = await asSeenBy(as());
     assert.equal(pub.photos.length, 2, 'the weigh station photo and the crew\'s own');
-    assert.equal(pub.photoUrl, pub.scalePhotoUrl, 'the weigh station photo is the main one');
+    assert.notEqual(pub.photoUrl, pub.scalePhotoUrl, 'the crew\'s own photo comes first');
+    assert.equal(pub.photos[1].url, pub.scalePhotoUrl, 'the weigh station photo second');
     assert.equal(pub.ownPhoto, true);
     assert.equal(pub.scaleVideoUrl, null, 'no video for the public');
     assert.equal((await asSeenBy(crewB)).scaleVideoUrl, null, 'the scale video isn\'t for another boat\'s crew');
@@ -106,7 +107,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.match(rel.videoUrl, /\.mp4$/);
     const post = (await as()('GET', '/feed?type=weighins')).body.items[0];
     const [m, s2] = ['Blue marlin', 'Sailfish'].map((n) => post.fish.find((f) => f.species === n));
-    assert.deepEqual(m.photos, pub.photos.map((x) => x.url), 'the weigh-in post: weigh station photo, then the crew\'s');
+    assert.deepEqual(m.photos, pub.photos.map((x) => x.url), 'the weigh-in post: the crew\'s photo, then the weigh station\'s');
     assert.deepEqual(s2.photos, [], 'a released fish: no weigh station photo, no crew photo yet');
     // Added later by the crew; not by another boat or the public.
     const later = new FormData();

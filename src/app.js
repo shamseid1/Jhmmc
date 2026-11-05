@@ -928,8 +928,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       || (row.status !== 'unofficial' && canReview(viewer));
   }
 
-  // A weighed fish's pictures: the weigh station photo (the main one), and a
-  // second photo if the angler or crew adds one later, swiped between. A video of
+  // A weighed fish's pictures: the weigh station photo, and the crew's own if
+  // they add one later, which then comes first (the weigh station's second). A video of
   // a fish on the scale is evidence: the secretary, JHMMC captains (to dispute),
   // the boat's crew and whoever registered it. A release video shows to everyone
   // once the secretary has approved the fish. The log photo stays on the "boated" line.
@@ -941,7 +941,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function present(row, viewer) {
     const showSpot = row.lat != null && canSeeSpot(row, viewer);
     const official = row.status !== 'unofficial';
-    const photos = official ? [row.scalePhoto, row.photo].filter(Boolean).map((f) => ({ url: photoUrl(f) })) : postPhotos('catch', row.id, row.photo);
+    const photos = official ? [row.photo, row.scalePhoto].filter(Boolean).map((f) => ({ url: photoUrl(f) })) : postPhotos('catch', row.id, row.photo);
     const releaseVideo = !!row.released && row.status === 'approved';
     const video = releaseVideo || seesVideo(row, viewer);
     return {
@@ -1270,7 +1270,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    // Each fish's weigh station photo, then the crew's own if they added one,
+    // Each fish's own photo from the crew if they added one, then its weigh station photo,
     // and a released fish's release video. Videos of the scale are evidence.
     const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.photo AS feedPhoto, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
@@ -1289,7 +1289,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         item.day = x.title;
         item.title = null;
         item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ feedPhoto, scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
-          photos: [scalePhoto, feedPhoto].filter(Boolean).map(photoUrl), ownPhoto: !!feedPhoto, videoUrl: f.released ? photoUrl(scaleVideo) : null }));
+          photos: [feedPhoto, scalePhoto].filter(Boolean).map(photoUrl), ownPhoto: !!feedPhoto, videoUrl: f.released ? photoUrl(scaleVideo) : null }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
