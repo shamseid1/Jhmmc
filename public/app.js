@@ -523,8 +523,7 @@ async function renderGridMap(box, q, link) {
     state.me?.teamId || state.me?.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
   if (!box.isConnected) return;
   const sel = (label, items, current) => `<select class="chip-select" data-go aria-label="${label}">${options(items, current)}</select>`;
-  box.innerHTML = html`<h2>Where: month by month</h2>
-    <div class="filter-chips">
+  box.innerHTML = html`<div class="filter-chips">
       ${g.years.length > 1 ? raw(sel('Year', g.years.map((y) => [link({ gyear: y, gmonth: '' }), y]), link({ gyear: g.year, gmonth: '' }))) : ''}
       ${raw(sel('Species', [[link({ gspecies: '', gmonth: '' }), 'All species'], ...g.speciesList.map((x) => [link({ gspecies: x, gmonth: '' }), x])], link({ gspecies: g.species || '', gmonth: '' })))}
       ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
@@ -2284,10 +2283,8 @@ const pagesFor = (view) => ({
     if (tab === 'trends') {
       const tq = new URLSearchParams({ ...(q.get('species') && { species: q.get('species') }), ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
       const tr = await api(`/outings/trends?${tq}`);
-      view.innerHTML = html`${raw(head)}${raw(chips)}${raw(trendsHtml(tr, { perBoat: q.get('per') === 'boat', link, mine: scope === 'mine' }))}
-        ${scope === 'regional' && state.me ? raw('<div id="grid-map-box"></div>') : ''}`;
+      view.innerHTML = html`${raw(head)}${raw(chips)}${raw(trendsHtml(tr, { perBoat: q.get('per') === 'boat', link, mine: scope === 'mine' }))}`;
       view.querySelector('#trend-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
-      if (scope === 'regional' && state.me) renderGridMap(view.querySelector('#grid-map-box'), q, link);
       return;
     }
     if (tab === 'season') {
@@ -2401,6 +2398,24 @@ const pagesFor = (view) => ({
   async spots() {
     if (!state.me) return needLogin(view, 'see your catch map');
     const sq = new URLSearchParams(location.hash.split('?')[1] || '');
+    // Two maps: My boat (the crew's exact spots) and Regional (10 km circles, no spots).
+    const regional = sq.get('view') === 'regional' || !state.me.teamId;
+    const mapTabs = html`<div class="line-tabs" role="tablist">
+      ${state.me.teamId ? raw('<a role="tab" href="#/spots" aria-selected="' + !regional + '">My boat</a>') : ''}
+      <a role="tab" href="#/spots?view=regional" aria-selected="${regional}">Regional</a></div>`;
+    if (regional) {
+      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Catch map</h1>${raw(mapTabs)}
+        <p class="small muted">Where fish are being caught across the region, month by month. Members only.</p>
+        <div id="grid-map-box"></div>`;
+      const link = (changes) => {
+        const p = new URLSearchParams(sq);
+        p.set('view', 'regional');
+        for (const [k, v] of Object.entries(changes)) (v ? p.set(k, v) : p.delete(k));
+        return `#/spots?${p}`;
+      };
+      await renderGridMap(view.querySelector('#grid-map-box'), sq, link);
+      return;
+    }
     const year = sq.get('year') || '';
     const species = sq.get('species') || '';
     const month = sq.get('month') || '';
@@ -2418,7 +2433,7 @@ const pagesFor = (view) => ({
     const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
     const when = (x) => fmtDate(x.date);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>My catch map</h1>
+      <h1>Catch map</h1>${raw(mapTabs)}
       <p class="small muted">Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
       ${speciesHere.length > 1 || species || monthsHere.length > 1 || month ? raw(html`<div class="filter-chips">
@@ -2556,7 +2571,7 @@ const pagesFor = (view) => ({
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
-        ${me.teamId ? item('#/spots', 'pin', 'My catch map', 'Your crew\'s fish, where they were caught') : ''}
+        ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
       ${me.canWeigh && !me.canReview ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
