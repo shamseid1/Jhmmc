@@ -81,6 +81,9 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.ok((await capA('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, 'the crew sees it');
     assert.equal((await sec('POST', `/catches/${sailfish.id}/review`, { decision: 'approve' })).status, 200);
 
+    // The only marlin that day: its weight goes on the logged fish.
+    const day = (await capA('GET', `/outings/trip?date=${today}`)).body.trip;
+    assert.deepEqual(day.landings.filter((l) => l.species === 'Blue marlin').map((l) => [l.scaleKg, l.scaleShared]), [[210, false]]);
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;
     const pub = await asSeenBy(as());
     assert.equal(pub.photos.length, 2, 'the weigh station photo and the crew photo');

@@ -153,7 +153,8 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.equal(daily.points, Math.round(daily.fish.reduce((n, f) => n + f.points, 0) * 10) / 10, 'the sheet\'s total points');
 
     // The log and the scale: three tunas logged at sea, then registered.
-    // Each logged tuna gets a scale weight, in the order they were logged.
+    // Nobody knows which tuna weighed what, so no single tuna shows a weight:
+    // the day's tuna weights go on the species instead.
     const tuna = sp['Yellowfin tuna'];
     for (const n of [1, 2, 3]) await cap('POST', '/outings/fish', { speciesId: tuna, fate: 'kept', lat: 6 + n / 10, lng: -10.5, date: today });
     for (const kg of ['41', '28', '35']) {
@@ -163,7 +164,8 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     }
     let trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     const tunas = trip.landings.filter((l) => l.speciesId === tuna);
-    assert.deepEqual(tunas.map((l) => l.scaleKg), [41, 28, 35], 'in the order they were logged');
+    assert.deepEqual(tunas.map((l) => [l.scaleKg, l.scaleShared]), [[null, true], [null, true], [null, true]], 'weighed, but not one weight each');
+    assert.deepEqual(trip.fish.find((f) => f.speciesId === tuna).weighedKg, [41, 35, 28], 'the weights together, heaviest first');
     // Logged 3 tunas, brought 5 to the scale: the log counts 5.
     const extra = [];
     for (const kg of ['22', '19']) {
@@ -173,7 +175,8 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     }
     trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     const five = trip.landings.filter((l) => l.speciesId === tuna);
-    assert.deepEqual(five.map((l) => [l.scaleKg, !!l.fromScale]), [[41, false], [28, false], [35, false], [22, true], [19, true]]);
+    assert.deepEqual(five.map((l) => [l.scaleKg, !!l.fromScale]), [[null, false], [null, false], [null, false], [null, true], [null, true]]);
+    assert.deepEqual(trip.fish.find((f) => f.speciesId === tuna).weighedKg, [41, 35, 28, 22, 19]);
     assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 5);
     // One withdrawn: it leaves the log with it.
     await cap('DELETE', `/catches/${extra[1]}`);
@@ -184,7 +187,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     await cap('POST', '/outings/fish', { speciesId: tuna, fate: 'kept', lat: 6.5, lng: -10.5, date: today });
     trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 4);
-    assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).at(-1), { ...trip.landings.filter((l) => l.speciesId === tuna).at(-1), scaleKg: 22, fromScale: 0, lat: 6.5 });
+    assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).at(-1), { ...trip.landings.filter((l) => l.speciesId === tuna).at(-1), scaleKg: null, scaleShared: true, fromScale: 0, lat: 6.5 });
     // A photo on a logged fish shows on the feed; the weigh-in post carries the scale photos.
     const someTuna = trip.landings.find((l) => l.speciesId === tuna);
     const pic = new FormData();
@@ -204,9 +207,9 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const tunaPics = after.find((x) => x.kind === 'weighin' && x.day === today).fish.find((f) => f.id === someTuna.catchId).photos;
     assert.equal(tunaPics.length, 2, 'the weigh station photo first, then the crew photo');
     assert.equal(tunaPics[1], withPic.photoUrl);
-    // The catch map shows the tunas once each, with their scale weights.
+    // The catch map shows the tunas once each, without weights (which was which isn't known).
     const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
-    assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', 22, false], ['log', 28, false], ['log', 35, false], ['log', 41, false]]);
+    assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', null, false], ['log', null, false], ['log', null, false], ['log', null, false]]);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -1100,7 +1100,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // A fish registered at the weigh station is the same fish its boat logged at
   // sea: link them (same boat, day and species; a released one to a released
   // one first), so the log shows the scale weight. Works whichever comes first.
-  // Five tunas: in the order they were logged.
+  // Five tunas: linked in the order logged, which only keeps the counts right:
+  // nobody knows which weight was which, so no single tuna shows a weight (see ALONE).
   function linkRegistrationToLog(catchId) {
     const k = db.prepare("SELECT id, team_id, caught_on, species_id, released, weight_kg, logged_by FROM catches WHERE id = ? AND status <> 'unofficial'").get(catchId);
     if (!k?.team_id || !k.species_id || db.prepare('SELECT 1 FROM outing_landings WHERE catch_id = ?').get(k.id)) return;
@@ -2102,19 +2103,27 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const TECHNIQUES = ['Trolling', 'Bottom fishing', 'Jigging', 'Casting'];
   const outingFish = db.prepare(`SELECT f.species_id AS speciesId, s.name AS species, s.category, f.released, f.kept, f.lost
     FROM outing_fish f JOIN species s ON s.id = f.species_id WHERE f.outing_id = ? ORDER BY f.id`);
+  const ALONE = `NOT EXISTS (SELECT 1 FROM outing_landings y WHERE y.outing_id = l.outing_id AND y.species_id = l.species_id AND y.fate = l.fate AND y.id <> l.id)`;
+  // The day's scale weights for each species, heaviest first.
+  const weighedOf = db.prepare(`SELECT k.weight_kg AS kg FROM outing_landings l JOIN catches k ON k.id = l.catch_id
+    WHERE l.outing_id = ? AND l.species_id = ? AND k.status <> 'rejected' AND k.weight_kg IS NOT NULL ORDER BY k.weight_kg DESC`);
+  const fishOfOuting = (id) => outingFish.all(id).map((f) => ({ ...f, weighedKg: weighedOf.all(id, f.speciesId).map((x) => x.kg) }));
   const OUTING_SELECT = `SELECT o.id, o.user_id AS userId, o.team_id AS teamId, COALESCE(t.name, o.boat) AS boat, o.country, o.date,
       o.no_catch AS noCatch, o.technique, o.area, o.depth_m AS depthM, o.water_c AS waterC, o.created_at AS createdAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outings o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN teams t ON t.id = o.team_id`;
   // Each fish logged at sea, for everyone: no spots here.
-  // scaleKg: the weight on the weigh-station scale, once the same fish is registered (not if rejected).
-  const SCALE = `(SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleKg,
+  // scaleKg: the weight on the weigh-station scale, once the same fish is registered (not if rejected),
+  // only when it was the boat's only fish of that species that day (kept, or released): with ten
+  // tunas nobody knows which weight was which, so the weights go on the species for the day instead.
+  const SCALE = `(SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected' AND ${ALONE}) AS scaleKg,
+      (l.catch_id IS NOT NULL AND NOT ${ALONE}) AS scaleShared,
       (SELECT k.status FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleStatus`;
   const fishLanded = db.prepare(`SELECT l.id, s.name AS species, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, l.fate, l.weight_kg AS weightKg, l.landed_at AS landedAt, ${SCALE}
     FROM outing_landings l JOIN species s ON s.id = l.species_id WHERE l.outing_id = ? ORDER BY l.id`);
   const presentOuting = (o, viewer) => ({
     ...o, noCatch: !!o.noCatch, technique: o.technique ? o.technique.split('|') : [],
-    fish: outingFish.all(o.id), landings: fishLanded.all(o.id),
+    fish: fishOfOuting(o.id), landings: fishLanded.all(o.id).map((x) => ({ ...x, scaleShared: !!x.scaleShared })),
     canDelete: !!viewer && (o.userId === viewer.id || isAdminUser(viewer)),
   });
   // The outing as one line, in the agreed format.
@@ -2236,7 +2245,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const o = db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(outingId);
     if (!o) return null;
     const out = presentOuting(o, viewer);
-    return { ...out, line: outingLine(out), landings: landingsOf(outingId).map(({ photo, ...l }) => ({ ...l, photoUrl: photoUrl(photo) })) };
+    return { ...out, line: outingLine(out), landings: landingsOf(outingId).map(({ photo, ...l }) => ({ ...l, scaleShared: !!l.scaleShared, photoUrl: photoUrl(photo) })) };
   };
   // The crew of the boat (and whoever logged the line, and the admin) work on the trip.
   const onTrip = (user, o) => isAdminUser(user) || o.user_id === user.id || (o.team_id != null && o.team_id === user.teamId);
@@ -2395,7 +2404,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const team = intId(req.query.team);
     const withSpots = !!team && !!req.user && (req.user.teamId === team || isAdminUser(req.user));
     const rows = db.prepare(`SELECT o.date, l.landed_at AS at, l.lat, l.lng, COALESCE(t.name, o.boat) AS boat, o.country, s.name AS species, l.fate,
-        (SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleKg, l.weight_kg AS estimateKg,
+        (SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected' AND ${ALONE}) AS scaleKg, l.weight_kg AS estimateKg,
         o.area, o.depth_m AS depthM, o.water_c AS waterC, o.technique, COALESCE(l.client_id, '') LIKE 'reg-%' AS fromScale
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
       WHERE (:team IS NULL OR o.team_id = :team) ORDER BY o.date, l.id`).all({ team });
@@ -2637,7 +2646,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
       WHERE p.lat IS NOT NULL AND p.user_id = :me
       UNION ALL
-      SELECT 'log', l.id, s.name, COALESCE((SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected'), l.weight_kg),
+      SELECT 'log', l.id, s.name, CASE WHEN EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected')
+          THEN (SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND ${ALONE}) ELSE l.weight_kg END,
         l.fate = 'released', o.date, l.lat, l.lng, NULL,
         COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL,
         NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected')

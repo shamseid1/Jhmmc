@@ -856,6 +856,9 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
 </article>`);
+// Several of a species weighed the same day: their weights together, heaviest first.
+const weighedLine = (f) => html`⚖️ <b>${f.weighedKg.length} ${f.species.toLowerCase()}</b> weighed: ${f.weighedKg.map((kg) => fmtWeight(kg)).join(', ')} · ${fmtWeight(f.weighedKg.reduce((a, b) => a + b, 0))} in all`;
+
 // A weigh-in post's pictures, swiped sideways: each fish's weigh station
 // photo, then the crew's own.
 function feedGallery(slides) {
@@ -1607,7 +1610,6 @@ const pagesFor = (view) => ({
       <p class="small"><b>At the weigh station, for points.</b> Fish logged at sea with Log fish don't score until they're weighed in here.</p>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
         Every fish weighed needs a photo or video of it hanging on the scale, the weight readable (rule 8).</p>
-      <p class="small"><b>Weigh in the order they were caught</b> (first caught, first on this sheet): each weight then goes on the right fish in the boat's log.</p>
       ${onNow && (official || !atHomePort(own)) ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
       <form class="card pad stack" id="sheet">
         <div class="row">
@@ -2079,10 +2081,12 @@ const pagesFor = (view) => ({
       const landed = trip?.landings || [];
       // Registered at the weigh station: its scale weight.
       // A released fish's estimate (it never sees a scale).
-      const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` · ~${fmtWeight(l.weightKg)} (est.)` : '');
+      // Several of a species weighed: nobody knows which weight was which, so
+      // the weights go under the list, for the species.
+      const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : l.scaleShared ? ' · ⚖️ weighed' : l.fate === 'released' && l.weightKg ? ` · ~${fmtWeight(l.weightKg)} (est.)` : '');
       list.innerHTML = [...landed.map((l, n) => html`<li class="fo-row"><div class="fo-main"><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
-            ${l.fate === 'released' && l.scaleKg == null ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
+            ${l.fate === 'released' && l.scaleKg == null && !l.scaleShared ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
             ${l.fromScale ? '' : raw(html`· <button type="button" class="link small" data-edit="${l.id}">Edit</button> · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></div>
           <label class="fo-photo" aria-label="${l.photoUrl ? 'Change the photo' : 'Add a photo'} of the ${l.species}">
             ${l.photoUrl ? raw(html`<img src="${l.photoUrl}" alt="">`) : raw(html`${raw(icon('camera'))}<span>Add photo</span>`)}
@@ -2091,6 +2095,7 @@ const pagesFor = (view) => ({
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')
         || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today.' : 'No fish logged that day.'}</li>`;
+      list.insertAdjacentHTML('beforeend', (trip?.fish || []).filter((f) => f.weighedKg.length > 1).map((f) => html`<li class="fo-weighed">${raw(weighedLine(f))}</li>`).join(''));
       view.querySelector('#fo-nocatch').hidden = !!trip || waiting.length > 0;
       if (!trip) {
         finish.innerHTML = '';
@@ -2458,7 +2463,7 @@ const pagesFor = (view) => ({
     const item = (o) => html`<li data-id="${o.id}">
       <div class="log-top"><span>${fmtDate(o.date)} · ${o.boat}</span></div>
       <div class="small muted">${[o.country, [o.area, fmtDepth(o.depthM)].filter(Boolean).join(', '), fmtTemp(o.waterC), o.technique.join(', ')].filter(Boolean).join(' · ')}</div>
-      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.kept, 'kept'))}${raw(tag(f.released, 'released'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
+      <div class="log-res">${o.noCatch ? raw('<span class="muted">No catch</span>') : o.landings?.length ? o.landings.map((l) => raw(html`<div>${l.species}${l.scaleKg != null ? ` ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` ~${fmtWeight(l.weightKg)}` : ''} <span class="pill ${l.fate}">${l.fate}</span></div>`)).concat(o.fish.filter((f) => f.weighedKg.length > 1).map((f) => raw(html`<div class="small">${raw(weighedLine(f))}</div>`))) : o.fish.map((f) => raw(html`<div>${f.species} ${f.released + f.kept + f.lost}${raw(tag(f.kept, 'kept'))}${raw(tag(f.released, 'released'))}${raw(tag(f.lost, 'lost'))}</div>`))}</div>
       <div class="log-actions small"><span class="muted">by ${o.loggedBy || 'a former member'}</span>
         <button type="button" class="link" data-act="copy">Copy as one line</button>
         ${state.me?.teamId && o.teamId === state.me.teamId ? raw(html`<a href="#/fishon?date=${o.date}">Open</a>`) : ''}

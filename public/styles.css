@@ -869,3 +869,5 @@ a.me-card { color: var(--text); text-decoration: none; }
 .fo-edit .fate.on { outline: 3px solid currentColor; outline-offset: -3px; }
 /* The feed shown without signal: the last one seen. */
 .offline-note { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-2, rgba(127,127,127,.12)); }
+/* Several of a species weighed: their weights together, under the list. */
+.fo-weighed { font-size: 14px; background: var(--surface-2, rgba(127,127,127,.08)); }
