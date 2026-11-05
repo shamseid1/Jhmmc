@@ -76,6 +76,9 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const [marlin, sailfish] = r.body.catches;
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).status, 200);
+    assert.equal((await as()('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, null, 'a release video waits for the secretary');
+    assert.equal((await capB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, null);
+    assert.ok((await capA('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, 'the crew sees it');
     assert.equal((await sec('POST', `/catches/${sailfish.id}/review`, { decision: 'approve' })).status, 200);
 
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;

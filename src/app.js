@@ -930,8 +930,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // A fish's pictures, at most two: the weigh station photo (the main one) and
   // the crew's own from Log fish, swiped between. A release video shows to
-  // everyone; a video of a fish on the scale is evidence for the secretary:
-  // only officers and the boat's own crew see it.
+  // everyone once the secretary has approved the fish; until then, and always
+  // for a video of a fish on the scale, only officers and the boat's own crew see it.
   const fishPhotos = (scalePhoto, crewPhoto) => [...new Set([scalePhoto, crewPhoto].filter(Boolean))].map((f) => ({ url: photoUrl(f) }));
   const seesVideo = (row, viewer) => !!viewer && (canReview(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
 
@@ -939,7 +939,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const showSpot = row.lat != null && canSeeSpot(row, viewer);
     const fish = fishPhotos(row.scalePhoto, row.crewPhoto);
     const photos = fish.length ? fish : postPhotos('catch', row.id, row.photo);
-    const video = !!row.released || seesVideo(row, viewer);
+    const releaseVideo = !!row.released && row.status === 'approved';
+    const video = releaseVideo || seesVideo(row, viewer);
     const { crewPhoto, ...rest } = row;
     return {
       ...rest,
@@ -954,7 +955,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       photoUrl: photos[0]?.url ?? null,
       photos,
       // Shown with the photos: a post's own video, or the release video.
-      videoUrl: photoUrl(row.video || (row.released ? row.scaleVideo : null)),
+      videoUrl: photoUrl(row.video || (row.released && video ? row.scaleVideo : null)),
       canEdit: row.status === 'unofficial' && canDelete(row, viewer),
       scalePhotoUrl: photoUrl(row.scalePhoto),
       scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
