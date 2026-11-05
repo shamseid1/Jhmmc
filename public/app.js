@@ -865,9 +865,27 @@ async function renderFeed(container, query = {}) {
   more.hidden = true;
   container.replaceChildren(list, more);
   let shown = 0;
+  // The first page of each feed is kept on the phone: without signal the last
+  // one seen shows, with a note, instead of an empty page.
+  const keepKey = 'kept-feed:' + JSON.stringify(query);
   async function page() {
     const params = new URLSearchParams(Object.entries({ ...query, before: before ?? '' }).filter(([, v]) => v !== '' && v != null));
-    const { items, nextBefore } = await api('/feed?' + params);
+    let got;
+    try {
+      got = await api('/feed?' + params, { once: !before && !navigator.onLine });
+      if (!before) keep(keepKey, { at: new Date().toISOString(), ...got });
+    } catch (err) {
+      if (err.status) throw err;
+      const old = !before && kept(keepKey);
+      if (!old) {
+        if (before) return toast(err.message);
+        list.innerHTML = html`<div class="pad empty muted"><p>No signal, so the feed can't load.</p><p><a href="#/fishon">Log fish</a> still works: fish wait on the phone and send themselves when the signal's back.</p></div>`;
+        return;
+      }
+      list.insertAdjacentHTML('beforebegin', html`<p class="offline-note small">No signal: this is the feed as it was ${fmtWhen(old.at)}. Log fish still works.</p>`);
+      got = { items: old.items, nextBefore: null };
+    }
+    const { items, nextBefore } = got;
     list.insertAdjacentHTML('beforeend', items.map(feedItem).join(''));
     shown += items.length;
     before = nextBefore;
@@ -3746,6 +3764,15 @@ const isInstalled = () => matchMedia('(display-mode: standalone)').matches || na
 // "Sign in" links inside a page come back to that page afterwards.
 document.addEventListener('click', (e) => {
   if (e.target.closest('a[data-return]')) state.afterLogin = location.hash;
+});
+
+// Without signal, pictures that aren't on the phone are hidden rather than shown broken.
+document.addEventListener('error', (e) => {
+  if (e.target.tagName === 'IMG' && navigator.onLine === false) e.target.hidden = true;
+}, true);
+// Signal back: a page that couldn't load tries again.
+window.addEventListener('online', () => {
+  if (document.querySelector('.offline-note, .feed-list .empty')) route();
 });
 
 (async function init() {
