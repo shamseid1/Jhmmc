@@ -67,13 +67,16 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     // ...then weighed with a scale photo and a video.
     const fd = new FormData();
     for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: today, declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
-    fd.set('fish', JSON.stringify([{ speciesId: sp('Blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' }]));
+    fd.set('fish', JSON.stringify([{ speciesId: sp('Blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' },
+      { speciesId: sp('Sailfish'), anglerId: 'other', anglerName: 'Guest', released: true }]));
+    fd.set('scalevideo_1', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'release.mp4');
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'scale.png');
     fd.set('scalevideo_0', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'scale.mp4');
     const r = await capA('POST', '/weigh/sheet', fd);
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    const [marlin] = r.body.catches;
+    const [marlin, sailfish] = r.body.catches;
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).status, 200);
+    assert.equal((await sec('POST', `/catches/${sailfish.id}/review`, { decision: 'approve' })).status, 200);
 
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;
     const pub = await asSeenBy(as());
@@ -84,10 +87,16 @@ test('a fish shows two photos at most, the weigh station one first; videos only 
     assert.equal((await asSeenBy(capB)).scaleVideoUrl, null, 'nor for another boat');
     assert.ok((await asSeenBy(sec)).scaleVideoUrl, 'the secretary sees it');
     assert.ok((await asSeenBy(capA)).scaleVideoUrl, 'and the crew');
+    assert.equal(pub.videoUrl, null, 'the scale video stays out of the gallery');
+    // A release video is for everyone.
+    const rel = (await as()('GET', `/catches/${sailfish.id}`)).body.catch;
+    assert.match(rel.videoUrl, /\.mp4$/);
     const post = (await as()('GET', '/feed?type=weighins')).body.items[0];
-    assert.equal(post.fish[0].photos.length, 2);
-    assert.equal(post.fish[0].photos[0], pub.scalePhotoUrl);
-    assert.ok(!('videoUrl' in post.fish[0]));
+    const [m, s2] = ['Blue marlin', 'Sailfish'].map((n) => post.fish.find((f) => f.species === n));
+    assert.equal(m.photos.length, 2);
+    assert.equal(m.photos[0], pub.scalePhotoUrl);
+    assert.equal(m.videoUrl, null, 'no scale video in the feed');
+    assert.equal(s2.videoUrl, rel.videoUrl, 'the release video is');
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

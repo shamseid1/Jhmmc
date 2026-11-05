@@ -768,10 +768,10 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${c.notes ? raw(html`<p class="notes${full ? '' : ' clamp'}">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
-      ${full && (c.weighStation || c.pointsNote || c.scaleVideoUrl) ? raw(html`<div class="official">
+      ${full && (c.weighStation || c.pointsNote || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
-        ${c.scaleVideoUrl ? raw(html`<p class="small muted">Weigh station video (only officers and the crew see it)</p><video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
+        ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video (only officers and the crew see it)</p><video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
@@ -845,7 +845,10 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   </div>
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
-  ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length) ? raw(feedGallery(x.fish.flatMap((f) => f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`)))) : ''}
+  ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length || f.videoUrl) ? raw(feedGallery(x.fish.flatMap((f) => [
+    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`),
+    ...(f.videoUrl ? [html`<video class="catch-photo" src="${f.videoUrl}" controls playsinline preload="metadata" aria-label="${f.species} released"></video>`] : []),
+  ]))) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}

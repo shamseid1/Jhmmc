@@ -196,7 +196,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.equal(feedNow.find((x) => x.kind === 'log' && x.id === someTuna.id).photoUrl, withPic.photoUrl);
     const wPost = feedNow.find((x) => x.kind === 'weighin' && x.day === today);
     assert.ok(wPost.fish.filter((f) => f.weightKg).every((f) => f.photos.length), 'the scale photos');
-    assert.ok(wPost.fish.every((f) => !('videoUrl' in f)), 'videos are for the secretary, not the feed');
+    assert.ok(wPost.fish.every((f) => !f.videoUrl || f.released), 'only release videos in the feed; scale videos are for the secretary');
     // Once that tuna is approved it shows once, in the weigh-in post, with the crew's photo.
     assert.equal((await sec('POST', `/catches/${someTuna.catchId}/review`, { decision: 'approve' })).status, 200);
     const after = (await as()('GET', `/feed?team=${boat.id}`)).body.items;
