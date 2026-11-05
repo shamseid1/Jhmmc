@@ -320,8 +320,9 @@ async function drawSpotMaps(root) {
 function mediaHtml(item, alt = '') {
   const photos = item.photos ?? (item.photoUrl ? [{ url: item.photoUrl }] : []);
   const slides = [
-    ...(item.videoUrl ? [html`<video class="catch-photo" src="${item.videoUrl}" ${photos[0] ? raw(html`poster="${photos[0].url}"`) : ''} controls playsinline preload="metadata"></video>`] : []),
     ...photos.map((x) => html`<img class="catch-photo" src="${x.url}" alt="${alt}" loading="lazy">`),
+    // A video only reaches officers and the boat's crew; it goes after the photos.
+    ...(item.videoUrl ? [html`<video class="catch-photo" src="${item.videoUrl}" controls playsinline preload="metadata"></video>`] : []),
   ];
   if (slides.length < 2) return slides[0] ?? '';
   return html`<div class="gallery-wrap"><div class="gallery">${slides.map((x) => raw(x))}</div>
@@ -767,11 +768,10 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${c.notes ? raw(html`<p class="notes${full ? '' : ' clamp'}">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
-      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl || c.scaleVideoUrl) ? raw(html`<div class="official">
+      ${full && (c.weighStation || c.pointsNote || c.scaleVideoUrl) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
-        ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img class="scale-photo" src="${c.scalePhotoUrl}" alt="Fish on the scale" loading="lazy"></a>`) : ''}
-        ${c.scaleVideoUrl ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
+        ${c.scaleVideoUrl ? raw(html`<p class="small muted">Weigh station video (only officers and the crew see it)</p><video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
@@ -845,9 +845,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
   </div>
   <p class="feed-line">${feedLine(x)}</p>
   ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
-  ${x.kind === 'weighin' && x.fish.some((f) => f.photoUrl || f.videoUrl) ? raw(html`<div class="feed-strip">${x.fish.map((f) => raw(f.photoUrl
-    ? html`<a href="#/catch/${f.id}"><img src="${f.photoUrl}" alt="${f.species} on the scale" loading="lazy"></a>`
-    : f.videoUrl ? html`<video src="${f.videoUrl}" controls playsinline preload="metadata"></video>` : ''))}</div>`) : ''}
+  ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length) ? raw(feedGallery(x.fish.flatMap((f) => f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i ? '' : ' at the weigh station'}" loading="lazy"></a>`)))) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
@@ -855,6 +853,13 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
 </article>`);
+// A weigh-in post's pictures, swiped sideways: each fish's weigh station
+// photo, then the crew's own.
+function feedGallery(slides) {
+  if (slides.length < 2) return html`<div class="feed-gallery">${raw(slides[0])}</div>`;
+  return html`<div class="gallery-wrap feed-gallery"><div class="gallery">${slides.map((x) => raw(x))}</div>
+    <span class="gallery-count">${raw(icon('camera'))} ${slides.length}</span></div>`;
+}
 async function renderFeed(container, query = {}) {
   let before = null;
   const list = document.createElement('div');
@@ -1870,10 +1875,9 @@ const pagesFor = (view) => ({
             <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
           <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
           <div class="thumbs">
-            ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
+            ${c.photos.map((x, i) => raw(html`<a href="${x.url}" target="_blank" rel="noopener"><img src="${x.url}" alt="${i || !c.scalePhotoUrl ? 'Crew photo' : 'On the scale'}"></a>`))}
             ${c.scaleVideoUrl ? raw(html`<video src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
-            ${c.photoUrl ? raw(html`<a href="${c.photoUrl}" target="_blank" rel="noopener"><img src="${c.photoUrl}" alt="Catch photo"></a>`) : ''}
-            ${!c.scalePhotoUrl && !c.photoUrl ? raw('<span class="small muted">No photo</span>') : ''}
+            ${!c.photos.length && !c.scaleVideoUrl ? raw('<span class="small muted">No photo</span>') : ''}
           </div>
           ${c.disputes.length ? raw(html`<div class="disputes">
             <p><b>${raw(icon('flag'))} Disputed</b>: approving needs a note on how it was settled.</p>

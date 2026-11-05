@@ -819,9 +819,8 @@ a.me-card { color: var(--text); text-decoration: none; }
 .weigh-call > span:nth-of-type(1) { flex: 1; display: grid; min-width: 150px; }
 /* Photos: a logged fish's photo, and a weigh-in's scale photos and release videos. */
 .feed-photo { width: 100%; max-height: 420px; object-fit: cover; border-radius: 14px; }
-.feed-strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
-.feed-strip::-webkit-scrollbar { display: none; }
-.feed-strip img, .feed-strip video { height: 220px; width: auto; max-width: 80%; border-radius: 14px; object-fit: cover; scroll-snap-align: start; flex: none; background: #000; }
+.feed-gallery { border-radius: 14px; overflow: hidden; margin: 6px 0; }
+.feed-gallery .catch-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0; }
 /* Log fish: each fish's photo square, on the right of its row. */
 .fo-row { display: flex; align-items: center; gap: 12px; }
 .fo-main { flex: 1; min-width: 0; }

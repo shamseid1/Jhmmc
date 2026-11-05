@@ -889,6 +889,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       k.notes, k.photo, k.video, k.scale_video AS scaleVideo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       k.lat, k.lng, k.spot_public AS spotPublic, k.no_angler AS noAngler,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
+      (SELECT x.photo FROM outing_landings x WHERE x.catch_id = k.id AND x.photo IS NOT NULL LIMIT 1) AS crewPhoto,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
       u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler,
@@ -927,10 +928,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       || (row.status !== 'unofficial' && canReview(viewer));
   }
 
+  // A fish's pictures, at most two: the weigh station photo (the main one) and
+  // the crew's own from Log fish, swiped between. Videos are evidence for the
+  // secretary: only officers and the boat's own crew see them.
+  const fishPhotos = (scalePhoto, crewPhoto) => [...new Set([scalePhoto, crewPhoto].filter(Boolean))].map((f) => ({ url: photoUrl(f) }));
+  const seesVideo = (row, viewer) => !!viewer && (canReview(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
+
   function present(row, viewer) {
     const showSpot = row.lat != null && canSeeSpot(row, viewer);
+    const fish = fishPhotos(row.scalePhoto, row.crewPhoto);
+    const photos = fish.length ? fish : postPhotos('catch', row.id, row.photo);
+    const video = seesVideo(row, viewer);
+    const { crewPhoto, ...rest } = row;
     return {
-      ...row,
+      ...rest,
       lat: showSpot ? row.lat : null,
       lng: showSpot ? row.lng : null,
       spotPublic: !!row.spotPublic,
@@ -939,12 +950,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       tagged: !!row.tagged,
       liked: !!row.liked,
       noAngler: !!row.noAngler,
-      photoUrl: photoUrl(row.photo),
-      photos: postPhotos('catch', row.id, row.photo),
-      videoUrl: photoUrl(row.video),
+      photoUrl: photos[0]?.url ?? null,
+      photos,
+      videoUrl: video ? photoUrl(row.video) : null,
       canEdit: row.status === 'unofficial' && canDelete(row, viewer),
       scalePhotoUrl: photoUrl(row.scalePhoto),
-      scaleVideoUrl: photoUrl(row.scaleVideo),
+      scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
       canDelete: canDelete(row, viewer),
       worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
     };
@@ -1251,8 +1262,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    // One picture per fish: the crew's own photo from Log fish if there is one,
-    // else the scale photo, else the scale or release video.
+    // Each fish's pictures: the weigh station photo first, then the crew's own
+    // from Log fish. No videos: they're for the secretary.
     const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
         (SELECT x.photo FROM outing_landings x WHERE x.catch_id = k.id AND x.photo IS NOT NULL LIMIT 1) AS crewPhoto,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
@@ -1271,7 +1282,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         item.day = x.title;
         item.title = null;
         item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ scalePhoto, scaleVideo, crewPhoto, ...f }) => ({ ...f, released: !!f.released,
-          photoUrl: photoUrl(crewPhoto || scalePhoto), videoUrl: crewPhoto || scalePhoto ? null : photoUrl(scaleVideo) }));
+          photos: fishPhotos(scalePhoto, crewPhoto).map((x) => x.url) }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
