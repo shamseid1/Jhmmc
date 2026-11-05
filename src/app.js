@@ -2367,8 +2367,44 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const species = speciesList.includes(req.query.species) ? req.query.species : speciesList.includes('Sailfish') ? 'Sailfish' : speciesList[0] ?? null;
     const months = Array.from({ length: 12 }, (_, m) => {
       const inMonth = outings.filter((o) => Number(o.date.slice(5, 7)) === m + 1);
-      return { month: m + 1, outings: inMonth.length, perDay: inMonth.length ? caught({ fish: inMonth.flatMap((o) => o.fish) }, (f) => f.species === species) / inMonth.length : null };
+      const n = caught({ fish: inMonth.flatMap((o) => o.fish) }, (f) => f.species === species);
+      return { month: m + 1, outings: inMonth.length, count: n, perDay: inMonth.length ? n / inMonth.length : null };
     });
+    // Counts only: lost fish and blank days are often not logged, so rates per
+    // trip would flatter the season. What was caught stays true.
+    const add = (map, key, n) => { if (key && n) map[key] = (map[key] || 0) + n; };
+    const bySpecies = {};
+    for (const o of outings) for (const f of o.fish) {
+      const row = (bySpecies[f.species] ||= { species: f.species, kept: 0, released: 0, lost: 0, heaviestKg: null });
+      row.kept += f.kept; row.released += f.released; row.lost += f.lost;
+    }
+    // The heaviest of each, from the weigh-in scales (approved fish).
+    const heaviest = db.prepare(`SELECT s.name AS species, MAX(k.weight_kg) AS kg FROM catches k JOIN species s ON s.id = k.species_id
+      WHERE k.status = 'approved' AND substr(k.caught_on, 1, 4) = :year AND (:team IS NULL OR k.team_id = :team) GROUP BY s.name`).all({ year, team });
+    for (const h of heaviest) if (bySpecies[h.species]) bySpecies[h.species].heaviestKg = h.kg;
+    // When: the hour each fish was logged at sea (GMT), fish caught only.
+    const hours = Array(24).fill(0);
+    const ids = outings.map((o) => o.id);
+    if (ids.length) {
+      for (const r of db.prepare(`SELECT CAST(strftime('%H', landed_at) AS INTEGER) AS h FROM outing_landings
+        WHERE outing_id IN (${ids.map(() => '?').join(',')}) AND lat IS NOT NULL AND fate <> 'lost'`).all(...ids)) hours[r.h] += 1;
+    }
+    const areas = {};
+    const techniques = {};
+    for (const o of outings) {
+      const n = caught(o, () => true);
+      add(areas, o.area?.trim(), n);
+      for (const t of o.technique) add(techniques, t, n);
+    }
+    const top = (map) => Object.entries(map).sort((a, b2) => b2[1] - a[1]).slice(0, 6).map(([name, fish]) => ({ name, fish }));
+    const report = {
+      boated: outings.reduce((n, o) => n + o.fish.reduce((m, f) => m + f.kept, 0), 0),
+      released: outings.reduce((n, o) => n + o.fish.reduce((m, f) => m + f.released, 0), 0),
+      lost: outings.reduce((n, o) => n + o.fish.reduce((m, f) => m + f.lost, 0), 0),
+      daysWithFish: outings.filter((o) => caught(o, () => true) > 0).length,
+      species: Object.values(bySpecies).sort((a, b2) => (b2.kept + b2.released) - (a.kept + a.released)),
+      hours, areas: top(areas), techniques: top(techniques),
+    };
     const range = (vals) => (vals.length ? [Math.min(...vals), Math.max(...vals)] : null);
     const good = outings.filter((o) => caught(o, billfish) > 0);
     const techniqueCount = {};
@@ -2377,7 +2413,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       years: years.length ? years : [year], year, species, speciesList,
       outings: outings.length, blank: outings.filter((o) => o.noCatch || !caught(o, () => true)).length,
       billfishPerDay: outings.length ? outings.reduce((n, o) => n + caught(o, billfish), 0) / outings.length : 0,
-      months,
+      months, report,
       best: good.length ? {
         days: good.length,
         water: range(good.map((o) => o.waterC).filter((v) => v != null)),

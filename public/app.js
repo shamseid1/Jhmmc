@@ -2155,24 +2155,55 @@ const pagesFor = (view) => ({
       const species = q.get('species') || '';
       const sq = new URLSearchParams({ ...(year && { year }), ...(country && scope === 'regional' && { country }), ...(species && { species }), ...(scope === 'mine' && { team: myBoat }) });
       const sz = await api(`/outings/season?${sq}`);
-      const max = Math.max(...sz.months.map((m) => m.perDay || 0), 0.01);
-      const short = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
+      const R = sz.report;
+      const max = Math.max(...sz.months.map((m) => m.count || 0), 1);
       const span = ([lo, hi]) => (lo === hi ? `${lo}` : `${lo}–${hi}`);
+      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      // The key numbers. Counts of what was caught, never rates per trip:
+      // lost fish and blank days often go unlogged, and would flatter a rate.
+      const caughtAll = R.boated + R.released;
+      const billfish = R.species.filter((x) => state.meta.species.find((m) => m.name === x.species)?.category === 'Billfish');
+      const billfishN = billfish.reduce((n, x) => n + x.kept + x.released, 0);
+      const billfishReleased = billfish.reduce((n, x) => n + x.released, 0);
+      const bestMonth = sz.months.reduce((b2, m) => (m.count > (b2?.count || 0) ? m : b2), null);
+      const peak = R.hours.reduce((b2, n, h) => (n > (b2?.n || 0) ? { h, n } : b2), null);
+      const heaviest = R.species.filter((x) => x.heaviestKg).sort((x, y) => y.heaviestKg - x.heaviestKg)[0];
+      const kpi = (value, label) => html`<div class="card s"><b>${value}</b><span>${label}</span></div>`;
+      const bars = (rows) => {
+        const top = Math.max(...rows.map((r) => r.fish), 1);
+        return rows.map((r) => raw(html`<div class="hbar"><span>${r.name}</span><i style="width:${Math.max(4, (r.fish / top) * 100)}%"></i><b>${r.fish}</b></div>`));
+      };
+      const hourMax = Math.max(...R.hours, 1);
       view.innerHTML = html`${raw(head)}${raw(chips)}
         ${sz.years.length > 1 ? raw(html`<div class="chips">${sz.years.map((y) => raw(html`<a class="chip2 ${y === sz.year ? 'on' : ''}" href="${link({ year: y })}">${y}</a>`))}</div>`) : ''}
-        <div class="stats3">
-          <div class="card s"><b>${sz.outings}</b><span>${sz.outings === 1 ? 'outing' : 'outings'}</span></div>
-          <div class="card s"><b>${sz.blank}</b><span>no catch</span></div>
-          <div class="card s"><b>${short(sz.billfishPerDay)}</b><span>billfish / day</span></div>
+        <div class="kpis">
+          ${raw(kpi(caughtAll, 'fish caught'))}${raw(kpi(billfishN, 'billfish'))}
+          ${raw(kpi(billfishN ? `${Math.round((billfishReleased / billfishN) * 100)}%` : '—', 'billfish released'))}
+          ${raw(kpi(R.species.filter((x) => x.kept + x.released).length, 'species'))}
+          ${raw(kpi(bestMonth ? MONTHS[bestMonth.month - 1] : '—', sz.species ? `best month · ${sz.species.toLowerCase()}` : 'best month'))}
+          ${raw(kpi(heaviest ? fmtWeight(heaviest.heaviestKg) : '—', heaviest ? `heaviest · ${heaviest.species.toLowerCase()}` : 'heaviest'))}
         </div>
-        ${sz.species ? raw(html`<div class="card pad">
-          <label class="season-species">${sz.species} per day fished, by month
+        <p class="small muted">From what was logged. Lost fish and blank days often aren't, so these are counts of fish caught, not rates per trip.</p>
+        ${R.species.length ? raw(html`<h2>Species</h2><div class="card table-wrap"><table>
+          <thead><tr><th>Species</th><th class="num">Boated</th><th class="num">Released</th><th class="num">Heaviest</th></tr></thead>
+          <tbody>${R.species.map((x) => raw(html`<tr><td>${x.species}</td><td class="num">${x.kept || ''}</td><td class="num">${x.released || ''}</td>
+            <td class="num">${x.heaviestKg ? fmtWeight(x.heaviestKg) : ''}</td></tr>`))}</tbody></table></div>
+          ${R.lost ? raw(html`<p class="small muted">Also ${plural(R.lost, 'fish')} logged as lost.</p>`) : ''}`) : ''}
+        ${sz.species ? raw(html`<h2>When: by month</h2><div class="card pad">
+          <label class="season-species">${sz.species} caught, by month
             <select id="season-species">${raw(options(sz.speciesList.map((x) => [x, x]), sz.species))}</select></label>
-          <div class="month-bars">${sz.months.map((m) => raw(html`<div class="mb" title="${m.outings} outings">
-            <i style="height:${m.perDay == null ? 0 : Math.max(3, (m.perDay / max) * 100)}%"></i></div>`))}</div>
+          <div class="month-bars">${sz.months.map((m) => raw(html`<div class="mb" title="${m.count} ${sz.species}">
+            <i style="height:${m.count ? Math.max(3, (m.count / max) * 100) : 0}%"></i></div>`))}</div>
           <div class="month-names">${'JFMAMJJASOND'.split('').map((l) => raw(`<span>${l}</span>`))}</div>
-          <p class="small muted">Fish caught (released or kept) per outing that month. Empty: no outings logged.</p>
         </div>`) : ''}
+        ${peak ? raw(html`<h2>When: time of day</h2><div class="card pad">
+          <div class="hour-bars">${R.hours.slice(5, 20).map((n, i) => raw(html`<div class="mb" title="${n} fish at ${i + 5}:00"><i style="height:${n ? Math.max(3, (n / hourMax) * 100) : 0}%"></i></div>`))}</div>
+          <div class="hour-names">${[5, 8, 11, 14, 17].map((h) => raw(`<span>${h}h</span>`))}</div>
+          <p class="small muted">Fish caught by the hour they were logged at sea (GMT). Busiest: ${peak.h}:00–${peak.h + 1}:00.</p>
+        </div>`) : ''}
+        ${R.areas.length ? raw(html`<h2>Where: rough areas</h2><div class="card pad">${bars(R.areas)}</div>`) : ''}
+        ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}
+          <p class="small muted">Fish caught on trips that used each technique.</p></div>`) : ''}
         <div class="card pad best-card">
           <b>Best conditions so far</b>
           ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,
@@ -2180,6 +2211,7 @@ const pagesFor = (view) => ({
             <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, ${scope === 'mine' ? 'your boat' : 'all boats'}.</span>`)
             : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
         </div>
+        ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/spots?year=${sz.year}">${raw(icon('pin'))} See them on my catch map</a></p>`) : ''}
         <p><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} Download ${scope === 'mine' ? "your boat's" : 'the whole'} log (spreadsheet)</a></p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
       return;
