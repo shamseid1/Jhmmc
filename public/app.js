@@ -529,7 +529,7 @@ async function renderGridMap(box, q, link) {
       ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
     </div>
     ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}
-    <p class="small muted">Each circle is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`;
+    <p class="small muted">Each circle marks an area about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`;
   if (!g.cells.length || !L) return;
   const map = L.map('grid-map', { zoomControl: true });
   addSatellite(L, map);
@@ -542,8 +542,8 @@ async function renderGridMap(box, q, link) {
   const most = Math.max(...g.cells.map((c) => c.fish));
   const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
   for (const c of g.cells) {
-    // A circle on each 10 km square's centre, 5 km across each way: the area, not a spot.
-    L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2], { radius: 5000, color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
+    // A circle on each 10 km area's centre, drawn a bit larger than the area so it reads well.
+    L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2], { radius: 8000, color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
       .addTo(map).bindPopup(`<b>${c.fish} ${c.fish === 1 ? 'fish' : 'fish'}</b><br>${c.boats === 1 ? '1 boat' : `${c.boats} boats`}`);
   }
   map.fitBounds(L.latLngBounds(g.cells.flatMap((c) => [[c.south, c.west], [c.north, c.east]])).pad(0.4), { maxZoom: 10 });
