@@ -519,7 +519,8 @@ function trendsHtml(tr, { perBoat, link, mine }) {
 // caught (one hue, light to dark), for a month and species. No pins, no boats.
 async function renderGridMap(box, q, link) {
   const gq = new URLSearchParams({ ...(q.get('gyear') && { year: q.get('gyear') }), ...(q.get('gspecies') && { species: q.get('gspecies') }), ...(q.get('gmonth') && { month: q.get('gmonth') }) });
-  const [g, L] = await Promise.all([api(`/outings/grid?${gq}`), loadLeaflet().catch(() => null)]);
+  const [g, L, { charts }] = await Promise.all([api(`/outings/grid?${gq}`), loadLeaflet().catch(() => null),
+    state.me?.teamId || state.me?.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
   if (!box.isConnected) return;
   const sel = (label, items, current) => `<select class="chip-select" data-go aria-label="${label}">${options(items, current)}</select>`;
   box.innerHTML = html`<h2>Where: month by month</h2>
@@ -529,10 +530,16 @@ async function renderGridMap(box, q, link) {
       ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
     </div>
     ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}
-    <p class="small muted">Each circle is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.</p>`;
+    <p class="small muted">Each circle is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth chart switches on and off with the layers button.' : ''}</p>`;
   if (!g.cells.length || !L) return;
   const map = L.map('grid-map', { zoomControl: true });
   addSatellite(L, map);
+  // The depth chart (crews only), under the circles; on unless switched off.
+  if (charts.length) {
+    const layers = Object.fromEntries(charts.map((c) => [`Depth chart: ${c.name}`,
+      L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
+    L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
+  }
   const most = Math.max(...g.cells.map((c) => c.fish));
   const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
   for (const c of g.cells) {
