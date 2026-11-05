@@ -1878,9 +1878,9 @@ const pagesFor = (view) => ({
             <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
           <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
           <div class="thumbs">
-            ${c.photos.map((x, i) => raw(html`<a href="${x.url}" target="_blank" rel="noopener"><img src="${x.url}" alt="${i || !c.scalePhotoUrl ? 'Crew photo' : 'On the scale'}"></a>`))}
+            ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
             ${c.scaleVideoUrl ? raw(html`<video src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
-            ${!c.photos.length && !c.scaleVideoUrl ? raw('<span class="small muted">No photo</span>') : ''}
+            ${!c.scalePhotoUrl && !c.scaleVideoUrl ? raw('<span class="small muted">No weigh station photo or video</span>') : ''}
           </div>
           ${c.disputes.length ? raw(html`<div class="disputes">
             <p><b>${raw(icon('flag'))} Disputed</b>: approving needs a note on how it was settled.</p>
