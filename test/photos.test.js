@@ -128,6 +128,11 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.equal(wall.biggest.species, 'Blue marlin');
     assert.equal(wall.fish.find((f) => f.species === 'Blue marlin').photoUrl, pub.photoUrl, 'the crew\'s photo on the tile');
     assert.equal((await as()('GET', '/trophies')).status, 400);
+    assert.equal(wall.stats.board, 'jhmmc', 'a JHMMC boat shows the JHMMC Season table');
+    // A guest angler (a typed name) has a page too.
+    const guestWall = (await as()('GET', '/trophies?angler=guest')).body;
+    assert.deepEqual(guestWall.fish.map((f) => f.species).sort(), ['Blue marlin', 'Sailfish'], 'by name, any case');
+    assert.equal(guestWall.stats.place, 1);
     // The "boated" line keeps the crew's photo from the log, as its own post.
     const all = (await as()('GET', '/feed')).body.items;
     const boated = all.find((x) => x.kind === 'log' && x.species === 'Blue marlin');

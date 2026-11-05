@@ -691,7 +691,8 @@ const MARLIN = '<svg class="marlin" viewBox="0 0 670 658"><use href="/marlin.svg
 const icon = (name, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 
 // Members have a profile page; anglers without an account link to their catches.
-const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/?angler=${encodeURIComponent(name)}`);
+// An angler with an account has a page; one typed in at the weigh-in (a guest) has one by name.
+const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/guest?name=${encodeURIComponent(name)}`);
 
 const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 
@@ -945,7 +946,7 @@ async function renderTrophies(box, query) {
     box.innerHTML = html`<div class="trophy-stats">
         <div class="card"><b>${stats.weighed}</b><span>fish weighed</span></div>
         <div class="card"><b>${stats.releases}</b><span>releases</span></div>
-        <div class="card"><b>${fmtPoints(stats.points).replace(' pts', '')}</b><span>season points${place}</span></div>
+        <div class="card"><b>${fmtPoints(stats.points).replace(' pts', '')}</b><span>${stats.board === 'jhmmc' ? 'JHMMC Season' : 'season points'}${place}</span></div>
       </div>
       ${biggest ? raw(html`<a class="card trophy-best" href="#/catch/${biggest.id}">
         ${biggest.photoUrl ? raw(html`<img src="${biggest.photoUrl}" alt="">`) : raw(`<span class="ph">${MARLIN}</span>`)}
@@ -3421,6 +3422,16 @@ const pagesFor = (view) => ({
     });
   },
 
+  // A guest angler (a name typed in at the weigh-in, no account): their fish.
+  async guest() {
+    const name = new URLSearchParams(location.hash.split('?')[1] || '').get('name') || '';
+    view.innerHTML = html`<h1>${name}</h1>
+      <p class="muted">Guest angler · not on the app</p>
+      <h2>Catches</h2>
+      <div id="trophies"></div>`;
+    await renderTrophies(view.querySelector('#trophies'), { angler: name });
+  },
+
   async user(id) {
     const { user, stats } = await api(`/users/${id}`);
     view.innerHTML = html`${user.photoUrl ? raw(html`<img class="avatar" src="${user.photoUrl}" alt="">`) : ''}<h1>${user.name}</h1>
@@ -3770,7 +3781,7 @@ function renderNav(active = state.navActive) {
   ];
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
-    boat: 'participants', user: 'participants', weigh: 'more',
+    boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
