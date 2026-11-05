@@ -1912,11 +1912,13 @@ const pagesFor = (view) => ({
       // Registered at the weigh station: its scale weight.
       // A released fish's estimate (it never sees a scale).
       const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` · ~${fmtWeight(l.weightKg)} (est.)` : '');
-      list.innerHTML = [...landed.map((l, n) => html`<li>${l.photoUrl ? raw(html`<img class="fo-thumb" src="${l.photoUrl}" alt="">`) : ''}<b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
+      list.innerHTML = [...landed.map((l, n) => html`<li class="fo-row"><div class="fo-main"><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate === 'released' && l.scaleKg == null ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
-            · <label class="link small photo-btn">📷 ${l.photoUrl ? 'Change photo' : 'Photo'}<input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label>
-            ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></li>`),
+            ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></div>
+          <label class="fo-photo" aria-label="${l.photoUrl ? 'Change the photo' : 'Add a photo'} of the ${l.species}">
+            ${l.photoUrl ? raw(html`<img src="${l.photoUrl}" alt="">`) : raw(html`${raw(icon('camera'))}<span>Add photo</span>`)}
+            <input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
             · <button type="button" class="link danger small" data-drop="${x.clientId}">Remove</button></div></li>`)].join('')

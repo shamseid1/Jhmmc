@@ -822,5 +822,11 @@ a.me-card { color: var(--text); text-decoration: none; }
 .feed-strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .feed-strip::-webkit-scrollbar { display: none; }
 .feed-strip img, .feed-strip video { height: 220px; width: auto; max-width: 80%; border-radius: 14px; object-fit: cover; scroll-snap-align: start; flex: none; background: #000; }
-.fo-thumb { float: right; width: 56px; height: 56px; object-fit: cover; border-radius: 10px; margin-left: 8px; }
-.photo-btn { cursor: pointer; }
+/* Log fish: each fish's photo square, on the right of its row. */
+.fo-row { display: flex; align-items: center; gap: 12px; }
+.fo-main { flex: 1; min-width: 0; }
+.fo-photo { flex: none; width: 64px; height: 64px; border-radius: 14px; border: 1.5px dashed var(--line); display: grid; place-items: center; align-content: center; gap: 2px;
+  color: var(--accent); font-size: 11px; font-weight: 700; cursor: pointer; overflow: hidden; background: var(--surface); }
+.fo-photo .icon { width: 22px; height: 22px; }
+.fo-photo img { width: 100%; height: 100%; object-fit: cover; }
+.fo-photo:has(img) { border: 0; }
