@@ -42,7 +42,8 @@ async function api(path, opts = {}) {
       // No answer at all (no signal, or the connection dropped). Reading is
       // safe to repeat; anything that changes something might have arrived, so
       // it's left for the person to send again.
-      if (init.method === 'GET' && attempt < RETRY_WAITS.length) {
+      // With no signal at all (or when asked not to wait) it fails at once.
+      if (init.method === 'GET' && !opts.once && navigator.onLine !== false && attempt < RETRY_WAITS.length) {
         await wait(RETRY_WAITS[attempt]);
         continue;
       }
@@ -58,6 +59,7 @@ async function api(path, opts = {}) {
   if (res.status === 401 && state.me) {
     // Session expired: send them back to sign in.
     state.me = null;
+    try { localStorage.removeItem('kept-me'); } catch {}
     location.hash = '#/login';
   }
   if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { status: res.status });
@@ -642,8 +644,18 @@ async function copyText(text, done = 'Copied') {
   }
 }
 
+// Who's signed in and the species list are kept on the phone too, so the app
+// (and Log fish) opens at sea even before the offline copy has them.
+const kept = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
+const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
 async function refreshMe() {
-  state.me = (await api('/me')).user;
+  try {
+    state.me = (await api('/me')).user;
+    keep('kept-me', state.me);
+  } catch (err) {
+    if (err.status) throw err;
+    state.me = kept('kept-me'); // no signal: the last one seen
+  }
 }
 
 // ---- share ----------------------------------------------------------------
@@ -1994,8 +2006,8 @@ const pagesFor = (view) => ({
     const live = day === today();
     // Without signal these fail; the fish waiting on the phone still show.
     const [got, list0] = await Promise.all([
-      api(`/outings/trip?date=${day}`).catch(() => null),
-      state.techniques ? null : api('/outings?country=__none__').catch(() => null),
+      api(`/outings/trip?date=${day}`, { once: true }).catch(() => null),
+      state.techniques ? null : api('/outings?country=__none__', { once: true }).catch(() => null),
     ]);
     let trip = got?.trip ?? null;
     if (list0) state.techniques = list0.techniques;
@@ -2671,6 +2683,7 @@ const pagesFor = (view) => ({
     view.querySelector('#logout')?.addEventListener('click', async () => {
       await api('/auth/logout', { method: 'POST' });
       state.me = null;
+      try { localStorage.removeItem('kept-me'); } catch {}
       state.clubs = null;
       location.hash = '#/';
     });
@@ -3736,7 +3749,14 @@ document.addEventListener('click', (e) => {
 });
 
 (async function init() {
-  [state.meta] = await Promise.all([api('/meta'), refreshMe()]);
+  [state.meta] = await Promise.all([
+    api('/meta').then((m) => (keep('kept-meta', m), m)).catch((err) => {
+      const m = kept('kept-meta');
+      if (!m) throw err;
+      return m;
+    }),
+    refreshMe(),
+  ]);
   window.addEventListener('hashchange', route);
   route();
 })();
