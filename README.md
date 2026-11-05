@@ -9,7 +9,7 @@ A shared catch log and social feed for big game fishing across West Africa. Club
 
 **Photos.** Each fish in Log fish has a 📷 button: take or pick a photo whenever there's a moment, and it shows on that fish's line in the feed. A weigh-in post shows its scale photos (and release videos) automatically. Photos are shrunk on the phone before uploading, which also strips the GPS spot from them.
 
-**Weigh-in** (what used to be called Register fish) is the official step at the weigh station, for points; Log fish is at sea, for the log. When a captain's boat has boarded fish today that aren't weighed in yet, the feed opens with "2 fish boarded today · Go to the weigh-in"; it updates as fish are weighed in and goes once they all are.
+**Weigh-in** (what used to be called Register fish) is the official step at the weigh station, for points; Log fish is at sea, for the log. When a captain's boat has boated fish today that aren't weighed in yet, the feed opens with "2 fish boated today · Go to the weigh-in"; it updates as fish are weighed in and goes once they all are.
 
 **Clubs.** Only JHMMC (the admin) opens clubs. Anyone else fills in the same form on the Clubs page, which sends a request: the admin gets a notification, approves or declines it on the Clubs page (More → Platform admin → Clubs shows how many are waiting), and the person hears back. A requested club stays hidden, and boats can't join it, until it's approved.
 

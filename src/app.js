@@ -2265,7 +2265,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         const article = /^[aeiou]/.test(sp) ? 'an' : 'a';
         pushWhere('logged', {
           title: 'Fish on',
-          body: `${team.name} ${{ released: 'released', kept: 'boarded', lost: 'lost' }[b.fate]} ${article} ${sp}.`,
+          body: `${team.name} ${{ released: 'released', kept: 'boated', lost: 'lost' }[b.fate]} ${article} ${sp}.`,
           url: '/#/',
         }, u, (p) => p.id !== u.id);
       }

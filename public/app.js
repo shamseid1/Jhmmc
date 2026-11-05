@@ -691,7 +691,7 @@ function feedLine(x) {
   const fish = (x.species || '').toLowerCase();
   if (x.kind === 'weighin') return `${x.boat || 'A boat'} weighed in ${plural(x.fish.length, 'fish')}.`;
   const boat = x.boat || 'A boat';
-  return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boarded ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
+  return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boated ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
 }
 const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-item announcement" data-ann="${x.id}">
   <div class="feed-head">
@@ -719,7 +719,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
     <li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li></ul>
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
-  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boarded' : 'Lost'}</span>
+  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
 </article>`);
 async function renderFeed(container, query = {}) {
   let before = null;
@@ -844,7 +844,7 @@ const pagesFor = (view) => ({
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
-    // Back at the dock: the boat boarded fish today that aren't weighed in yet.
+    // Back at the dock: the boat boated fish today that aren't weighed in yet.
     // Captains (and officials on a boat) get a way to the weigh-in, first thing.
     if (state.me?.canWeigh && state.me.teamId) {
       api(`/outings/trip?date=${today()}`).then(({ trip }) => {
@@ -854,7 +854,7 @@ const pagesFor = (view) => ({
         const counts = {};
         for (const l of waiting) counts[l.species] = (counts[l.species] || 0) + 1;
         box.innerHTML = html`<a class="card pad weigh-call" href="#/weigh">${raw(icon('weight'))}
-          <span><b>${plural(waiting.length, 'fish')} boarded today</b>
+          <span><b>${plural(waiting.length, 'fish')} boated today</b>
             <span class="small muted">${Object.entries(counts).map(([sp, n]) => `${n} ${sp.toLowerCase()}`).join(', ')}</span></span>
           <span class="btn primary">Go to the weigh-in</span></a>`;
       }).catch(() => {});

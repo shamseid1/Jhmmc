@@ -147,7 +147,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     sent.length = 0;
     await cap('POST', '/outings/fish', { speciesId: wahoo, fate: 'kept', lat: 6.31, lng: -10.8 });
     await settle();
-    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title, s.body]), [['crew-phone', 'Fish on', 'Sea Hunter boarded a wahoo.']]);
+    assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title, s.body]), [['crew-phone', 'Fish on', 'Sea Hunter boated a wahoo.']]);
     assert.equal(JSON.stringify(sent).includes('6.31'), false);
 
     // Only JHMMC (the admin) opens clubs: anyone else's is a request. It stays
