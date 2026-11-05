@@ -841,22 +841,33 @@ const pagesFor = (view) => ({
         </form></details>`) : ''}
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
+      <div id="finish-call"></div>
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
-    // Back at the dock: the boat boated fish today that aren't weighed in yet.
-    // Captains (and officials on a boat) get a way to the weigh-in, first thing.
-    if (state.me?.canWeigh && state.me.teamId) {
+    // Today's trip, for the cards at the top: fish boated but not weighed in yet,
+    // and from 3 pm a reminder to finish the trip (the boat's captain).
+    if (state.me?.teamId) {
       api(`/outings/trip?date=${today()}`).then(({ trip }) => {
-        const waiting = (trip?.landings || []).filter((l) => l.fate === 'kept' && !l.catchId);
-        const box = view.querySelector('#weigh-call');
-        if (!waiting.length || !box) return;
-        const counts = {};
-        for (const l of waiting) counts[l.species] = (counts[l.species] || 0) + 1;
-        box.innerHTML = html`<a class="card pad weigh-call" href="#/weigh">${raw(icon('weight'))}
-          <span><b>${plural(waiting.length, 'fish')} boated today</b>
-            <span class="small muted">${Object.entries(counts).map(([sp, n]) => `${n} ${sp.toLowerCase()}`).join(', ')}</span></span>
-          <span class="btn primary">Go to the weigh-in</span></a>`;
+        if (!trip) return;
+        const waiting = trip.landings.filter((l) => l.fate === 'kept' && !l.catchId);
+        const weigh = view.querySelector('#weigh-call');
+        if (state.me.canWeigh && waiting.length && weigh) {
+          const counts = {};
+          for (const l of waiting) counts[l.species] = (counts[l.species] || 0) + 1;
+          weigh.innerHTML = html`<a class="card pad weigh-call" href="#/weigh">${raw(icon('weight'))}
+            <span><b>${plural(waiting.length, 'fish')} boated today</b>
+              <span class="small muted">${Object.entries(counts).map(([sp, n]) => `${n} ${sp.toLowerCase()}`).join(', ')}</span></span>
+            <span class="btn primary">Go to the weigh-in</span></a>`;
+        }
+        // The season numbers need the trip's details; they're easy to forget.
+        const missing = [!trip.technique.length && 'technique', !trip.area && 'area', trip.depthM == null && 'depth', trip.waterC == null && 'water temp'].filter(Boolean);
+        const finish = view.querySelector('#finish-call');
+        if (state.me.isCaptain && new Date().getHours() >= 15 && trip.landings.length && missing.length && finish) {
+          finish.innerHTML = html`<a class="card pad weigh-call finish-call" href="#/fishon?finish=1">${raw(icon('edit'))}
+            <span><b>Finish today's trip</b><span class="small muted">Add the ${missing.join(', ')}: it helps the season numbers.</span></span>
+            <span class="btn">Finish the trip</span></a>`;
+        }
       }).catch(() => {});
     }
     // A tournament coming up or under way: JHMMC captains see it first thing, with
@@ -1265,7 +1276,7 @@ const pagesFor = (view) => ({
     const byBoat = q.has('team');
     view.innerHTML = html`<p class="back"><a href="#/" data-back>‹ Back</a></p>
       <h1>${title || 'Fish'}</h1>
-      <p class="muted">${scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · ${board === 'all' && scope !== 'tournaments' ? 'all time' : 'this season'}</p>
+      <p class="muted">${scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa'} · ${division === 'river' ? 'River' : 'Ocean'} · this season</p>
       <div class="stats3">
         <div class="card s"><b>${fish.length}</b><span>fish</span></div>
         <div class="card s"><b>${total}</b><span>points</span></div>
@@ -1321,7 +1332,7 @@ const pagesFor = (view) => ({
       <p class="small muted">${scope === 'tournaments'
         ? `JHMMC Tournaments: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
         : board === 'jhmmc' ? `JHMMC Season: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
-          : 'Every boat in West Africa, any day of the year: there is no season, every approved fish counts. Only JHMMC boats compete in the JHMMC Season and Tournaments.'}
+          : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
         Fish registered at the weigh station and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
       ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
@@ -1331,7 +1342,7 @@ const pagesFor = (view) => ({
         <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
         <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
           <td class="num"><a class="drill" href="${drill({ team: b.teamId })}">${b.catches}</a></td>
-          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : board === 'jhmmc' ? 'No approved catches yet this season.' : 'No approved catches yet.')}</tbody>
+          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
       </table></div>
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
@@ -2040,6 +2051,10 @@ const pagesFor = (view) => ({
     });
     draw();
     flush();
+    // From the feed's "Finish today's trip": straight to the trip details.
+    if (new URLSearchParams(location.hash.split('?')[1] || '').get('finish')) {
+      setTimeout(() => view.querySelector('#fo-trip')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
     // Keep a GPS fix warm so the spot is right where the fish came aboard.
     const gps = view.querySelector('#fo-gps');
     let fix = null;

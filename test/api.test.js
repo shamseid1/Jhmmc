@@ -764,7 +764,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('PATCH', '/settings/season', { start: '2027-01-01', end: '2026-01-01' })).status, 400);
     r = await sec('PATCH', '/settings/season', { start: day(30), end: day(300) });
     assert.equal((await as()('GET', '/points?division=ocean&board=jhmmc')).body.boats.length, 0, 'today is outside the new JHMMC season');
-    assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 2, 'All of West Africa has no season');
+    assert.equal((await as()('GET', '/points?division=ocean')).body.boats.length, 0, 'All of West Africa uses the same season');
 
     // The admin deletes an account: the captain's catches stay under their name
     // and a crew member takes over the boat.

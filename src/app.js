@@ -1597,11 +1597,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const start = setting('season_start');
     const end = setting('season_end');
     const base = `FROM catches k JOIN teams t ON t.id = k.team_id
-      WHERE k.status = 'approved' AND ${board === 'jhmmc' ? 'k.club_id = :home AND k.caught_on BETWEEN :start AND :end' : THROUGH_JHMMC} AND t.division = :division
+      WHERE k.status = 'approved' AND ${board === 'jhmmc' ? 'k.club_id = :home' : THROUGH_JHMMC} AND t.division = :division AND k.caught_on BETWEEN :start AND :end
       ${scope === 'tournaments' ? `AND EXISTS (SELECT 1 FROM events e JOIN tournament_entries te ON te.event_id = e.id
         WHERE e.kind = 'tournament' AND te.team_id = k.team_id AND k.caught_on BETWEEN e.date AND COALESCE(e.end_date, e.date))` : ''}`;
-    // All of West Africa has no season: boats fish whenever they want, and every approved fish counts.
-    return { division, scope, board, start, end, base, params: { division, ...(board === 'jhmmc' ? { start, end, home: homeClubId() } : {}) } };
+    // All of West Africa uses the same season dates as JHMMC.
+    return { division, scope, board, start, end, base, params: { division, start, end, ...(board === 'jhmmc' ? { home: homeClubId() } : {}) } };
   }
   // Behind a number on the points tables: one boat's or one angler's fish.
   api.get('/points/fish', (req, res) => {
