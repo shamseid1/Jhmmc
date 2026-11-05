@@ -892,7 +892,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
 </article>` : html`<article class="feed-item">
   <div class="feed-head">
     <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
-      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('boat')}</span>`)}
+      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}
       <b>${x.boat || 'A boat'}</b></a>
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
