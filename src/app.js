@@ -1235,7 +1235,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     if (!['weighins', 'announcements'].includes(type)) {
       parts.push(`SELECT 'log' AS kind, l.id, datetime(l.landed_at) AS at, t.id AS teamId, t.name AS boat, t.photo AS boatPhoto,
-          s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, NULL AS body
+          s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, l.photo AS body
         FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
         WHERE COALESCE(l.client_id, '') NOT LIKE 'reg-%'
           AND (:team IS NULL OR o.team_id = :team) AND (:user IS NULL OR l.user_id = :user) AND (:club IS NULL OR t.club_id = :club)`);
@@ -1249,19 +1249,24 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points,
+    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
       WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
       ORDER BY k.weight_kg IS NULL, k.weight_kg DESC, k.id`);
     const items = rows.slice(0, 30).map(({ boatPhoto, ...x }) => {
       const item = { ...x, boatPhotoUrl: photoUrl(boatPhoto) };
+      if (x.kind === 'log') {
+        item.photoUrl = photoUrl(x.body);
+        item.body = null;
+      }
       if (x.kind === 'announcement') item.canDelete = !!req.user && (x.userId === req.user.id || isAdminUser(req.user));
       if (x.kind === 'weighin') {
         // The day's fish for that boat, heaviest first.
         item.day = x.title;
         item.title = null;
-        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map((f) => ({ ...f, released: !!f.released }));
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
+          photoUrl: photoUrl(scalePhoto), videoUrl: photoUrl(scaleVideo) }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
@@ -2190,7 +2195,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
-  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt,
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, l.photo, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
@@ -2198,7 +2203,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const o = db.prepare(`${OUTING_SELECT} WHERE o.id = ?`).get(outingId);
     if (!o) return null;
     const out = presentOuting(o, viewer);
-    return { ...out, line: outingLine(out), landings: landingsOf(outingId) };
+    return { ...out, line: outingLine(out), landings: landingsOf(outingId).map(({ photo, ...l }) => ({ ...l, photoUrl: photoUrl(photo) })) };
   };
   // The crew of the boat (and whoever logged the line, and the admin) work on the trip.
   const onTrip = (user, o) => isAdminUser(user) || o.user_id === user.id || (o.team_id != null && o.team_id === user.teamId);
@@ -2291,16 +2296,29 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ trip: tripFor(l.outing_id, req.user) });
   });
 
+  // A photo of a logged fish, whenever the crew has a moment; it shows on the feed.
+  api.post('/outings/fish/:id/photo', auth.requireUser, upload.single('photo'), (req, res) => {
+    const l = db.prepare(`SELECT l.id, l.outing_id, o.user_id, o.team_id
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
+    if (!l || !onTrip(req.user, l)) {
+      removeUpload(req.file?.filename);
+      return res.status(l ? 403 : 404).json({ error: l ? "Only the boat's crew can add its photos." : 'Fish not found.' });
+    }
+    if (savePhoto(req, res, 'outing_landings', l.id)) res.json({ trip: tripFor(l.outing_id, req.user) });
+  });
+
   // Logged by mistake: take the fish back off the line.
   api.delete('/outings/fish/:id', auth.requireUser, (req, res) => {
     const l = db.prepare(`SELECT l.id, l.outing_id, l.species_id, l.fate, o.user_id, o.team_id
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
     if (!l) return res.status(404).json({ error: 'Fish not found.' });
     if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    const photo = db.prepare('SELECT photo FROM outing_landings WHERE id = ?').get(l.id).photo;
     db.exec('BEGIN');
     db.prepare('DELETE FROM outing_landings WHERE id = ?').run(l.id);
     bump(l.outing_id, l.species_id, l.fate, -1);
     db.exec('COMMIT');
+    removeUpload(photo);
     res.json({ trip: tripFor(l.outing_id, req.user) });
   });
 

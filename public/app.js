@@ -710,6 +710,10 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
   <p class="feed-line">${feedLine(x)}</p>
+  ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
+  ${x.kind === 'weighin' && x.fish.some((f) => f.photoUrl || f.videoUrl) ? raw(html`<div class="feed-strip">${x.fish.map((f) => raw(f.photoUrl
+    ? html`<a href="#/catch/${f.id}"><img src="${f.photoUrl}" alt="${f.species} on the scale" loading="lazy"></a>`
+    : f.videoUrl ? html`<video src="${f.videoUrl}" controls playsinline preload="metadata"></video>` : ''))}</div>`) : ''}
   ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
@@ -1908,9 +1912,10 @@ const pagesFor = (view) => ({
       // Registered at the weigh station: its scale weight.
       // A released fish's estimate (it never sees a scale).
       const scale = (l) => (l.scaleKg != null ? ` · ⚖️ ${fmtWeight(l.scaleKg)}` : l.fate === 'released' && l.weightKg ? ` · ~${fmtWeight(l.weightKg)} (est.)` : '');
-      list.innerHTML = [...landed.map((l, n) => html`<li><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
+      list.innerHTML = [...landed.map((l, n) => html`<li>${l.photoUrl ? raw(html`<img class="fo-thumb" src="${l.photoUrl}" alt="">`) : ''}<b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate === 'released' && l.scaleKg == null ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
+            · <label class="link small photo-btn">📷 ${l.photoUrl ? 'Change photo' : 'Photo'}<input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label>
             ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></li>`),
         ...waiting.map((x, n) => html`<li><b>${landed.length + n + 1}. ${x.species}</b> <span class="pill ${x.fate}">${x.fate}</span>
           <div class="small muted">${where(x)} · <b>waiting for signal</b>
@@ -1971,6 +1976,22 @@ const pagesFor = (view) => ({
         if (view.contains(list)) draw();
       }
     }
+    // A photo of a logged fish: take one or pick one, any time.
+    list.addEventListener('change', async (e) => {
+      const input = e.target.closest('[data-photo-for]');
+      const file = input?.files?.[0];
+      if (!file) return;
+      toast('Adding the photo…');
+      try {
+        const fd = new FormData();
+        fd.set('photo', await shrinkPhoto(file));
+        trip = (await api(`/outings/fish/${input.dataset.photoFor}/photo`, { method: 'POST', form: fd })).trip;
+        toast('Photo added. It shows on the feed.');
+        draw();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
     list.addEventListener('click', async (e) => {
       const est = e.target.closest('[data-estimate]');
       if (est) {

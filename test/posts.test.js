@@ -182,6 +182,16 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     trip = (await cap('GET', `/outings/trip?date=${today}`)).body.trip;
     assert.equal(trip.fish.find((f) => f.speciesId === tuna).kept, 4);
     assert.deepEqual(trip.landings.filter((l) => l.speciesId === tuna).at(-1), { ...trip.landings.filter((l) => l.speciesId === tuna).at(-1), scaleKg: 22, fromScale: 0, lat: 6.5 });
+    // A photo on a logged fish shows on the feed; the weigh-in post carries the scale photos.
+    const someTuna = trip.landings.find((l) => l.speciesId === tuna);
+    const pic = new FormData();
+    pic.set('photo', new Blob([PNG], { type: 'image/png' }), 'tuna.png');
+    assert.equal((await sec('POST', `/outings/fish/${someTuna.id}/photo`, pic)).status, 403, "not the secretary's boat");
+    const withPic = (await cap('POST', `/outings/fish/${someTuna.id}/photo`, pic)).body.trip.landings.find((l) => l.id === someTuna.id);
+    assert.match(withPic.photoUrl, /^\/uploads\//);
+    const feedNow = (await as()('GET', `/feed?team=${boat.id}`)).body.items;
+    assert.equal(feedNow.find((x) => x.kind === 'log' && x.id === someTuna.id).photoUrl, withPic.photoUrl);
+    assert.ok(feedNow.find((x) => x.kind === 'weighin' && x.day === today).fish.every((f) => f.photoUrl || f.videoUrl), 'scale photos or release videos');
     // The catch map shows the tunas once each, with their scale weights.
     const tunaMap = (await cap('GET', '/me/spots')).body.spots.filter((x) => x.species === 'Yellowfin tuna');
     assert.deepEqual(tunaMap.map((x) => [x.kind, x.weightKg, x.estimate]).sort(), [['log', 22, false], ['log', 28, false], ['log', 35, false], ['log', 41, false]]);

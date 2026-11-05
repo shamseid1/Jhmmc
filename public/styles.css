@@ -817,3 +817,10 @@ a.me-card { color: var(--text); text-decoration: none; }
 .weigh-call { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; color: var(--text); text-decoration: none; flex-wrap: wrap; }
 .weigh-call > .icon { width: 28px; height: 28px; color: var(--accent); }
 .weigh-call > span:nth-of-type(1) { flex: 1; display: grid; min-width: 150px; }
+/* Photos: a logged fish's photo, and a weigh-in's scale photos and release videos. */
+.feed-photo { width: 100%; max-height: 420px; object-fit: cover; border-radius: 14px; }
+.feed-strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.feed-strip::-webkit-scrollbar { display: none; }
+.feed-strip img, .feed-strip video { height: 220px; width: auto; max-width: 80%; border-radius: 14px; object-fit: cover; scroll-snap-align: start; flex: none; background: #000; }
+.fo-thumb { float: right; width: 56px; height: 56px; object-fit: cover; border-radius: 10px; margin-left: 8px; }
+.photo-btn { cursor: pointer; }
