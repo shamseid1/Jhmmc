@@ -1057,9 +1057,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         station = team.home_port || (team.country ? `${team.country} weigh station` : 'Weigh station');
       }
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
-      // Rule 8: every fish weighed is photographed hanging on the scale;
-      // a released fish is proved by a video of the release.
-      if (!released && !file) return { error: 'Add the photo of the fish hanging on the scale.' };
+      // Rule 8: every fish weighed is shown hanging on the scale with the weight
+      // readable, in a photo or a video; a released fish by a video of the release.
+      if (!released && !file && !video) return { error: 'Add a photo or video of the fish hanging on the scale, with the weight readable.' };
       if (released && !video) return { error: 'Add the video of the release.' };
     }
     const weighed = official && !released;

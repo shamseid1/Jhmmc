@@ -70,7 +70,10 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     assert.deepEqual([withVideo.videoUrl, /\.mp4$/.test(withVideo.scaleVideoUrl), /\.png$/.test(withVideo.scalePhotoUrl)], [null, true, true]);
     const onlyVideo = registration({ speciesId: sp.Wahoo, weightKg: '18' });
     onlyVideo.set('scaleVideo', MP4(), 'scale.mp4');
-    assert.match((await cap('POST', '/weigh', onlyVideo)).body.error, /photo/, 'the scale photo is still required');
+    const videoOnly = (await cap('POST', '/weigh', onlyVideo)).body.catch;
+    assert.ok(videoOnly && /\.mp4$/.test(videoOnly.scaleVideoUrl) && !videoOnly.scalePhotoUrl, 'a video from the fish to the scale is enough on its own');
+    await cap('DELETE', `/catches/${videoOnly.id}`);
+    assert.match((await cap('POST', '/weigh', registration({ speciesId: sp.Wahoo, weightKg: '18' }))).body.error, /photo or video/, 'but one of them is needed');
     await cap('DELETE', `/catches/${withVideo.id}`);
     await cap('DELETE', `/catches/${shown.id}`);
     // A post's date is optional: today.

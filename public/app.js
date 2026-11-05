@@ -1435,7 +1435,7 @@ const pagesFor = (view) => ({
       <h1>Weigh-in</h1>
       <p class="small"><b>At the weigh station, for points.</b> Fish logged at sea with Log fish don't score until they're weighed in here.</p>
       <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
-        Every fish weighed needs a photo of it hanging on the scale (rule 8).</p>
+        Every fish weighed needs a photo or video of it hanging on the scale, the weight readable (rule 8).</p>
       <p class="small"><b>Weigh in the order they were caught</b> (first caught, first on this sheet): each weight then goes on the right fish in the boat's log.</p>
       ${onNow && (official || !atHomePort(own)) ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
       <form class="card pad stack" id="sheet">
@@ -1487,7 +1487,8 @@ const pagesFor = (view) => ({
       </div>
       <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       <div class="scale-pick">
-        <span class="scale-label" data-kept="On the scale: a photo, and a video if you like" data-released="Video of the release (required)">On the scale: a photo, and a video if you like</span>
+        <span class="scale-label" data-kept="On the scale: a photo or a video (one is enough)" data-released="Video of the release (required)">On the scale: a photo or a video (one is enough)</span>
+        <span class="small muted scale-hint">The whole fish hanging, and the weight readable. A short video from the fish to the scale works best.</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
         <video class="scale-video-preview" controls playsinline preload="metadata" hidden></video>
         <div class="scale-buttons">
@@ -1657,6 +1658,7 @@ const pagesFor = (view) => ({
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
         const video = scaleVideos.get(row);
         if (get('released').checked && !video) throw new Error(`Fish ${i + 1}: add the video of the release.`);
+        if (!get('released').checked && !photo && !video) throw new Error(`Fish ${i + 1}: add a photo or video of the fish on the scale.`);
         if (video) fd.set(`scalevideo_${i}`, video);
       }
       fd.set('fish', JSON.stringify(fish));
