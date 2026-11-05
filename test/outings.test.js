@@ -137,6 +137,29 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await marwan('GET', `/outings/season?team=${exocet}&year=2026`)).body.outings, own.filter((o) => o.date.startsWith('2026')).length);
     assert.match((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Exocet/);
     assert.doesNotMatch((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Bottom Line/);
+    // A wrong tap fixed: the species or the result changes, the time and spot stay.
+    const tapped = (await marwan('GET', '/outings/trip?date=2026-10-20')).body.trip.landings[0];
+    let fixed = (await marwan('PATCH', `/outings/fish/${tapped.id}`, { speciesId: sp['Blue marlin'], fate: 'kept' })).body.trip;
+    const now1 = fixed.landings.find((l) => l.id === tapped.id);
+    assert.deepEqual([now1.species, now1.fate, now1.lat, now1.landedAt], ['Blue marlin', 'kept', tapped.lat, tapped.landedAt]);
+    assert.equal(fixed.fish.find((f) => f.species === 'Blue marlin').kept, 1, 'the counts follow');
+    assert.equal((await bob('PATCH', `/outings/fish/${tapped.id}`, { fate: 'lost' })).status, 403);
+    assert.match((await marwan('PATCH', `/outings/fish/${tapped.id}`, { fate: 'eaten' })).body.error, /Kept, released or lost/);
+    await marwan('PATCH', `/outings/fish/${tapped.id}`, { speciesId: tapped.speciesId, fate: tapped.fate });
+
+    // Outings: by month and species, 30 at a time.
+    const oct = (await bob('GET', '/outings?month=2026-10')).body;
+    assert.ok(oct.outings.every((o) => o.date.startsWith('2026-10')) && oct.months.includes('2026-10'));
+    assert.ok((await bob('GET', `/outings?species=${sp.Sailfish}`)).body.outings.every((o) => o.fish.some((f) => f.species === 'Sailfish')));
+    assert.ok(oct.species.some((x) => x.name === 'Sailfish') && oct.boats.some((x) => x.name === 'Exocet'));
+
+    // One row per fish: the boat's own crew get the spots, nobody else.
+    const ownCsv = (await marwan('GET', `/outings/fish.csv?team=${trip.teamId}`)).body;
+    assert.match(ownCsv, /Latitude/);
+    assert.match(ownCsv, /"Sailfish","Released"/);
+    assert.doesNotMatch((await bob('GET', `/outings/fish.csv?team=${trip.teamId}`)).body, /Latitude/);
+    assert.doesNotMatch((await as()('GET', '/outings/fish.csv')).body, /Latitude|9\.41/);
+
     // Trends: year against year, what's biting now, water and billfish by week.
     const tr = (await as()('GET', '/outings/trends?species=Sailfish')).body;
     assert.equal(tr.species, 'Sailfish');

@@ -2175,14 +2175,27 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/outings', (req, res) => {
     const country = str(req.query.country, 60);
     const before = intId(req.query.before);
-    // ?team=: one boat's own log (My boat).
+    // ?team=: one boat's own log (My boat). ?month=YYYY-MM and ?species= narrow it.
     const team = intId(req.query.team);
+    const month = /^\d{4}-\d{2}$/.test(req.query.month ?? '') ? req.query.month : null;
+    const species = intId(req.query.species);
+    // Newest first, 30 at a time: ?before= the last trip's date and id ("2026-10-20:12").
+    const [beforeDate, beforeId] = /^\d{4}-\d{2}-\d{2}:\d+$/.test(req.query.before ?? '') ? req.query.before.split(':') : [null, null];
     const rows = db.prepare(`${OUTING_SELECT}
-      WHERE (:country IS NULL OR o.country = :country) AND (:before IS NULL OR o.id < :before) AND (:team IS NULL OR o.team_id = :team)
-      ORDER BY o.date DESC, o.id DESC LIMIT 31`).all({ country, before, team });
+      WHERE (:country IS NULL OR o.country = :country) AND (:team IS NULL OR o.team_id = :team)
+        AND (:month IS NULL OR substr(o.date, 1, 7) = :month)
+        AND (:species IS NULL OR EXISTS (SELECT 1 FROM outing_fish f WHERE f.outing_id = o.id AND f.species_id = :species))
+        AND (:bd IS NULL OR o.date < :bd OR (o.date = :bd AND o.id < :bi))
+      ORDER BY o.date DESC, o.id DESC LIMIT 31`).all({ country, team, month, species, bd: beforeDate, bi: Number(beforeId) || 0 });
     const list = rows.slice(0, 30).map((o) => presentOuting(o, req.user)).map((o) => ({ ...o, line: outingLine(o) }));
     const countries = db.prepare('SELECT DISTINCT country FROM outings WHERE country IS NOT NULL ORDER BY country').all().map((r) => r.country);
-    res.json({ outings: list, countries, techniques: TECHNIQUES, nextBefore: rows.length > 30 ? list.at(-1).id : null });
+    // What the filters can offer.
+    const months = db.prepare('SELECT DISTINCT substr(date, 1, 7) AS m FROM outings WHERE (:team IS NULL OR team_id = :team) ORDER BY m DESC').all({ team }).map((r) => r.m);
+    const speciesHere = db.prepare(`SELECT DISTINCT s.id, s.name FROM outing_fish f JOIN outings o ON o.id = f.outing_id JOIN species s ON s.id = f.species_id
+      WHERE (:team IS NULL OR o.team_id = :team) ORDER BY s.name`).all({ team });
+    const boats = team ? [] : db.prepare('SELECT DISTINCT t.id, t.name FROM outings o JOIN teams t ON t.id = o.team_id ORDER BY t.name COLLATE NOCASE').all();
+    const last = rows.length > 30 ? list.at(-1) : null;
+    res.json({ outings: list, countries, months, species: speciesHere, boats, techniques: TECHNIQUES, nextBefore: last ? `${last.date}:${last.id}` : null });
   });
 
   // The whole log as a spreadsheet (one line per outing), for keeping or merging.
@@ -2294,6 +2307,25 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
     if (!l) return res.status(404).json({ error: 'Fish not found.' });
     if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    // A wrong tap: change the species or the result, keeping the fish's time and spot.
+    if ('speciesId' in req.body || 'fate' in req.body) {
+      const cur = db.prepare('SELECT species_id, fate, catch_id, client_id FROM outing_landings WHERE id = ?').get(l.id);
+      if (cur.client_id?.startsWith('reg-')) return res.status(400).json({ error: 'This fish comes from the weigh-in; ask the secretary to change it.' });
+      const speciesId = 'speciesId' in req.body ? intId(req.body.speciesId) : cur.species_id;
+      if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return res.status(400).json({ error: 'Choose the species.' });
+      const fate = 'fate' in req.body ? req.body.fate : cur.fate;
+      if (!FATES.includes(fate)) return res.status(400).json({ error: 'Kept, released or lost?' });
+      db.exec('BEGIN');
+      bump(l.outing_id, cur.species_id, cur.fate, -1);
+      bump(l.outing_id, speciesId, fate, 1);
+      // A different fish now: let go of a weigh-in it no longer matches, and look for one it does.
+      const keep = cur.catch_id && speciesId === cur.species_id && fate !== 'lost';
+      db.prepare(`UPDATE outing_landings SET species_id = ?, fate = ?, catch_id = ?, weight_kg = CASE WHEN ? = 'released' THEN weight_kg END WHERE id = ?`)
+        .run(speciesId, fate, keep ? cur.catch_id : null, fate, l.id);
+      db.exec('COMMIT');
+      if (!keep) linkLogToRegistration(l.id);
+      return res.json({ trip: tripFor(l.outing_id, req.user) });
+    }
     if (l.fate !== 'released') return res.status(400).json({ error: 'Kept fish get their weight on the scale.' });
     const weightKg = estimate(req.body.weightKg);
     if (Number.isNaN(weightKg)) return res.status(400).json({ error: 'The estimated weight must be in kilograms.' });
@@ -2342,6 +2374,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ trip: tripFor(o.id, req.user) });
   });
 
+  // One row per fish, for working on trends in a spreadsheet. A boat's own crew
+  // (and the admin) also get each fish's GPS spot; nobody else ever does.
+  api.get('/outings/fish.csv', (req, res) => {
+    const team = intId(req.query.team);
+    const withSpots = !!team && !!req.user && (req.user.teamId === team || isAdminUser(req.user));
+    const rows = db.prepare(`SELECT o.date, l.landed_at AS at, l.lat, l.lng, COALESCE(t.name, o.boat) AS boat, o.country, s.name AS species, l.fate,
+        (SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected') AS scaleKg, l.weight_kg AS estimateKg,
+        o.area, o.depth_m AS depthM, o.water_c AS waterC, o.technique, COALESCE(l.client_id, '') LIKE 'reg-%' AS fromScale
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
+      WHERE (:team IS NULL OR o.team_id = :team) ORDER BY o.date, l.id`).all({ team });
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['Date', 'Time (local)', 'Boat', 'Country', 'Species', 'Result', 'Scale weight (kg)', 'Estimated weight (kg)',
+      'Rough area', 'Water depth (m)', 'Water temp (°C)', 'Technique', ...(withSpots ? ['Latitude', 'Longitude'] : [])];
+    const lines = rows.map((r) => {
+      const time = r.lat != null && !r.fromScale ? `${String(localHour(r.at, r.country)).padStart(2, '0')}:${r.at.slice(14, 16)}` : '';
+      return [r.date, time, r.boat, r.country, r.species, { kept: 'Boated', released: 'Released', lost: 'Lost' }[r.fate], r.scaleKg, r.estimateKg,
+        r.area, r.depthM, r.waterC, (r.technique || '').split('|').join(', '), ...(withSpots ? [r.lat, r.lng] : [])].map(cell).join(',');
+    });
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${team ? 'boat' : 'regional'}-fish.csv"` });
+    res.send('\ufeff' + [head.map(cell).join(','), ...lines].join('\r\n'));
+  });
+
   api.delete('/outings/:id', (req, res) => {
     const o = db.prepare('SELECT id, user_id AS userId FROM outings WHERE id = ?').get(intId(req.params.id) ?? 0);
     if (!o) return res.status(404).json({ error: 'Outing not found.' });
@@ -2352,6 +2406,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // A year at a glance: outings, blank days, billfish per day fished, a chosen
   // species per day fished each month, and the conditions on billfish days.
+  // Local time for the time-of-day charts: GMT for most of the coast, an hour
+  // ahead from Benin and Niger down to Gabon, an hour behind on Cabo Verde.
+  const UTC_OFFSET = { Benin: 1, Cameroon: 1, 'Equatorial Guinea': 1, Gabon: 1, Niger: 1, Nigeria: 1, 'Cabo Verde': -1 };
+  const localHour = (iso, country) => (new Date(iso).getUTCHours() + (UTC_OFFSET[country] ?? 0) + 24) % 24;
+
   api.get('/outings/season', (req, res) => {
     const team = intId(req.query.team);
     const years = db.prepare("SELECT DISTINCT substr(date, 1, 4) AS y FROM outings WHERE (:team IS NULL OR team_id = :team) ORDER BY y DESC")
@@ -2386,8 +2445,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const hours = Array(24).fill(0);
     const ids = outings.map((o) => o.id);
     if (ids.length) {
-      for (const r of db.prepare(`SELECT CAST(strftime('%H', landed_at) AS INTEGER) AS h FROM outing_landings
-        WHERE outing_id IN (${ids.map(() => '?').join(',')}) AND lat IS NOT NULL AND fate <> 'lost'`).all(...ids)) hours[r.h] += 1;
+      for (const r of db.prepare(`SELECT l.landed_at AS at, o.country FROM outing_landings l JOIN outings o ON o.id = l.outing_id
+        WHERE l.outing_id IN (${ids.map(() => '?').join(',')}) AND l.lat IS NOT NULL AND l.fate <> 'lost'`).all(...ids)) hours[localHour(r.at, r.country)] += 1;
     }
     const areas = {};
     const techniques = {};

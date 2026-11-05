@@ -863,3 +863,8 @@ a.me-card { color: var(--text); text-decoration: none; }
 /* Log fish at sea: the buttons wait for the GPS spot. */
 .fates.waiting .fate { opacity: .45; }
 .gps-wait { color: var(--accent); font-weight: 700; }
+/* Editing a logged fish, in its row. */
+.fo-row:has(.fo-edit) { flex-wrap: wrap; }
+.fo-edit { flex-basis: 100%; padding-top: 8px; }
+.fo-edit .fate { padding: 10px 6px; font-size: 15px; }
+.fo-edit .fate.on { outline: 3px solid currentColor; outline-offset: -3px; }

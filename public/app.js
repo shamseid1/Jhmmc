@@ -2046,7 +2046,7 @@ const pagesFor = (view) => ({
       list.innerHTML = [...landed.map((l, n) => html`<li class="fo-row"><div class="fo-main"><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate === 'released' && l.scaleKg == null ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
-            ${l.fromScale ? '' : raw(html`· <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></div>
+            ${l.fromScale ? '' : raw(html`· <button type="button" class="link small" data-edit="${l.id}">Edit</button> · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></div>
           <label class="fo-photo" aria-label="${l.photoUrl ? 'Change the photo' : 'Add a photo'} of the ${l.species}">
             ${l.photoUrl ? raw(html`<img src="${l.photoUrl}" alt="">`) : raw(html`${raw(icon('camera'))}<span>Add photo</span>`)}
             <input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label></li>`),
@@ -2126,6 +2126,41 @@ const pagesFor = (view) => ({
       }
     });
     list.addEventListener('click', async (e) => {
+      // A wrong tap: change the species or the result; the time and spot stay.
+      const edit = e.target.closest('[data-edit]');
+      if (edit) {
+        const l = trip.landings.find((x) => String(x.id) === edit.dataset.edit);
+        const row = edit.closest('li');
+        row.querySelector('.fo-edit')?.remove();
+        row.insertAdjacentHTML('beforeend', html`<div class="fo-edit stack">
+          <select aria-label="Species">${raw(speciesOptions(l.speciesId))}</select>
+          <div class="fates">${['kept', 'released', 'lost'].map((f) => raw(html`<button type="button" class="fate ${f}${f === l.fate ? ' on' : ''}" data-set-fate="${f}">${f[0].toUpperCase() + f.slice(1)}</button>`))}</div>
+          <div class="row-buttons"><button type="button" class="primary" data-save="${l.id}">Save</button><button type="button" data-cancel>Cancel</button></div></div>`);
+        return;
+      }
+      const setFate = e.target.closest('[data-set-fate]');
+      if (setFate) {
+        for (const b2 of setFate.parentElement.children) b2.classList.toggle('on', b2 === setFate);
+        return;
+      }
+      if (e.target.closest('[data-cancel]')) {
+        e.target.closest('.fo-edit').remove();
+        return;
+      }
+      const save = e.target.closest('[data-save]');
+      if (save) {
+        const box = save.closest('.fo-edit');
+        try {
+          trip = (await api(`/outings/fish/${save.dataset.save}`, { method: 'PATCH', body: {
+            speciesId: box.querySelector('select').value, fate: box.querySelector('[data-set-fate].on').dataset.setFate,
+          } })).trip;
+          toast('Fish changed.');
+          draw();
+        } catch (err) {
+          toast(err.message);
+        }
+        return;
+      }
       const est = e.target.closest('[data-estimate]');
       if (est) {
         const typed = prompt(`Estimated weight of the released fish (${unit('weight')})`, toUnit('weight', est.dataset.kg || null));
@@ -2275,8 +2310,13 @@ const pagesFor = (view) => ({
         <a role="tab" href="${link({ tab: 'season' })}" aria-selected="${tab === 'season'}">Season</a>
         <a role="tab" href="${link({ tab: 'trends' })}" aria-selected="${tab === 'trends'}">Trends</a>
       </div>`;
-    const listQ = new URLSearchParams({ ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
-    const { outings, countries, nextBefore } = await api(`/outings${listQ.size ? `?${listQ}` : ''}`);
+    // Outings filters: month and species (and, on Regional, boat).
+    const fMonth = q.get('month') || '';
+    const fSp = q.get('sp') || '';
+    const fBoat = scope === 'regional' ? q.get('boat') || '' : '';
+    const listQ = new URLSearchParams({ ...(country && scope === 'regional' && { country }), ...(scope === 'mine' ? { team: myBoat } : fBoat ? { team: fBoat } : {}),
+      ...(tab === 'outings' && fMonth && { month: fMonth }), ...(tab === 'outings' && fSp && { species: fSp }) });
+    const { outings, countries, nextBefore, months: logMonths = [], species: logSpecies = [], boats: logBoats = [] } = await api(`/outings${listQ.size ? `?${listQ}` : ''}`);
     const chips = scope === 'mine' ? '' : html`<div class="chips log-chips">
       <a class="chip2 ${country ? '' : 'on'}" href="${link({ country: '' })}">All countries</a>
       ${countries.map((c) => raw(html`<a class="chip2 ${c === country ? 'on' : ''}" href="${link({ country: c })}">${c}</a>`))}</div>`;
@@ -2336,7 +2376,7 @@ const pagesFor = (view) => ({
         ${peak ? raw(html`<h2>When: time of day</h2><div class="card pad">
           <div class="hour-bars">${R.hours.slice(5, 20).map((n, i) => raw(html`<div class="mb" title="${n} fish at ${i + 5}:00"><i style="height:${n ? Math.max(3, (n / hourMax) * 100) : 0}%"></i></div>`))}</div>
           <div class="hour-names">${[5, 8, 11, 14, 17].map((h) => raw(`<span>${h}h</span>`))}</div>
-          <p class="small muted">Fish caught by the hour they were logged at sea (GMT). Busiest: ${peak.h}:00–${peak.h + 1}:00.</p>
+          <p class="small muted">Fish caught by the hour they were logged at sea, in local time. Busiest: ${peak.h}:00–${peak.h + 1}:00.</p>
         </div>`) : ''}
         ${R.areas.length ? raw(html`<h2>Where: rough areas</h2><div class="card pad">${bars(R.areas)}</div>`) : ''}
         ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}
@@ -2349,7 +2389,9 @@ const pagesFor = (view) => ({
             : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
         </div>
         ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/spots?year=${sz.year}">${raw(icon('pin'))} See them on my catch map</a></p>`) : ''}
-        <p><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} Download ${scope === 'mine' ? "your boat's" : 'the whole'} log (spreadsheet)</a></p>`;
+        <p class="log-buttons"><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One line per trip</a>
+          <a class="btn" href="/api/outings/fish.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One row per fish</a></p>
+        <p class="small muted">Spreadsheets of ${scope === 'mine' ? "your boat's" : 'the whole'} log. One row per fish has the time, result, weights and conditions of every fish${scope === 'mine' ? ', and its GPS spot (only for your crew)' : ''}.</p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
       return;
     }
@@ -2367,10 +2409,35 @@ const pagesFor = (view) => ({
       ${state.me?.teamId ? raw(html`<p class="log-buttons"><a class="btn primary" href="#/fishon">${raw(icon('fish'))} Log fish</a></p>
         <p class="small muted">At sea, tap a fish in as it's landed: its spot is taken there and then. Back on land, pick the day to add an earlier trip, or log a blank day as no catch.</p>`) : ''}
       ${raw(chips)}
+      <div class="filter-chips">
+        <select class="chip-select" data-go aria-label="Month">${raw(options([[link({ month: '' }), 'All months'],
+          ...logMonths.map((m) => [link({ month: m }), new Date(`${m}-15T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })])], link({ month: fMonth })))}</select>
+        <select class="chip-select" data-go aria-label="Species">${raw(options([[link({ sp: '' }), 'All species'], ...logSpecies.map((x) => [link({ sp: String(x.id) }), x.name])], link({ sp: fSp })))}</select>
+        ${scope === 'regional' && logBoats.length > 1 ? raw(html`<select class="chip-select" data-go aria-label="Boat">${raw(options([[link({ boat: '' }), 'All boats'], ...logBoats.map((x) => [link({ boat: String(x.id) }), x.name])], link({ boat: fBoat })))}</select>`) : ''}
+      </div>
       ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
-        ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
+        ${nextBefore ? raw('<p class="center"><button type="button" id="log-more">Load more</button></p>') : ''}`)
         : raw(`<div class="card pad empty">${scope === 'mine' ? 'No trips logged for your boat yet. Tap Log fish at sea, or pick a day there to add an earlier trip.' : 'No outings logged yet. Boat crews add theirs with Log fish.'}</div>`)}`;
     const byId = new Map(outings.map((o) => [String(o.id), o]));
+    // Older trips, 30 at a time, with the same filters.
+    let before = nextBefore;
+    view.querySelector('#log-more')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const more = new URLSearchParams(listQ);
+      more.set('before', before);
+      try {
+        const page = await api(`/outings?${more}`);
+        for (const o of page.outings) byId.set(String(o.id), o);
+        view.querySelector('.log .list').insertAdjacentHTML('beforeend', page.outings.map((o) => item(o)).join(''));
+        before = page.nextBefore;
+        if (!before) btn.remove();
+      } catch (ex) {
+        toast(ex.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
     view.querySelector('.log')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
