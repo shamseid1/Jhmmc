@@ -535,9 +535,9 @@ async function renderGridMap(box, q, link) {
   addSatellite(L, map);
   // The depth chart (crews only), under the circles; on unless switched off.
   if (charts.length) {
-    const layers = Object.fromEntries(charts.map((c) => [`Depth contours: ${c.name}`,
-      L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
-    L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
+    // All the chart areas are one layer, "Depth contours".
+    const contours = L.layerGroup(charts.map((c) => L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }))).addTo(map);
+    L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
   }
   const most = Math.max(...g.cells.map((c) => c.fish));
   const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
@@ -2459,9 +2459,9 @@ const pagesFor = (view) => ({
     addSatellite(L, map);
     // Depth charts sit over the satellite, under the pins; on unless switched off.
     if (charts.length) {
-      const layers = Object.fromEntries(charts.map((c) => [`Depth contours: ${c.name}`,
-        L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }).addTo(map)]));
-      L.control.layers(null, layers, { collapsed: true, position: 'topright' }).addTo(map);
+      // All the chart areas are one layer, "Depth contours".
+      const contours = L.layerGroup(charts.map((c) => L.imageOverlay(c.url, [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]], { opacity: 0.95 }))).addTo(map);
+      L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
     }
     if (!spots.length) {
       const c = charts[0].bounds;
