@@ -92,7 +92,8 @@ function createApp({
     },
   });
   const upload = mediaUploads(1);
-  const sheetUpload = mediaUploads(MAX_FISH_PER_SHEET * 2);
+  // Each fish: its scale photo or video, and a photo for the feed.
+  const sheetUpload = mediaUploads(MAX_FISH_PER_SHEET * 3);
   // A photo plus an optional video, under the given field names.
   const withVideo = (photo, video) => mediaUploads(2).fields([{ name: photo, maxCount: 1 }, { name: video, maxCount: 1 }]);
   const filesOf = (req) => Object.values(req.files ?? {}).flat();
@@ -927,17 +928,21 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       || (row.status !== 'unofficial' && canReview(viewer));
   }
 
-  // A weighed fish's picture is its weigh station photo; the crew's photo from
-  // Log fish stays with the "boated" line in the feed (never mixed). A release video shows to
-  // everyone once the secretary has approved the fish; until then, and always
-  // for a video of a fish on the scale, only officers and the boat's own crew see it.
-  const fishPhotos = (scalePhoto) => (scalePhoto ? [{ url: photoUrl(scalePhoto) }] : []);
-  const seesVideo = (row, viewer) => !!viewer && (canReview(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
+  // A weighed fish's picture is its photo for the feed (added at the weigh-in or
+  // later by the angler or crew). The weigh station photo and video are evidence:
+  // the secretary, JHMMC captains (to dispute), the boat's crew and whoever
+  // registered it. A release video shows to everyone once the secretary has
+  // approved the fish. The crew's photo from Log fish stays on the "boated" line.
+  const seesEvidence = (row, viewer) => !!viewer && (canWeigh(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
+  const seesVideo = seesEvidence;
+  const canAddFeedPhoto = (row, viewer) => !!viewer && row.status !== 'unofficial' && row.status !== 'rejected'
+    && (viewer.teamId === row.teamId || row.userId === viewer.id || row.loggedBy === viewer.id || isAdminUser(viewer));
 
   function present(row, viewer) {
     const showSpot = row.lat != null && canSeeSpot(row, viewer);
-    const fish = fishPhotos(row.scalePhoto);
-    const photos = fish.length ? fish : postPhotos('catch', row.id, row.photo);
+    const official = row.status !== 'unofficial';
+    const photos = official ? (row.photo ? [{ url: photoUrl(row.photo) }] : []) : postPhotos('catch', row.id, row.photo);
+    const evidence = official && seesEvidence(row, viewer);
     const releaseVideo = !!row.released && row.status === 'approved';
     const video = releaseVideo || seesVideo(row, viewer);
     return {
@@ -955,7 +960,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       // Shown with the photos: a post's own video, or the release video.
       videoUrl: photoUrl(row.video || (row.released && video ? row.scaleVideo : null)),
       canEdit: row.status === 'unofficial' && canDelete(row, viewer),
-      scalePhotoUrl: photoUrl(row.scalePhoto),
+      scalePhotoUrl: !official || evidence ? photoUrl(row.scalePhoto) : null,
+      canAddPhoto: canAddFeedPhoto(row, viewer),
       scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
       canDelete: canDelete(row, viewer),
       worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
@@ -1013,7 +1019,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   }
 
   // media: { photo, video } (uploaded files, either may be missing).
-  function checkCatch(user, b, { photo: file, video } = {}, { teamId, official }) {
+  function checkCatch(user, b, { photo: file, video, feed } = {}, { teamId, official }) {
     const team = db.prepare('SELECT club_id, country, captain_id, weigh_station, home_port FROM teams WHERE id = ?').get(teamId);
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
@@ -1081,7 +1087,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       values: [
         anglerId, anglerName, user.id, teamId, team.club_id, speciesId, weightKg, lengthCm, released,
         bool(b.tagged), caughtOn, country, str(b.location, 120), lineClass, str(b.notes, 2000),
-        official ? null : file?.filename ?? null, official ? 'pending_review' : 'unofficial', station,
+        official ? feed?.filename ?? null : file?.filename ?? null, official ? 'pending_review' : 'unofficial', station,
         weighed ? user.id : null, weighed ? new Date().toISOString() : null, official ? file?.filename ?? null : null,
         lat, lng, bool(b.spotPublic), official ? null : video?.filename ?? null, official ? video?.filename ?? null : null,
       ],
@@ -1264,9 +1270,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!parts.length) return res.json({ items: [], nextBefore: null });
     const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
       ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
-    // Each fish's weigh station photo, and a released fish's release video.
-    // Videos of the scale are for the secretary.
-    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,
+    // Each fish's photo for the feed, and a released fish's release video.
+    // The weigh station photo and video are evidence, never in the feed.
+    const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.photo AS feedPhoto, k.scale_video AS scaleVideo,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users u ON u.id = k.user_id
       WHERE k.status = 'approved' AND k.team_id IS ? AND k.caught_on = ? AND (? IS NULL OR k.user_id = ?)
@@ -1282,8 +1288,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         // The day's fish for that boat, heaviest first.
         item.day = x.title;
         item.title = null;
-        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ scalePhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
-          photos: fishPhotos(scalePhoto).map((x) => x.url), videoUrl: f.released ? photoUrl(scaleVideo) : null }));
+        item.fish = fishOfDay.all(x.teamId, x.title, user, user).map(({ feedPhoto, scaleVideo, ...f }) => ({ ...f, released: !!f.released,
+          photos: feedPhoto ? [photoUrl(feedPhoto)] : [], videoUrl: f.released ? photoUrl(scaleVideo) : null }));
         item.points = Math.round(item.fish.reduce((n, f) => n + (f.points || 0), 0) * 10) / 10;
       }
       return item;
@@ -1375,7 +1381,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (fish.length > MAX_FISH_PER_SHEET) return fail(`At most ${MAX_FISH_PER_SHEET} fish at a time.`);
     const rows = [];
     for (const [i, f] of fish.entries()) {
-      const media = { photo: files.find((x) => x.fieldname === `scale_${i}`), video: files.find((x) => x.fieldname === `scalevideo_${i}`) };
+      const media = { photo: files.find((x) => x.fieldname === `scale_${i}`), video: files.find((x) => x.fieldname === `scalevideo_${i}`),
+        feed: files.find((x) => x.fieldname === `feed_${i}`) };
       const checked = checkCatch(req.user, { ...f, caughtOn: req.body.caughtOn, weighStation: req.body.weighStation }, media,
         { teamId, official: true });
       if (checked.error) return fail(`Fish ${i + 1}: ${checked.error}`);
@@ -2090,6 +2097,26 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ ok: true });
   });
 
+  // A weighed fish's photo for the feed, added or changed at any time by the
+  // angler or the boat's crew. Not evidence: the points don't change.
+  api.post('/catches/:id/photo', auth.requireUser, upload.single('photo'), (req, res) => {
+    const id = intId(req.params.id);
+    const item = id && getCatch(id, req.user);
+    if (!item) {
+      discardUploads(req);
+      return res.status(404).json({ error: 'Catch not found.' });
+    }
+    if (!item.canAddPhoto) {
+      discardUploads(req);
+      return res.status(403).json({ error: "Only the angler or the boat's crew can add its photo." });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Choose a photo.' });
+    const old = db.prepare('SELECT photo FROM catches WHERE id = ?').get(id).photo;
+    db.prepare('UPDATE catches SET photo = ? WHERE id = ?').run(req.file.filename, id);
+    removeUpload(old);
+    res.json({ catch: getCatch(id, req.user) });
+  });
+
   api.post('/catches/:id/like', (req, res) => {
     const id = intId(req.params.id);
     if (!id || !db.prepare('SELECT 1 FROM catches WHERE id = ?').get(id)) {
@@ -2666,7 +2693,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const posts = db.prepare(`
       SELECT 'catch' AS kind, k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.caught_on AS date,
         k.lat, k.lng, k.location, COALESCE(NULLIF(au.nickname, ''), au.name, k.angler_name) AS angler, t.name AS boat,
-        COALESCE(k.photo, k.scale_photo) AS photo, 0 AS estimate
+        k.photo, 0 AS estimate
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users au ON au.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
       WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND NOT EXISTS (SELECT 1 FROM outing_landings x WHERE x.catch_id = k.id)
         AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))

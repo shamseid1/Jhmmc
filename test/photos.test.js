@@ -11,7 +11,7 @@ const PNG = Buffer.from(
   'base64'
 );
 
-test('boated line with the log photo, weigh-in with the weigh station photo; videos only for officers and the crew', async () => {
+test('boated line with the log photo, weigh-in with the photo for the feed; weigh station photo and video are evidence', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-disputes-'));
   const dbFile = path.join(tmp, 'fishing.db');
   const pusher = { publicKey: 'k', send: async () => true };
@@ -71,13 +71,15 @@ test('boated line with the log photo, weigh-in with the weigh station photo; vid
       { speciesId: sp('Sailfish'), anglerId: 'other', anglerName: 'Guest', released: true }]));
     fd.set('scalevideo_1', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'release.mp4');
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'scale.png');
+    fd.set('feed_0', new Blob([PNG], { type: 'image/png' }), 'dock.png');
     fd.set('scalevideo_0', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'scale.mp4');
     const r = await capA('POST', '/weigh/sheet', fd);
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const [marlin, sailfish] = r.body.catches;
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).status, 200);
     assert.equal((await as()('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, null, 'a release video waits for the secretary');
-    assert.equal((await capB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, null);
+    assert.ok((await capB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, 'JHMMC captains see the evidence, to dispute');
+    assert.equal((await crewB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, null, 'but not another boat\'s crew');
     assert.ok((await capA('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, 'the crew sees it');
     assert.equal((await sec('POST', `/catches/${sailfish.id}/review`, { decision: 'approve' })).status, 200);
 
@@ -86,10 +88,13 @@ test('boated line with the log photo, weigh-in with the weigh station photo; vid
     assert.deepEqual(day.landings.filter((l) => l.species === 'Blue marlin').map((l) => [l.scaleKg, l.scaleShared]), [[210, false]]);
     const asSeenBy = async (who) => (await who('GET', `/catches/${marlin.id}`)).body.catch;
     const pub = await asSeenBy(as());
-    assert.equal(pub.photos.length, 1, 'a weighed fish shows its weigh station photo only');
-    assert.equal(pub.photoUrl, pub.scalePhotoUrl, 'the weigh station photo is the main one');
+    assert.equal(pub.photos.length, 1, 'the photo for the feed');
+    assert.equal(pub.scalePhotoUrl, null, 'the weigh station photo is evidence, not for the public');
     assert.equal(pub.scaleVideoUrl, null, 'no video for the public');
-    assert.equal((await asSeenBy(capB)).scaleVideoUrl, null, 'nor for another boat');
+    assert.equal((await asSeenBy(crewB)).scalePhotoUrl, null, 'nor for another boat\'s crew');
+    const secView = await asSeenBy(sec);
+    assert.ok(secView.scalePhotoUrl && secView.scalePhotoUrl !== pub.photoUrl, 'the secretary sees the weigh station photo');
+    assert.ok((await asSeenBy(capB)).scalePhotoUrl, 'and JHMMC captains');
     assert.ok((await asSeenBy(sec)).scaleVideoUrl, 'the secretary sees it');
     assert.ok((await asSeenBy(capA)).scaleVideoUrl, 'and the crew');
     assert.equal(pub.videoUrl, null, 'the scale video stays out of the gallery');
@@ -98,12 +103,20 @@ test('boated line with the log photo, weigh-in with the weigh station photo; vid
     assert.match(rel.videoUrl, /\.mp4$/);
     const post = (await as()('GET', '/feed?type=weighins')).body.items[0];
     const [m, s2] = ['Blue marlin', 'Sailfish'].map((n) => post.fish.find((f) => f.species === n));
-    assert.equal(m.photos.length, 1);
+    assert.deepEqual(m.photos, [pub.photoUrl], 'the weigh-in post shows the photo for the feed');
+    assert.deepEqual(s2.photos, [], 'no photo for the feed yet');
+    // Added later by the crew; not by another boat or the public.
+    const later = new FormData();
+    later.set('photo', new Blob([PNG], { type: 'image/png' }), 'later.png');
+    assert.equal((await crewB('POST', `/catches/${sailfish.id}/photo`, later)).status, 403);
+    assert.equal((await as()('POST', `/catches/${sailfish.id}/photo`, later)).status, 401);
+    const added = (await capA('POST', `/catches/${sailfish.id}/photo`, later)).body.catch;
+    assert.match(added.photoUrl, /^\/uploads\//);
+    assert.equal((await as()('GET', '/feed?type=weighins')).body.items[0].fish.find((f) => f.species === 'Sailfish').photos[0], added.photoUrl);
     // The "boated" line keeps the crew's photo from the log, as its own post.
     const all = (await as()('GET', '/feed')).body.items;
     const boated = all.find((x) => x.kind === 'log' && x.species === 'Blue marlin');
-    assert.ok(boated?.photoUrl && boated.photoUrl !== pub.scalePhotoUrl, 'the crew photo, on the boated line');
-    assert.equal(m.photos[0], pub.scalePhotoUrl);
+    assert.ok(boated?.photoUrl && boated.photoUrl !== pub.photoUrl && boated.photoUrl !== secView.scalePhotoUrl, 'the crew photo, on the boated line');
     assert.equal(m.videoUrl, null, 'no scale video in the feed');
     assert.equal(s2.videoUrl, rel.videoUrl, 'the release video is');
 

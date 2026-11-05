@@ -770,10 +770,12 @@ function catchCard(c, { full = false } = {}) {
       ${full && c.weightKg && c.worldRecordKg ? raw(html`<p class="small muted">${Math.round((c.weightKg / c.worldRecordKg) * 100)}% of the IGFA all-tackle world record (${Math.round(c.worldRecordKg)} kg). <a href="#/records">See records</a></p>`) : ''}
       ${c.notes ? raw(html`<p class="notes${full ? '' : ' clamp'}">${c.notes}</p>`) : ''}
       ${full ? raw(spotMap(c)) : ''}
-      ${full && (c.weighStation || c.pointsNote || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
+      ${full && (c.weighStation || c.pointsNote || c.scalePhotoUrl || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
-        ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video (only officers and the crew see it)</p><video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
+        ${c.scalePhotoUrl || (c.scaleVideoUrl && !c.released) ? raw(html`<p class="small muted">Weigh station ${c.scalePhotoUrl ? 'photo' : 'video'} (only the secretary, the crew and JHMMC captains see it)</p>`) : ''}
+        ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img class="scale-photo" src="${c.scalePhotoUrl}" alt="Fish on the scale" loading="lazy"></a>`) : ''}
+        ${c.scaleVideoUrl && !c.released ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
         <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
@@ -781,6 +783,7 @@ function catchCard(c, { full = false } = {}) {
         <button data-act="share">Share</button>
         <a class="btn" href="${whatsapp(`${shareText(c)} ${location.origin}/#/catch/${c.id}`)}" target="_blank" rel="noopener">WhatsApp</a>
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
+        ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.photoUrl ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
       ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
@@ -795,6 +798,25 @@ function catchCard(c, { full = false } = {}) {
     </div>
   </article>`;
 }
+
+// A weighed fish's photo for the feed, added or changed later by the angler or crew.
+document.addEventListener('change', async (e) => {
+  const input = e.target.closest('[data-add-photo]');
+  const file = input?.files?.[0];
+  if (!file) return;
+  const label = input.closest('label');
+  try {
+    label.classList.add('busy');
+    const fd = new FormData();
+    fd.set('photo', await shrinkPhoto(file));
+    await api(`/catches/${input.dataset.addPhoto}/photo`, { method: 'POST', form: fd });
+    toast('Photo saved.');
+    route();
+  } catch (err) {
+    toast(err.message);
+    label.classList.remove('busy');
+  }
+});
 
 // byId maps catch id (string) to catch; callers may keep adding to it.
 function wireCards(root, byId) {
@@ -1707,12 +1729,22 @@ const pagesFor = (view) => ({
       <div class="scale-pick">
         <span class="scale-label" data-kept="On the scale: a photo or a video (one is enough)" data-released="Video of the release (required)">On the scale: a photo or a video (one is enough)</span>
         <span class="small muted scale-hint">The whole fish hanging, and the weight readable. A short video from the fish to the scale works best.</span>
+        <span class="small muted">Only the secretary, your crew and JHMMC captains see it.</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
         <video class="scale-video-preview" controls playsinline preload="metadata" hidden></video>
         <div class="scale-buttons">
           <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
           <label class="btn scale-video-button">${raw(icon('video'))} <span>Record video</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
           <label class="btn roll-video-button">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="video/*" data-release-video></label>
+        </div>
+      </div>
+      <div class="scale-pick feed-pick">
+        <span class="scale-label">Photo for the feed (optional)</span>
+        <span class="small muted">The angler with the fish, the crew on the dock: the picture everyone sees. It can be added later too.</span>
+        <img class="feed-preview" alt="Photo for the feed" hidden>
+        <div class="scale-buttons">
+          <label class="btn">${raw(icon('camera'))} <span class="feed-take">Take photo</span><input type="file" accept="image/*" capture="environment" data-feed></label>
+          <label class="btn">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="image/*" data-feed></label>
         </div>
       </div>
     </fieldset>`;
@@ -1776,6 +1808,7 @@ const pagesFor = (view) => ({
     // some phones) open a file picker, so photos older than a few minutes are
     // refused too.
     const scalePhotos = new WeakMap();
+    const feedPhotos = new WeakMap(); // each fish's photo for the feed (optional, any age)
     // A video of the fish on the scale is optional, and also taken there and then.
     const scaleVideos = new WeakMap();
     list.addEventListener('change', (e) => {
@@ -1809,6 +1842,19 @@ const pagesFor = (view) => ({
         vid.hidden = false;
         row.querySelector('.scale-video-button span').textContent = 'Record again';
         row.querySelector('.roll-video-button span').textContent = 'Choose another';
+        return;
+      }
+      if (e.target.matches('[data-feed]')) {
+        const row = e.target.closest('.fish');
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        feedPhotos.set(row, file);
+        const img = row.querySelector('.feed-preview');
+        URL.revokeObjectURL(img.src);
+        img.src = URL.createObjectURL(file);
+        img.hidden = false;
+        row.querySelector('.feed-take').textContent = 'Retake photo';
         return;
       }
       if (e.target.matches('[data-scale]')) {
@@ -1872,6 +1918,8 @@ const pagesFor = (view) => ({
           speciesId: get('speciesId').value, anglerId: get('anglerId').value, anglerName: get('anglerName').value,
           weightKg: get('weightKg').value, lineClass: get('lineClass').value, released: get('released').checked ? 'on' : '',
         });
+        const feed = feedPhotos.get(row);
+        if (feed) fd.set(`feed_${i}`, await shrinkPhoto(feed));
         const photo = scalePhotos.get(row);
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
         const video = scaleVideos.get(row);
