@@ -906,6 +906,10 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
     <li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li></ul>
+    ${state.me?.teamId && state.me.teamId === x.teamId && x.fish.some((f) => !f.photos.length) ? raw(html`<div class="add-photos">
+      <span class="small muted">Your crew's fish: add the photos everyone will see.</span>
+      ${x.fish.filter((f) => !f.photos.length).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}
+    </div>`) : ''}
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
   <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
 </article>`);
@@ -1738,15 +1742,6 @@ const pagesFor = (view) => ({
           <label class="btn roll-video-button">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="video/*" data-release-video></label>
         </div>
       </div>
-      <div class="scale-pick feed-pick">
-        <span class="scale-label">Photo for the feed (optional)</span>
-        <span class="small muted">The angler with the fish, the crew on the dock: the picture everyone sees. It can be added later too.</span>
-        <img class="feed-preview" alt="Photo for the feed" hidden>
-        <div class="scale-buttons">
-          <label class="btn">${raw(icon('camera'))} <span class="feed-take">Take photo</span><input type="file" accept="image/*" capture="environment" data-feed></label>
-          <label class="btn">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="image/*" data-feed></label>
-        </div>
-      </div>
     </fieldset>`;
     // Points for each fish, worked out with the club's rules as the weight is typed.
     const updatePoints = () => {
@@ -1808,7 +1803,6 @@ const pagesFor = (view) => ({
     // some phones) open a file picker, so photos older than a few minutes are
     // refused too.
     const scalePhotos = new WeakMap();
-    const feedPhotos = new WeakMap(); // each fish's photo for the feed (optional, any age)
     // A video of the fish on the scale is optional, and also taken there and then.
     const scaleVideos = new WeakMap();
     list.addEventListener('change', (e) => {
@@ -1842,19 +1836,6 @@ const pagesFor = (view) => ({
         vid.hidden = false;
         row.querySelector('.scale-video-button span').textContent = 'Record again';
         row.querySelector('.roll-video-button span').textContent = 'Choose another';
-        return;
-      }
-      if (e.target.matches('[data-feed]')) {
-        const row = e.target.closest('.fish');
-        const file = e.target.files[0];
-        e.target.value = '';
-        if (!file) return;
-        feedPhotos.set(row, file);
-        const img = row.querySelector('.feed-preview');
-        URL.revokeObjectURL(img.src);
-        img.src = URL.createObjectURL(file);
-        img.hidden = false;
-        row.querySelector('.feed-take').textContent = 'Retake photo';
         return;
       }
       if (e.target.matches('[data-scale]')) {
@@ -1918,8 +1899,6 @@ const pagesFor = (view) => ({
           speciesId: get('speciesId').value, anglerId: get('anglerId').value, anglerName: get('anglerName').value,
           weightKg: get('weightKg').value, lineClass: get('lineClass').value, released: get('released').checked ? 'on' : '',
         });
-        const feed = feedPhotos.get(row);
-        if (feed) fd.set(`feed_${i}`, await shrinkPhoto(feed));
         const photo = scalePhotos.get(row);
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
         const video = scaleVideos.get(row);

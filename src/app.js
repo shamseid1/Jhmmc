@@ -1534,7 +1534,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const action = { reject: row.status === 'approved' ? 'uncounted' : 'rejected', weight: 'repointed' }[req.body.decision] ?? 'approved';
     logRegistration(id, action, req.user, { note: said || note });
     // Tell whoever registered it, and (if they want it) everyone about a new weigh-in.
-    const k = db.prepare(`SELECT k.logged_by, k.weight_kg, k.released, k.points, k.points_note, s.name AS species, t.name AS boat,
+    const k = db.prepare(`SELECT k.logged_by, k.weight_kg, k.released, k.points, k.points_note, k.photo, s.name AS species, t.name AS boat,
         COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?`).get(id);
     const fish = `${k.species}${k.weight_kg ? ` (${Math.round(k.weight_kg * 10) / 10} kg)` : k.released ? ' (released)' : ''}`;
@@ -1544,7 +1544,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       body: `Your ${fish} weight was corrected: now ${k.points} points. ${note}`,
     } : {
       title: approved ? 'Fish approved' : 'Fish not counted',
-      body: approved ? `Your ${fish} was approved: ${k.points} points.` : `Your ${fish} wasn't counted: ${k.points_note}`,
+      body: approved ? `Your ${fish} was approved: ${k.points} points.${k.photo ? '' : ' Add a photo for the feed.'}` : `Your ${fish} wasn't counted: ${k.points_note}`,
       url: `/#/catch/${id}`,
     }, req.user, (p) => p.id === k.logged_by);
     if (approved) {

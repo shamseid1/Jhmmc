@@ -71,12 +71,15 @@ test('boated line with the log photo, weigh-in with the photo for the feed; weig
       { speciesId: sp('Sailfish'), anglerId: 'other', anglerName: 'Guest', released: true }]));
     fd.set('scalevideo_1', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'release.mp4');
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'scale.png');
-    fd.set('feed_0', new Blob([PNG], { type: 'image/png' }), 'dock.png');
     fd.set('scalevideo_0', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'scale.mp4');
     const r = await capA('POST', '/weigh/sheet', fd);
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const [marlin, sailfish] = r.body.catches;
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).status, 200);
+    // The photo for the feed is added after the weigh-in, by the crew.
+    const dock = new FormData();
+    dock.set('photo', new Blob([PNG], { type: 'image/png' }), 'dock.png');
+    assert.equal((await capA('POST', `/catches/${marlin.id}/photo`, dock)).status, 200);
     assert.equal((await as()('GET', `/catches/${sailfish.id}`)).body.catch.videoUrl, null, 'a release video waits for the secretary');
     assert.ok((await capB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, 'JHMMC captains see the evidence, to dispute');
     assert.equal((await crewB('GET', `/catches/${sailfish.id}`)).body.catch.scaleVideoUrl, null, 'but not another boat\'s crew');

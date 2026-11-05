@@ -880,3 +880,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 .feed-preview[hidden] { display: none; }
 /* A weighed fish's photo, added later by the angler or crew. */
 .add-photo { display: flex; justify-content: center; margin: 10px 0; }
+/* A crew's own weigh-in post: add the photos for the feed. */
+.add-photos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.add-photos > span { flex-basis: 100%; }
+.add-photos .btn.busy { opacity: .5; pointer-events: none; }

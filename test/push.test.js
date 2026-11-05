@@ -131,7 +131,7 @@ test('the secretary gets a phone notification when fish are registered', async (
     const got = Object.fromEntries(sent.map((s) => [s.endpoint.split('/').pop(), s]));
     assert.deepEqual(Object.keys(got).sort(), ['cap-phone', 'crew-phone']);
     assert.equal(got['cap-phone'].title, 'Fish approved');
-    assert.match(got['cap-phone'].body, /^Your Wahoo \(\d+ kg\) was approved: [\d.]+ points\.$/);
+    assert.match(got['cap-phone'].body, /^Your Wahoo \(\d+ kg\) was approved: [\d.]+ points\. Add a photo for the feed\.$/, "asks for the photo for the feed");
     assert.match(got['crew-phone'].body, /weighed a \d+ kg wahoo/);
     assert.equal(got['crew-phone'].quiet, false, 'the first fish of the day buzzes');
     // The boat's next fish that day updates the same notification, quietly.
