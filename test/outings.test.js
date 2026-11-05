@@ -130,6 +130,13 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.ok((await as()('GET', '/feed?type=logged')).body.items.every((x) => x.kind === 'log'));
     assert.equal((await as()('GET', '/feed?type=weighins')).body.items.length, 0, 'nothing weighed in yet');
     assert.match((await marwan('POST', '/catches', {})).body.error, /fills itself/);
+    // A boat's own log (My boat): its trips and its own season.
+    const exocet = trip.teamId;
+    const own = (await marwan('GET', `/outings?team=${exocet}`)).body.outings;
+    assert.ok(own.length > 0 && own.every((o) => o.teamId === exocet));
+    assert.equal((await marwan('GET', `/outings/season?team=${exocet}&year=2026`)).body.outings, own.filter((o) => o.date.startsWith('2026')).length);
+    assert.match((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Exocet/);
+    assert.doesNotMatch((await marwan('GET', `/outings.csv?team=${exocet}`)).body, /Bottom Line/);
     // Depth charts: crews only, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
     assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');

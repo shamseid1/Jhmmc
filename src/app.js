@@ -2165,9 +2165,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/outings', (req, res) => {
     const country = str(req.query.country, 60);
     const before = intId(req.query.before);
+    // ?team=: one boat's own log (My boat).
+    const team = intId(req.query.team);
     const rows = db.prepare(`${OUTING_SELECT}
-      WHERE (:country IS NULL OR o.country = :country) AND (:before IS NULL OR o.id < :before)
-      ORDER BY o.date DESC, o.id DESC LIMIT 31`).all({ country, before });
+      WHERE (:country IS NULL OR o.country = :country) AND (:before IS NULL OR o.id < :before) AND (:team IS NULL OR o.team_id = :team)
+      ORDER BY o.date DESC, o.id DESC LIMIT 31`).all({ country, before, team });
     const list = rows.slice(0, 30).map((o) => presentOuting(o, req.user)).map((o) => ({ ...o, line: outingLine(o) }));
     const countries = db.prepare('SELECT DISTINCT country FROM outings WHERE country IS NOT NULL ORDER BY country').all().map((r) => r.country);
     res.json({ outings: list, countries, techniques: TECHNIQUES, nextBefore: rows.length > 30 ? list.at(-1).id : null });
@@ -2175,7 +2177,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // The whole log as a spreadsheet (one line per outing), for keeping or merging.
   api.get('/outings.csv', (req, res) => {
-    const all = db.prepare(`${OUTING_SELECT} ORDER BY o.date, o.id`).all().map((o) => presentOuting(o, req.user));
+    const team = intId(req.query.team);
+    const all = db.prepare(`${OUTING_SELECT} WHERE (:team IS NULL OR o.team_id = :team) ORDER BY o.date, o.id`).all({ team }).map((o) => presentOuting(o, req.user));
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const head = ['Date', 'Boat', 'Country', 'Catch', 'Technique', 'Rough area', 'Water depth (m)', 'Water temp (°C)'];
     const rows = all.map((o) => [o.date, o.boat, o.country,
@@ -2327,11 +2330,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // A year at a glance: outings, blank days, billfish per day fished, a chosen
   // species per day fished each month, and the conditions on billfish days.
   api.get('/outings/season', (req, res) => {
-    const years = db.prepare("SELECT DISTINCT substr(date, 1, 4) AS y FROM outings ORDER BY y DESC").all().map((r) => r.y);
+    const team = intId(req.query.team);
+    const years = db.prepare("SELECT DISTINCT substr(date, 1, 4) AS y FROM outings WHERE (:team IS NULL OR team_id = :team) ORDER BY y DESC")
+      .all({ team }).map((r) => r.y);
     const year = years.includes(req.query.year) ? req.query.year : years[0] ?? String(new Date().getUTCFullYear());
     const country = str(req.query.country, 60);
-    const outings = db.prepare(`${OUTING_SELECT} WHERE substr(o.date, 1, 4) = :year AND (:country IS NULL OR o.country = :country)`)
-      .all({ year, country }).map((o) => presentOuting(o, req.user));
+    const outings = db.prepare(`${OUTING_SELECT} WHERE substr(o.date, 1, 4) = :year AND (:country IS NULL OR o.country = :country)
+        AND (:team IS NULL OR o.team_id = :team)`)
+      .all({ year, country, team }).map((o) => presentOuting(o, req.user));
     const caught = (o, pick) => o.fish.filter(pick).reduce((n, f) => n + f.released + f.kept, 0);
     const billfish = (f) => f.category === 'Billfish';
     const speciesList = [...new Set(outings.flatMap((o) => o.fish.map((f) => f.species)))].sort();

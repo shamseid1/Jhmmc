@@ -1873,7 +1873,7 @@ const pagesFor = (view) => ({
     const quick = QUICK[state.me.division === 'river' ? 'river' : 'ocean'].map((n) => byName.get(n)).filter(Boolean);
     // The last fish logged is picked already, if it has a button.
     const picked = quick.find((x) => x.id === recent[0])?.id;
-    view.innerHTML = html`<p class="back"><a href="#/log">‹ Regional log</a></p>
+    view.innerHTML = html`<p class="back"><a href="#/log">‹ Log</a></p>
       <h1>Log fish</h1>
       <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
         <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
@@ -2093,19 +2093,27 @@ const pagesFor = (view) => ({
       for (const [k, v] of Object.entries(changes)) (v ? p.set(k, v) : p.delete(k));
       return `#/log${p.size ? `?${p}` : ''}`;
     };
-    const head = html`<h1>Regional log</h1>
+    // Crews have their own boat's log (My boat) beside everyone's (Regional).
+    const myBoat = state.me?.teamId || null;
+    const scope = myBoat && q.get('scope') !== 'regional' ? 'mine' : 'regional';
+    const teamQ = scope === 'mine' ? `team=${myBoat}` : '';
+    const head = html`<h1>${scope === 'mine' ? `${state.me.teamName}'s log` : 'Regional log'}</h1>
+      ${myBoat ? raw(html`<div class="line-tabs" role="tablist">
+        <a role="tab" href="${link({ scope: '', country: '' })}" aria-selected="${scope === 'mine'}">My boat</a>
+        <a role="tab" href="${link({ scope: 'regional' })}" aria-selected="${scope === 'regional'}">Regional</a></div>`) : ''}
       <div class="seg" role="tablist">
         <a role="tab" href="${link({ tab: '' })}" aria-selected="${tab === 'outings'}">Outings</a>
         <a role="tab" href="${link({ tab: 'season' })}" aria-selected="${tab === 'season'}">Season</a>
       </div>`;
-    const { outings, countries, nextBefore } = await api(`/outings${country ? `?country=${encodeURIComponent(country)}` : ''}`);
-    const chips = html`<div class="chips log-chips">
+    const listQ = new URLSearchParams({ ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
+    const { outings, countries, nextBefore } = await api(`/outings${listQ.size ? `?${listQ}` : ''}`);
+    const chips = scope === 'mine' ? '' : html`<div class="chips log-chips">
       <a class="chip2 ${country ? '' : 'on'}" href="${link({ country: '' })}">All countries</a>
       ${countries.map((c) => raw(html`<a class="chip2 ${c === country ? 'on' : ''}" href="${link({ country: c })}">${c}</a>`))}</div>`;
     if (tab === 'season') {
       const year = q.get('year') || '';
       const species = q.get('species') || '';
-      const sq = new URLSearchParams({ ...(year && { year }), ...(country && { country }), ...(species && { species }) });
+      const sq = new URLSearchParams({ ...(year && { year }), ...(country && scope === 'regional' && { country }), ...(species && { species }), ...(scope === 'mine' && { team: myBoat }) });
       const sz = await api(`/outings/season?${sq}`);
       const max = Math.max(...sz.months.map((m) => m.perDay || 0), 0.01);
       const short = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
@@ -2129,10 +2137,10 @@ const pagesFor = (view) => ({
           <b>Best conditions so far</b>
           ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,
             sz.best.techniques.join(' and ')].filter(Boolean).join(' · ')}</span>
-            <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, all boats.</span>`)
+            <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, ${scope === 'mine' ? 'your boat' : 'all boats'}.</span>`)
             : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
         </div>
-        <p><a class="btn" href="/api/outings.csv">${raw(icon('download'))} Download the whole log (spreadsheet)</a></p>`;
+        <p><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} Download ${scope === 'mine' ? "your boat's" : 'the whole'} log (spreadsheet)</a></p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
       return;
     }
@@ -2152,7 +2160,7 @@ const pagesFor = (view) => ({
       ${raw(chips)}
       ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
         ${nextBefore ? raw('<p class="small muted">Showing the latest 30. Download the whole log from the Season tab.</p>') : ''}`)
-        : raw('<div class="card pad empty">No outings logged yet. Boat crews add theirs with Log fish.</div>')}`;
+        : raw(`<div class="card pad empty">${scope === 'mine' ? 'No trips logged for your boat yet. Tap Log fish at sea, or pick a day there to add an earlier trip.' : 'No outings logged yet. Boat crews add theirs with Log fish.'}</div>`)}`;
     const byId = new Map(outings.map((o) => [String(o.id), o]));
     view.querySelector('.log')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-act]');
@@ -2322,7 +2330,7 @@ const pagesFor = (view) => ({
       </div>
       <h2>Fishing</h2><div class="card menu">
         ${me.teamId ? item('#/spots', 'pin', 'My catch map', 'Your crew\'s fish, where they were caught') : ''}
-        ${item('#/log', 'history', 'Regional log', "Every boat's trips, and the season at a glance")}
+        ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
         ${me.canWeigh && !me.canReview ? item('#/weigh', 'weight', 'Weigh-in', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`) : ''}
         ${me.canWeigh && !me.canReview ? item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours') : ''}
       </div>`) : ''}
