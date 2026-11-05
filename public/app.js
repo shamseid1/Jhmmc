@@ -892,7 +892,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
 </article>` : html`<article class="feed-item">
   <div class="feed-head">
     <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
-      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}
+      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('boat')}</span>`)}
       <b>${x.boat || 'A boat'}</b></a>
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
@@ -3614,7 +3614,8 @@ const ICONS = {
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-  boat: '<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/>',
+  // A sportfisher: tuna tower, outrigger, flybridge, raised bow.
+  boat: '<path d="M2.5 13.5H8l14.5-2-2.6 4.8a1.3 1.3 0 0 1-1.1.7H4.3a1.2 1.2 0 0 1-1.1-.7z"/><path d="M8.6 12.7V10h5.6l2.3 2.3"/><path d="M9.6 10V8h5"/><path d="M11 8l.5-4M14 8l-.5-4M10.5 4h4"/><path d="M12 5L3 9.5"/><path d="M2 21.2c1.3 0 1.8-.9 3.2-.9s1.9.9 3.2.9 1.8-.9 3.2-.9 1.9.9 3.2.9 1.8-.9 3.2-.9 1.9.9 3.2.9"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   dashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
