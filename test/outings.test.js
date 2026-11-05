@@ -146,6 +146,13 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal(y2026.first, '2026-10-20', 'the first sailfish still in the log (the 18th was removed)');
     assert.equal(tr.weeks.length, 26);
     assert.ok(Array.isArray(tr.now.biting));
+    // The regional grid: 10 km squares, counts only, never a spot or a boat's name.
+    assert.equal((await as()('GET', '/outings/grid')).status, 401, 'members only');
+    const grid = (await bob('GET', '/outings/grid?species=Sailfish')).body;
+    assert.equal(grid.size, 0.1);
+    assert.ok(grid.cells.length > 0 && grid.cells.every((c) => c.north - c.south > 0.09 && c.fish > 0 && c.boats >= 1));
+    assert.equal(JSON.stringify(grid).includes('9.41'), false, 'no exact spots');
+    assert.equal(JSON.stringify(grid).includes('Exocet'), false, 'no boat names');
     // Depth charts: crews only, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
     assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');

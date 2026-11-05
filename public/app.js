@@ -515,6 +515,33 @@ function trendsHtml(tr, { perBoat, link, mine }) {
   return yearChart + biting + weekly;
 }
 
+// Where fish are being caught, region-wide: 10 km squares shaded by fish
+// caught (one hue, light to dark), for a month and species. No pins, no boats.
+async function renderGridMap(box, q, link) {
+  const gq = new URLSearchParams({ ...(q.get('gyear') && { year: q.get('gyear') }), ...(q.get('gspecies') && { species: q.get('gspecies') }), ...(q.get('gmonth') && { month: q.get('gmonth') }) });
+  const [g, L] = await Promise.all([api(`/outings/grid?${gq}`), loadLeaflet().catch(() => null)]);
+  if (!box.isConnected) return;
+  const sel = (label, items, current) => `<select class="chip-select" data-go aria-label="${label}">${options(items, current)}</select>`;
+  box.innerHTML = html`<h2>Where: month by month</h2>
+    <div class="filter-chips">
+      ${g.years.length > 1 ? raw(sel('Year', g.years.map((y) => [link({ gyear: y, gmonth: '' }), y]), link({ gyear: g.year, gmonth: '' }))) : ''}
+      ${raw(sel('Species', [[link({ gspecies: '', gmonth: '' }), 'All species'], ...g.speciesList.map((x) => [link({ gspecies: x, gmonth: '' }), x])], link({ gspecies: g.species || '', gmonth: '' })))}
+      ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
+    </div>
+    ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}
+    <p class="small muted">Each square is about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.</p>`;
+  if (!g.cells.length || !L) return;
+  const map = L.map('grid-map', { zoomControl: true });
+  addSatellite(L, map);
+  const most = Math.max(...g.cells.map((c) => c.fish));
+  const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
+  for (const c of g.cells) {
+    L.rectangle([[c.south, c.west], [c.north, c.east]], { color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
+      .addTo(map).bindPopup(`<b>${c.fish} ${c.fish === 1 ? 'fish' : 'fish'}</b><br>${c.boats === 1 ? '1 boat' : `${c.boats} boats`}`);
+  }
+  map.fitBounds(L.latLngBounds(g.cells.flatMap((c) => [[c.south, c.west], [c.north, c.east]])).pad(0.4), { maxZoom: 10 });
+}
+
 // Leaderboard: points, tournaments and the record book, one tab each.
 // A dropdown chip whose choices are pages: picking one goes there.
 document.addEventListener('change', (e) => {
@@ -2242,8 +2269,10 @@ const pagesFor = (view) => ({
     if (tab === 'trends') {
       const tq = new URLSearchParams({ ...(q.get('species') && { species: q.get('species') }), ...(country && scope === 'regional' && { country }), ...(scope === 'mine' && { team: myBoat }) });
       const tr = await api(`/outings/trends?${tq}`);
-      view.innerHTML = html`${raw(head)}${raw(chips)}${raw(trendsHtml(tr, { perBoat: q.get('per') === 'boat', link, mine: scope === 'mine' }))}`;
+      view.innerHTML = html`${raw(head)}${raw(chips)}${raw(trendsHtml(tr, { perBoat: q.get('per') === 'boat', link, mine: scope === 'mine' }))}
+        ${scope === 'regional' && state.me ? raw('<div id="grid-map-box"></div>') : ''}`;
       view.querySelector('#trend-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
+      if (scope === 'regional' && state.me) renderGridMap(view.querySelector('#grid-map-box'), q, link);
       return;
     }
     if (tab === 'season') {

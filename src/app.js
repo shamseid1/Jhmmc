@@ -2493,6 +2493,34 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ species, speciesList, years, now: { biting, boats: boatsWith(now), boatsBefore: boatsWith(before) }, weeks });
   });
 
+  // Where fish are being caught, region-wide, without anyone's exact spot: the
+  // sea in squares of a tenth of a degree (about 10 km), each with how many fish
+  // were caught in it and by how many boats, for a month and a species. No pins,
+  // no boat names. Signed-in members only.
+  const GRID = 0.1;
+  api.get('/outings/grid', auth.requireUser, (req, res) => {
+    const rows = db.prepare(`SELECT l.lat, l.lng, s.name AS species, o.date, o.team_id AS teamId
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
+      WHERE l.lat IS NOT NULL AND l.fate <> 'lost'`).all();
+    const years = [...new Set(rows.map((r) => r.date.slice(0, 4)))].sort().reverse();
+    const year = years.includes(req.query.year) ? req.query.year : years[0] ?? null;
+    const inYear = rows.filter((r) => r.date.startsWith(year ?? ''));
+    const speciesList = [...new Set(inYear.map((r) => r.species))].sort();
+    const species = speciesList.includes(req.query.species) ? req.query.species : null;
+    const ofSpecies = inYear.filter((r) => !species || r.species === species);
+    const months = [...new Set(ofSpecies.map((r) => Number(r.date.slice(5, 7))))].sort((a, b2) => a - b2);
+    const month = months.includes(Number(req.query.month)) ? Number(req.query.month) : months.at(-1) ?? null;
+    const cells = {};
+    for (const r of ofSpecies.filter((x) => Number(x.date.slice(5, 7)) === month)) {
+      const la = Math.floor(r.lat / GRID); const ln = Math.floor(r.lng / GRID);
+      const c = (cells[`${la}:${ln}`] ||= { south: +(la * GRID).toFixed(1), west: +(ln * GRID).toFixed(1), fish: 0, boats: new Set() });
+      c.fish += 1;
+      c.boats.add(r.teamId);
+    }
+    res.json({ year, years, species, speciesList, month, months, size: GRID,
+      cells: Object.values(cells).map((c) => ({ south: c.south, west: c.west, north: +(c.south + GRID).toFixed(1), east: +(c.west + GRID).toFixed(1), fish: c.fish, boats: c.boats.size })) });
+  });
+
   // ---- my catch map ---------------------------------------------------------
 
   // Every fish you caught or logged with its spot (and, for a captain, the
