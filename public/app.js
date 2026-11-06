@@ -804,20 +804,20 @@ function catchCard(c, { full = false } = {}) {
           <label data-fix-name hidden>Angler's name <input name="anglerName" maxlength="80"></label>
           <label>New weigh-station photo <input type="file" name="scalePhoto" accept="image/*"></label>
           <label>Note <input name="note" maxlength="300" placeholder="What was wrong" required></label>
-          <p class="small muted">The points follow from the rules; the crew is told and the record keeps what it was.</p>
+          <p class="small muted">The points follow from the rules. <b>The crew is notified</b> with your note, and the Activity log records it with your name and what it was before.</p>
           <div><button type="submit" class="primary">Save the correction</button></div>
         </form>
       </details>`) : ''}
       ${full && c.status === 'rejected' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
         <h3>Secretary</h3>
-        <p class="small muted">Not counted. Approving it again gives it its points from the rules; say why. The crew is told.</p>
+        <p class="small muted">Not counted. Approving it again gives it its points from the rules; say why. <b>The crew is notified</b> with your note, and it's recorded in the Activity log with your name.</p>
         <label>Note <input name="note" maxlength="300" placeholder="Why it now counts"></label>
         <div class="row-buttons"><button type="button" class="primary" data-act="reapprove">Approve again</button></div>
       </form>`) : ''}
       ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
         <h3>Secretary</h3>
         <p class="small" data-rules><b>Rules give ${fmtPoints(c.points)}</b></p>
-        <p class="small muted">Correcting the weight (the points follow from the rules) or taking the fish off the points needs a note; the crew is told.</p>
+        <p class="small muted">Correcting the weight (the points follow from the rules) or taking the fish off the points needs a note. <b>The crew is notified</b> with your note, and it's recorded in the Activity log with your name.</p>
         ${c.released ? '' : raw(html`<label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" value="${toUnit('weight', c.weightKg)}"></label>`)}
         <label>Note <input name="note" maxlength="300" placeholder="Why"></label>
         <div class="row-buttons">${c.released ? '' : raw('<button type="button" data-act="repoint">Correct weight</button>')}
@@ -1174,6 +1174,9 @@ document.addEventListener('input', (e) => {
   const r = scoring.scoreCatch({ species: sp.name, pointsPerKg: sp.pointsPerKg, weightKg: kg, released: false, division: form.dataset.division });
   out.innerHTML = html`<b>Rules give ${fmtPoints(r.points)}</b> · ${r.note}`;
 });
+
+// A reminder wherever an officer changes something: who hears about it, and that it's on record.
+const recordedNote = (what) => html`<p class="card pad record-note small">${raw(icon('history'))} <span>${what} Everything you do here is also recorded in the <a href="#/activity">Activity log</a>, with your name.</span></p>`;
 
 // Points form for a catch waiting for the secretary.
 function reviewForm(c) {
@@ -1756,9 +1759,10 @@ const pagesFor = (view) => ({
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
           <li>Fish under <b>2 kg (ocean)</b> or <b>1 kg (river)</b> don't count. Ocean and river boats have separate standings.</li>
         </ul>
-        <p class="small muted">The secretary can change a catch's points with a note, as on the paper form.</p>
+        <p class="small muted">Points always come from these rules. If a weight was wrong, the secretary corrects it with a note and the points follow.</p>
       </div>
       <h2>Points per kg</h2>
+      ${state.me?.canReview ? raw(recordedNote('Changing the points for a species is announced to everyone in the feed.')) : ''}
       <div class="card table-wrap"><table>
         <thead><tr><th>Species</th><th class="num">Points per kg</th></tr></thead>
         <tbody>${meta.species.map((x) => raw(html`<tr><td>${x.name}</td><td class="num">${editable
@@ -2080,6 +2084,7 @@ const pagesFor = (view) => ({
     const tab = (label, href, n, on) => html`<a href="${href}" class="station-tab${n ? '' : ' none'}" ${on ? raw('aria-current="page"') : ''} data-count-for="${label}">${label} <span class="tab-count">${n}</span></a>`;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Review catches</h1>
+      ${raw(recordedNote('Approving, rejecting or correcting a fish notifies the crew that registered it, with your note.'))}
       <div class="card pad notify" id="notify"></div>
       ${raw(html`<nav class="station-tabs" aria-label="Weigh stations">
         ${raw(tab('All', '#/review', toReview.length, !stations.includes(pick)))}
@@ -2153,6 +2158,7 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
       <p class="small muted">Every fishing day scores. Tournaments listed here get their own results page and winner.</p>
+      ${editable ? raw(recordedNote('Changing the season dates is announced to everyone in the feed.')) : ''}
       ${editable ? raw(html`<form class="card pad stack" id="season">
         <div class="row">
           <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
@@ -3158,7 +3164,7 @@ const pagesFor = (view) => ({
     const captain = !!state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId);
     const { tournaments, fee } = await api('/tournaments');
     const go = (t) => (official ? `#/sheet/${t.id}` : `#/tournament/${t.id}`);
-    view.innerHTML = html`${official ? raw('<p class="back"><a href="#/more">‹ More</a></p><h1>Tournament sheets</h1>') : raw(html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}`)}
+    view.innerHTML = html`${official ? raw('<p class="back"><a href="#/more">‹ More</a></p><h1>Tournament sheets</h1>' + recordedNote('Entering or removing a boat, and marking memberships paid, are visible to the officers.')) : raw(html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}`)}
       <p class="small muted">${official
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
         : captain ? `Tap a tournament for its results, and to enter your boat. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
@@ -3312,6 +3318,7 @@ const pagesFor = (view) => ({
       <h1>Club members</h1>
       <p class="small muted">Tick everyone who has paid their JHMMC membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
         In tournaments, anyone who isn't ticked here counts as a non-member and pays the temporary membership.</p>
+      ${raw(recordedNote('Marking someone paid or not paid is visible to the officers.'))}
       <div class="sheet-totals"><div><span>Paid members</span><b>${paid + named.filter((p) => p.paid).length}</b></div><div><span>Not paid</span><b>${people.length - paid + named.filter((p) => !p.paid).length}</b></div></div>
       <div class="filter-bar member-filter">
         ${[['all', 'Everyone'], ['paid', 'Paid'], ['unpaid', 'Not paid']].map(([k, l]) => raw(html`<button type="button" class="${k === 'all' ? 'filter-toggle on' : 'filter-toggle'}" data-show="${k}">${l}</button>`))}

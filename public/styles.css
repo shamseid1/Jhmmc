@@ -919,3 +919,6 @@ a.me-card { color: var(--text); text-decoration: none; }
 .trophy-stats b { font-size: 20px; }
 /* A warning card (e.g. backups not emailed). */
 .warn-card { border-left: 4px solid #d97706; }
+/* The reminder on officers' pages: who is notified, and that it's recorded. */
+.record-note { display: flex; gap: 10px; align-items: flex-start; border-left: 4px solid var(--accent); margin: 8px 0 14px; }
+.record-note .icon { flex: none; margin-top: 2px; }
