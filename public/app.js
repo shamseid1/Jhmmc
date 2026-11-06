@@ -2938,7 +2938,6 @@ const pagesFor = (view) => ({
             <span class="me-who"><b>${me.displayName}</b><span class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</span>
               <span class="small me-link">My dashboard ›</span></span>
           </a>
-          <a class="me-edit" href="#/profile" aria-label="Edit profile" title="Edit profile">${raw(icon('edit'))}</a>
         </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log fish with your boat.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
@@ -2949,6 +2948,7 @@ const pagesFor = (view) => ({
       </div>`)}
       ${me ? raw(`<h2>Account</h2><div class="card menu">
         ${me.teamId ? item(`#/boat/${me.teamId}?manage=1`, 'boat', 'My boat', `${me.teamName}: invite code, crew, details`) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
+        ${item('#/profile', 'edit', 'Edit profile', 'Name, photo, units, password')}
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
