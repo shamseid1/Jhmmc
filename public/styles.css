@@ -922,3 +922,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 /* The reminder on officers' pages: who is notified, and that it's recorded. */
 .record-note { display: flex; gap: 10px; align-items: flex-start; border-left: 4px solid var(--accent); margin: 8px 0 14px; }
 .record-note .icon { flex: none; margin-top: 2px; }
+/* Your card on More: My dashboard and Edit profile side by side. */
+.me-links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 2px; }
+.me-links .me-link { text-decoration: none; }
+.me-photo { flex: none; line-height: 0; }

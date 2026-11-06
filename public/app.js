@@ -2920,11 +2920,11 @@ const pagesFor = (view) => ({
       ${count ? `<span class="count-badge" aria-hidden="true">${count}</span>` : ''}
       <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<div class="page-head"><h1 class="center">More</h1>${raw(themeButton())}</div>
-      ${me ? raw(html`<a class="card pad me-card" href="#/user/${me.id}">
-          ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
+      ${me ? raw(html`<div class="card pad me-card">
+          <a href="#/user/${me.id}" class="me-photo" aria-label="My dashboard">${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}</a>
           <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div>
-            <div class="small me-link">My dashboard ›</div></div>
-        </a>`)
+            <div class="small me-links"><a class="me-link" href="#/user/${me.id}">My dashboard ›</a><a class="me-link" href="#/profile">Edit profile ›</a></div></div>
+        </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log fish with your boat.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
       ${isInstalled() ? '' : raw(`<div class="card pad install-card">
@@ -2934,7 +2934,6 @@ const pagesFor = (view) => ({
       </div>`)}
       ${me ? raw(`<h2>Account</h2><div class="card menu">
         ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
-        ${item('#/profile', 'edit', 'Edit profile', 'Name, photo, units, password')}
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
