@@ -108,6 +108,8 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     // The secretary enters a boat in a tournament with its crew; it's on record.
     const soon = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     const ev = (await sec('POST', '/events', { kind: 'tournament', name: 'JHMMC Classic', date: soon })).body.event;
+    const annT = (await as()('GET', '/feed?type=announcements')).body.items[0];
+    assert.equal(annT.title, 'New tournament: JHMMC Classic', 'a new tournament is announced in the feed');
     const crewBId = (await crewB('GET', '/me')).body.user.id;
     assert.equal((await sec('PUT', `/tournaments/${ev.id}/entries/${reelDeal.id}`, { entered: true })).status, 200);
     const set = await sec('PUT', `/tournaments/${ev.id}/entries/${reelDeal.id}`, { entered: true, anglers: [{ userId: crewBId }, { name: 'Visiting Angler' }] });

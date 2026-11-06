@@ -1755,6 +1755,15 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!name) return res.status(400).json({ error: kind === 'tournament' ? 'Name the tournament.' : 'Name the holiday.' });
     const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name) VALUES (?, ?, ?, ?)')
       .run(date, endDate === date ? null : endDate, kind, name);
+    // A new tournament is news for everyone: an announcement in the feed, and on phones.
+    if (kind === 'tournament') {
+      const fmt = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+      const when = endDate !== date ? `${fmt(date)} to ${fmt(endDate)}` : fmt(date);
+      const title = `New tournament: ${name}`;
+      const body = `${when}. JHMMC captains: enter your boat and list your anglers in the app (Leaderboard → Tournaments).`;
+      db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, title, body);
+      pushToEveryone({ title: `JHMMC: ${title}`, body: when, url: `/#/tournament/${lastInsertRowid}` }, req.user);
+    }
     res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name } });
   });
 

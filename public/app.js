@@ -1246,12 +1246,21 @@ const pagesFor = (view) => ({
     }
     // A tournament coming up or under way: JHMMC captains see it first thing, with
     // a big Enter your boat until they're in.
-    if (state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId)) {
+    // Everyone else sees it too, with a link to the tournament.
+    {
+      const captain = !!state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId);
       api('/tournaments').then(({ tournaments }) => {
         const t = tournaments.find((x) => x.open);
         const box = view.querySelector('#tournament-call');
         if (!t || !box) return;
-        box.innerHTML = t.mine
+        box.innerHTML = !captain
+          ? html`<a class="card pad tournament-call" href="#/tournament/${t.id}">
+              <div class="tc-head">${raw(icon('trophy'))}<span class="small">Tournament</span></div>
+              <b class="tc-name">${t.name}</b>
+              <span class="muted">${fmtDays(t)} · ${plural(t.boats, 'boat')} entered</span>
+              <span class="small me-link">See the tournament ›</span>
+            </a>`
+          : t.mine
           ? html`<a class="card pad tournament-in" href="#/enter/${t.id}">${raw(icon('check'))}
               <span>Your boat is entered in <b>${t.name}</b> · ${fmtDays(t)}</span><span class="small">Anglers ›</span></a>`
           : html`<div class="card pad tournament-call">
