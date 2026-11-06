@@ -488,6 +488,64 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     next();
   }
 
+  // The secretary fixes a registration's species, angler or weigh-station photo,
+  // waiting or approved, with a note. The points follow from the rules; the
+  // captain is told; the record keeps what it was.
+  api.post('/catches/:id/correct', requireApprove, withVideo('scalePhoto', 'scaleVideo'), (req, res) => {
+    const id = intId(req.params.id);
+    const k = id && db.prepare('SELECT id, status, team_id, species_id, user_id, angler_name, logged_by FROM catches WHERE id = ?').get(id);
+    const fail = (code, error) => { discardUploads(req); return res.status(code).json({ error }); };
+    if (!k) return fail(404, 'Catch not found.');
+    if (!['pending_review', 'approved'].includes(k.status)) return fail(400, 'Only a fish waiting or approved can be corrected.');
+    const note = str(req.body.note, 300);
+    if (!note) return fail(400, 'Add a note: what was wrong.');
+    const speciesId = req.body.speciesId ? intId(req.body.speciesId) : k.species_id;
+    if (!speciesId || !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId)) return fail(400, 'Choose the species.');
+    let userId = k.user_id; let anglerName = k.angler_name;
+    if (req.body.anglerId === 'other') {
+      anglerName = str(req.body.anglerName, 80);
+      if (!anglerName) return fail(400, "Type the angler's name.");
+      userId = null;
+    } else if (req.body.anglerId) {
+      userId = intId(req.body.anglerId);
+      if (!userId || !db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id IS ?').get(userId, k.team_id)) return fail(400, "Choose one of the boat's crew.");
+      anglerName = null;
+    }
+    const photo = req.files?.scalePhoto?.[0]?.filename ?? null;
+    const before = snapshot(id);
+    const changed = [speciesId !== k.species_id && 'species', (userId !== k.user_id || anglerName !== k.angler_name) && 'angler', photo && 'photo'].filter(Boolean);
+    if (!changed.length) return fail(400, 'Nothing changed.');
+    db.exec('BEGIN');
+    try {
+      // The old photo stays on file: the registration record keeps it as evidence.
+      db.prepare('UPDATE catches SET species_id = ?, user_id = ?, angler_name = ?, scale_photo = COALESCE(?, scale_photo) WHERE id = ?')
+        .run(speciesId, userId, anglerName, photo, id);
+      if (speciesId !== k.species_id) {
+        // A different fish for the log: let go of the old link and find the right one.
+        unlogRegistration(id);
+        db.prepare('UPDATE outing_landings SET catch_id = NULL WHERE catch_id = ?').run(id);
+        linkRegistrationToLog(id);
+      }
+      const s = suggestPoints(id);
+      db.prepare('UPDATE catches SET points = ?, points_note = ? WHERE id = ?').run(s.points, s.note, id);
+      const after = snapshot(id);
+      const what = [changed.includes('species') && `species ${before.species} to ${after.species}`,
+        changed.includes('angler') && `angler ${before.angler} to ${after.angler}`, changed.includes('photo') && 'new weigh-station photo'].filter(Boolean).join(', ');
+      logRegistration(id, 'repointed', req.user, { note: `Corrected ${what}: ${note}` });
+      db.exec('COMMIT');
+      pushWhere('myFish', {
+        title: 'Fish corrected',
+        body: `The secretary corrected your ${before.species}: ${what}. ${note}`,
+        url: `/#/catch/${id}`,
+      }, req.user, (p) => p.id === k.logged_by);
+    } catch (err) {
+      db.exec('ROLLBACK');
+      discardUploads(req);
+      throw err;
+    }
+    res.json({ catch: getCatch(id, req.user) });
+  });
+
   // Backups of the database (the admin only): the list, one now, and downloads.
   api.get('/admin/backups', requireAdmin, (_req, res) => {
     res.json({ backups: backups.list(), emailOn: backups.emailOn, adminEmail });

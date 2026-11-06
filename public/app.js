@@ -365,7 +365,7 @@ document.addEventListener('change', (e) => {
 // everything that happened to it, in order.
 const LOG_ACTIONS = {
   registered: 'Registered', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
-  repointed: 'Weight corrected', uncounted: 'Taken off the points',
+  repointed: 'Corrected', uncounted: 'Taken off the points',
 };
 const LOG_STATUS = {
   registered: 'Waiting', withdrawn: 'Withdrawn', deleted: 'Deleted', disputed: 'Disputed', approved: 'Approved', rejected: 'Rejected',
@@ -796,6 +796,18 @@ function catchCard(c, { full = false } = {}) {
         ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.ownPhoto ? 'Change your photo' : 'Add your photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
+      ${full && ['pending_review', 'approved'].includes(c.status) && state.me?.canApprove ? raw(html`<details class="secretary-box" data-fix>
+        <summary><b>Secretary: fix species, angler or photo</b></summary>
+        <form class="stack" data-fix-form>
+          <label>Species <select name="speciesId">${raw(speciesOptions(c.speciesId))}</select></label>
+          <label>Angler <select name="anglerId"><option value="">${c.angler} (as now)</option></select></label>
+          <label data-fix-name hidden>Angler's name <input name="anglerName" maxlength="80"></label>
+          <label>New weigh-station photo <input type="file" name="scalePhoto" accept="image/*"></label>
+          <label>Note <input name="note" maxlength="300" placeholder="What was wrong" required></label>
+          <p class="small muted">The points follow from the rules; the crew is told and the record keeps what it was.</p>
+          <div><button type="submit" class="primary">Save the correction</button></div>
+        </form>
+      </details>`) : ''}
       ${full && c.status === 'rejected' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
         <h3>Secretary</h3>
         <p class="small muted">Not counted. Approving it again gives it its points from the rules; say why. The crew is told.</p>
@@ -831,6 +843,38 @@ document.addEventListener('change', async (e) => {
   } catch (err) {
     toast(err.message);
     label.classList.remove('busy');
+  }
+});
+
+// The secretary's correction of a registration: the boat's crew to choose from, then save.
+document.addEventListener('toggle', async (e) => {
+  const box = e.target.closest?.('[data-fix]');
+  if (!box?.open || box.dataset.loaded) return;
+  box.dataset.loaded = '1';
+  const id = box.closest('[data-id]').dataset.id;
+  const { catch: c } = await api(`/catches/${id}`);
+  const members = c.teamId ? (await api(`/teams/${c.teamId}`)).team.members : [];
+  box.querySelector('[name=anglerId]').insertAdjacentHTML('beforeend',
+    members.map((m) => html`<option value="${m.id}">${m.name}</option>`).join('') + '<option value="other">Someone else (type the name)</option>');
+}, true);
+document.addEventListener('change', (e) => {
+  if (e.target.matches('[data-fix-form] [name=anglerId]')) e.target.form.querySelector('[data-fix-name]').hidden = e.target.value !== 'other';
+});
+document.addEventListener('submit', async (e) => {
+  const form = e.target.closest('[data-fix-form]');
+  if (!form) return;
+  e.preventDefault();
+  const id = form.closest('[data-id]').dataset.id;
+  const fd = new FormData(form);
+  const photo = fd.get('scalePhoto');
+  if (photo?.size) fd.set('scalePhoto', await shrinkPhoto(photo));
+  else fd.delete('scalePhoto');
+  try {
+    await api(`/catches/${id}/correct`, { method: 'POST', form: fd });
+    toast('Corrected. The crew is told.');
+    route();
+  } catch (err) {
+    toast(err.message);
   }
 });
 
