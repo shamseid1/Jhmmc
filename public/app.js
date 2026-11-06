@@ -2184,7 +2184,7 @@ const pagesFor = (view) => ({
           ${ev.kind === 'tournament' ? raw(html`<div class="small"><a href="#/tournament/${ev.id}">${plural(ev.entries.length, 'boat')} entered${editable ? ' · manage entries' : ''}</a></div>`) : ''}</span>
         ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
       </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
-      ${editable ? raw(html`<h2>Add a tournament</h2>
+      ${editable ? raw(html`<h2 id="add-tournament">Add a tournament</h2>
       <form class="card pad stack" id="event">
         <input type="hidden" name="kind" value="tournament">
         <div class="row">
@@ -2203,6 +2203,13 @@ const pagesFor = (view) => ({
       route();
     });
     const eventForm = view.querySelector('#event');
+    // From Tournament sheets → New tournament: straight to the form.
+    if (eventForm && new URLSearchParams(location.hash.split('?')[1] || '').get('new') === '1') {
+      setTimeout(() => {
+        view.querySelector('#add-tournament').scrollIntoView({ block: 'start' });
+        eventForm.querySelector('input[name=name], input[type=date]')?.focus();
+      }, 50);
+    }
     eventForm.date.addEventListener('change', () => { eventForm.endDate.min = eventForm.date.value; });
     bindForm(eventForm, async () => {
       await api('/events', { method: 'POST', body: formData(eventForm) });
@@ -3220,6 +3227,7 @@ const pagesFor = (view) => ({
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
         : captain ? `Tap a tournament for its results, and to enter your boat. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
           : "This season's JHMMC tournaments, for JHMMC boats (for now). Tap one for its results, Ocean and River."}</p>
+      ${official && state.me?.canReview ? raw(html`<p><a class="btn primary" href="#/calendar?new=1">${raw(icon('trophy'))} New tournament</a></p>`) : ''}
       ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="${go(t)}">
         <span class="mi-icon">${raw(icon('trophy'))}</span>
         <span class="mi-text"><b>${t.name}</b><span>${fmtDays(t)}${t.open ? '' : ' · over'}</span>
