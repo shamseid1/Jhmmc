@@ -8,8 +8,8 @@ function createMailer(env = process.env) {
   if (!env.SMTP_HOST) {
     return {
       configured: false,
-      async send({ to, subject, text }) {
-        console.log(`[mail not configured] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
+      async send({ to, subject, text, attachments }) {
+        console.log(`[mail not configured] To: ${to}\nSubject: ${subject}\n\n${text}\n${attachments ? `(${attachments.length} attachment)\n` : ''}`);
       },
     };
   }
@@ -23,7 +23,7 @@ function createMailer(env = process.env) {
   const from = env.MAIL_FROM || env.SMTP_USER;
   return {
     configured: true,
-    send: ({ to, subject, text, html }) => transport.sendMail({ from, to, subject, text, html }),
+    send: ({ to, subject, text, html, attachments }) => transport.sendMail({ from, to, subject, text, html, attachments }),
   };
 }
 

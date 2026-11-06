@@ -2887,6 +2887,7 @@ const pagesFor = (view) => ({
         ${item('#/members', 'key', 'Members', 'Accounts, roles, password reset links')}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh stations, Ocean or River')}
         ${item('#/clubs', 'clubs', 'Clubs', clubRequests ? 'Requests to open a club waiting for you' : 'Open clubs and answer requests', clubRequests)}
+        ${item('#/backups', 'download', 'Backups', 'Copies of every fish, account and point')}
       </div>`) : ''}
       <h2>Info</h2><div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
@@ -2909,6 +2910,39 @@ const pagesFor = (view) => ({
   // Admin only: every account, with a one-time password reset link to pass on.
   // Admin: every boat. JHMMC boats get their weigh station (their home port)
   // and Ocean or River here; the rest of a boat's details are on its page.
+  // The admin's backups: nightly copies of the database, emailed, and downloads.
+  async backups() {
+    if (!state.me?.isAdmin) return needLogin(view, 'see backups');
+    const { backups, emailOn, adminEmail } = await api('/admin/backups');
+    const size = (b) => (b.size > 1e6 ? `${(b.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b.size / 1e3))} KB`);
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Backups</h1>
+      <p>Every night the app copies its database (every fish, account, point and decision) and keeps the last 14 days.</p>
+      <div class="card pad ${emailOn ? '' : 'warn-card'}">${emailOn
+        ? raw(html`Each night's copy is also <b>emailed to ${adminEmail}</b>, so it's safe even if the server's disk is lost. Keep those emails.`)
+        : raw('<b>Email isn\'t set up</b>, so the copies stay on the server only. Set up email (SMTP) on Render so each copy is also sent to you, or download one here now and then.')}</div>
+      <p class="row-buttons"><button class="primary" id="b-now">Back up now and download</button>
+        ${emailOn ? raw('<button id="b-mail">Back up now and email it</button>') : ''}</p>
+      <h2>Copies on the server</h2>
+      <div class="card"><ul class="list">${backups.length ? backups.map((b) => raw(html`<li><a href="/api/admin/backups/${b.name}" download>${raw(icon('download'))} ${fmtWhen(b.at)}</a> <span class="small muted">${size(b)}</span></li>`))
+        : raw('<li class="muted">None yet: the first is made a minute after the app starts.</li>')}</ul></div>
+      <p class="small muted">Photos aren't in these copies (they're too big); points, weights and every record are.</p>`;
+    view.querySelector('#b-now').addEventListener('click', async () => {
+      const { backup } = await api('/admin/backups', { method: 'POST', body: {} });
+      location.href = `/api/admin/backups/${backup.name}`;
+      setTimeout(route, 1500);
+    });
+    view.querySelector('#b-mail')?.addEventListener('click', async () => {
+      try {
+        const { emailed } = await api('/admin/backups', { method: 'POST', body: { email: true } });
+        toast(emailed ? `Emailed to ${adminEmail}.` : 'Backed up.');
+      } catch (err) {
+        toast(err.message);
+      }
+      route();
+    });
+  },
+
   async 'admin-boats'() {
     if (!state.me?.isAdmin) {
       view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
@@ -3833,7 +3867,7 @@ function renderNav(active = state.navActive) {
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
-    'admin-boats': 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
+    'admin-boats': 'more', backups: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

@@ -9,6 +9,7 @@ const auth = require('./auth');
 const igfa = require('./igfa-records');
 const jhmmcBook = require('./jhmmc-records');
 const { createMailer } = require('./mail');
+const { createBackups } = require('./backup');
 const { createPusher } = require('./push');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -66,10 +67,15 @@ function createApp({
   openPosts = false,
   // Only JHMMC (the admin) opens clubs; others ask. Tests that make clubs freely open it.
   openClubs = false,
+  // Nightly copies of the database (next to it, in "backups"), emailed to the admin.
+  backupDir,
+  nightlyBackups = true,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
   pusher ??= createPusher(db, { contact: adminEmail });
+  const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
+  if (nightlyBackups) backups.start();
   fs.mkdirSync(uploadDir, { recursive: true });
 
   const MAX_FISH_PER_SHEET = 30;
@@ -481,6 +487,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     next();
   }
+
+  // Backups of the database (the admin only): the list, one now, and downloads.
+  api.get('/admin/backups', requireAdmin, (_req, res) => {
+    res.json({ backups: backups.list(), emailOn: backups.emailOn, adminEmail });
+  });
+  api.post('/admin/backups', requireAdmin, async (req, res) => {
+    const b = backups.make();
+    let emailed = false;
+    if (req.body?.email) {
+      try {
+        emailed = await backups.email(b);
+      } catch (err) {
+        return res.status(502).json({ error: `Backup made, but the email failed: ${err.message}`, backup: b });
+      }
+    }
+    res.status(201).json({ backup: b, emailed });
+  });
+  api.get('/admin/backups/:name', requireAdmin, (req, res) => {
+    const file = backups.file(req.params.name);
+    if (!file) return res.status(404).json({ error: 'Backup not found.' });
+    res.download(file);
+  });
 
   api.get('/admin/users', requireAdmin, (_req, res) => {
     const users = db.prepare(`

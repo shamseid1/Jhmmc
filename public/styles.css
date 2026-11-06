@@ -915,3 +915,5 @@ a.me-card { color: var(--text); text-decoration: none; }
 .trophy .tag.boated { background: #b45309; }
 .trophy-stats { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
 .trophy-stats b { font-size: 20px; }
+/* A warning card (e.g. backups not emailed). */
+.warn-card { border-left: 4px solid #d97706; }

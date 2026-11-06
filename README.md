@@ -98,7 +98,19 @@ The repo includes `render.yaml`, which sets up one web service with a 1 GB persi
 3. Render builds the app and gives it an address like `https://west-africa-big-game.onrender.com`.
 4. Optional: add your own domain under the service's **Settings → Custom Domains**.
 
-Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Back up `/var/data` (the service's **Disks** tab offers snapshots).
+Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Render also keeps daily snapshots of the disk (the service's **Disks** tab).
+
+### Backups
+
+Every night the app copies its database (every fish, account, point and decision; not the photos) to `backups/` next to it, as `fishing-<date>-<time>.db.gz`, keeping the newest copy of each of the last 14 days. Each nightly copy is also emailed to the admin (`ADMIN_EMAIL`) once email (SMTP) is set up. The admin's **More → Backups** lists the copies, downloads one, and makes one now (and emails it).
+
+To restore: stop the service, unzip the copy (`gunzip fishing-….db.gz`), put it in place of `/var/data/fishing.db` (from the service's **Shell** tab, or a one-off job), and start it again.
+
+### Before the whole club starts using it
+
+1. **Set up email** (SMTP, below), so password resets reach members and the nightly backups reach the admin.
+2. **Clear the test data**: the fish, weigh-ins, logs and posts made while testing (accounts and boats can stay).
+3. Check a backup arrives by email the next morning.
 
 ## Email (password resets)
 
