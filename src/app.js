@@ -378,6 +378,76 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Anyone can look around; doing anything (posting, liking, joining) needs an account.
   api.use((req, res, next) => (req.method === 'GET' ? next() : auth.requireUser(req, res, next)));
 
+  // ---- activity log: everything the officers and the admin change -----------
+  // Each rule names an officers' route and says, in words, what was done
+  // (with what it was before, where that matters). Recorded once the change
+  // has gone through; nothing in the app edits or deletes the log.
+  const fishName = (id) => db.prepare(`SELECT s.name AS species, k.weight_kg AS kg, k.released, COALESCE(t.name, 'no boat') AS boat,
+      COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
+    FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id WHERE k.id = ?`).get(intId(id) ?? 0);
+  const fishText = (f) => (f ? `${f.boat}'s ${f.species}${f.kg ? ` (${f.kg} kg)` : f.released ? ' (released)' : ''}, angler ${f.angler}` : 'a fish');
+  const nameOf = (table, id, col = 'name') => db.prepare(`SELECT ${col} AS n FROM ${table} WHERE id = ?`).get(intId(id) ?? 0)?.n ?? `#${id}`;
+  const note = (b) => (b?.note ? `. Note: ${String(b.note).slice(0, 300)}` : '');
+  const AUDIT = [
+    ['POST', /^\/catches\/(\d+)\/review$/, (m, b, before) => `${{ approve: 'Approved', reject: 'Not counted / rejected', weight: 'Corrected the weight of' }[b.decision] || b.decision} ${fishText(before)}${b.weightKg ? `, weight ${before?.kg} to ${b.weightKg} kg` : ''}${note(b)}`, (m) => fishName(m[1])],
+    ['POST', /^\/catches\/(\d+)\/correct$/, (m, b, before) => `Corrected ${fishText(before)}: ${[b.speciesId && `species to ${nameOf('species', b.speciesId)}`, b.anglerId && `angler to ${b.anglerId === 'other' ? b.anglerName : nameOf('users', b.anglerId)}`, 'photo'].filter(Boolean).join(', ')}${note(b)}`, (m) => fishName(m[1])],
+    ['DELETE', /^\/catches\/(\d+)$/, (m, b, before) => `Deleted ${fishText(before)}${b?.reason ? `. Reason: ${b.reason}` : ''}`, (m) => fishName(m[1])],
+    ['POST', /^\/weigh(\/sheet)?$/, (m, b) => `Sent a weigh-in for ${nameOf('teams', b.teamId)} (${b.caughtOn || 'today'})`],
+    ['PATCH', /^\/species\/(\d+)$/, (m, b, before) => `Scoring table: ${before.name} from ${before.p} to ${b.pointsPerKg} points per kg`, (m) => db.prepare('SELECT name, points_per_kg AS p FROM species WHERE id = ?').get(intId(m[1]) ?? 0)],
+    ['PATCH', /^\/settings\/season$/, (m, b, before) => `Season dates from ${before.start} – ${before.end} to ${b.start} – ${b.end}`, () => ({ start: setting('season_start'), end: setting('season_end') })],
+    ['POST', /^\/events$/, (m, b) => `Added ${b.kind === 'holiday' ? 'a holiday' : 'the tournament'} "${b.name}" (${b.date}${b.endDate && b.endDate !== b.date ? ` to ${b.endDate}` : ''})`],
+    ['DELETE', /^\/events\/(\d+)$/, (m, b, before) => `Removed the ${before?.kind || 'event'} "${before?.name}" (${before?.date})`, (m) => db.prepare('SELECT name, kind, date FROM events WHERE id = ?').get(intId(m[1]) ?? 0)],
+    ['PUT', /^\/tournaments\/(\d+)\/entries\/(\d+)$/, (m, b) => `${b.entered ? 'Entered' : 'Took'} ${nameOf('teams', m[2])} ${b.entered ? 'in' : 'out of'} "${nameOf('events', m[1])}"`],
+    ['PATCH', /^\/tournaments\/(\d+)\/anglers\/(\d+)$/, (m, b) => `Tournament "${nameOf('events', m[1])}": angler entry ${m[2]}${'member' in b ? `, member ${b.member ? 'yes' : 'no'}` : ''}${'paid' in b ? `, paid ${b.paid ? 'yes' : 'no'}` : ''}`],
+    ['POST', /^\/announcements$/, (m, b) => `Posted the announcement "${b.title}"`],
+    ['DELETE', /^\/announcements\/(\d+)$/, (m, b, before) => `Removed the announcement "${before}"`, (m) => nameOf('announcements', m[1], 'title')],
+    ['PUT', /^\/club-members\/(\d+)$/, (m, b) => `Membership: ${nameOf('users', m[1])} marked ${b.paid ? 'paid' : 'not paid'}`],
+    ['POST', /^\/club-members\/named$/, (m, b) => `Membership: added ${b.name}`],
+    ['PUT', /^\/club-members\/named\/(\d+)$/, (m, b) => `Membership: changed ${nameOf('club_people', m[1])}${'paid' in b ? `, ${b.paid ? 'paid' : 'not paid'}` : ''}`],
+    ['DELETE', /^\/club-members\/named\/(\d+)$/, (m, b, before) => `Membership: removed ${before}`, (m) => nameOf('club_people', m[1])],
+    ['PATCH', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Member ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('users', m[1])],
+    ['DELETE', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Deleted the account of ${before}`, (m) => nameOf('users', m[1])],
+    ['POST', /^\/admin\/users\/(\d+)\/reset-link$/, (m, b, before) => `Made a password reset link for ${before}`, (m) => nameOf('users', m[1])],
+    ['PATCH', /^\/admin\/teams\/(\d+)$/, (m, b, before) => `Boat ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('teams', m[1])],
+    ['PATCH', /^\/admin\/clubs\/(\d+)$/, (m, b, before) => `Club ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('clubs', m[1])],
+    ['POST', /^\/admin\/club-requests\/(\d+)$/, (m, b, before) => `Club request "${before}": ${b.decision === 'approve' ? 'approved' : 'declined'}`, (m) => nameOf('clubs', m[1])],
+  ];
+  const officerOrAdmin = (u) => !!u && (canHandleMoney(u) || isAdminUser(u));
+  const logActivity = (user, action, details = null) => db.prepare('INSERT INTO activity_log (user_id, user_name, role, action, details) VALUES (?, ?, ?, ?, ?)')
+    .run(user.id, user.name, isAdminUser(user) ? 'admin' : user.role || null, action, details);
+  api.use((req, res, next) => {
+    if (req.method === 'GET' || !officerOrAdmin(req.user)) return next();
+    const rule = AUDIT.find(([method, re]) => method === req.method && re.test(req.path));
+    if (!rule) return next();
+    const m = req.path.match(rule[1]);
+    let before = null;
+    try {
+      before = rule[3] ? rule[3](m) : null;
+    } catch {
+      before = null;
+    }
+    const user = req.user;
+    res.on('finish', () => {
+      if (res.statusCode >= 300) return;
+      try {
+        logActivity(user, rule[2](m, req.body || {}, before));
+      } catch (err) {
+        logActivity(user, `${req.method} ${req.path}`, err.message);
+      }
+    });
+    next();
+  });
+  // The log, newest first: for the admin and the JHMMC officers. Nobody can change it.
+  api.get('/activity', (req, res) => {
+    if (!req.user || !(canReview(req.user) || isAdminUser(req.user))) return res.status(403).json({ error: 'Only the admin and the JHMMC officers can see the activity log.' });
+    const before = intId(req.query.before);
+    const who = intId(req.query.user);
+    const rows = db.prepare(`SELECT id, user_id AS userId, user_name AS userName, role, action, created_at AS at FROM activity_log
+      WHERE (:before IS NULL OR id < :before) AND (:who IS NULL OR user_id = :who) ORDER BY id DESC LIMIT 50`).all({ before, who });
+    const people = db.prepare('SELECT DISTINCT user_id AS id, user_name AS name FROM activity_log ORDER BY user_name').all();
+    res.json({ items: rows, people, nextBefore: rows.length === 50 ? rows.at(-1).id : null });
+  });
+
   // ---- notifications ------------------------------------------------------
 
   api.get('/push/key', (_req, res) => res.json({ publicKey: pusher.publicKey }));
@@ -1161,10 +1231,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         station = team.home_port || (team.country ? `${team.country} weigh station` : 'Weigh station');
       }
       if (!released && weightKg === null) return { error: 'Enter the official weight.' };
-      // Rule 8: every fish weighed is shown hanging on the scale with the weight
-      // readable, in a photo or a video; a released fish by a video of the release.
-      if (!released && !file && !video) return { error: 'Add a photo or video of the fish hanging on the scale, with the weight readable.' };
-      if (released && !video) return { error: 'Add the video of the release.' };
+      // A photo for every fish (the picture on the feed and the profiles); a video is optional.
+      if (!file) return { error: released ? 'Add a photo of the release.' : 'Add a photo of the fish hanging on the scale, with the weight readable.' };
     }
     const weighed = official && !released;
     // Crew posts are for the feed only; registrations go to the secretary.
@@ -1700,6 +1768,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       return res.status(400).json({ error: 'Choose a start date before the end date.' });
     }
     const set = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+    const wasStart = setting('season_start'); const wasEnd = setting('season_end');
+    if (wasStart !== start || wasEnd !== end) {
+      db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, 'Season dates changed',
+        `${req.user.name} changed the season from ${wasStart} – ${wasEnd} to ${start} – ${end}.`);
+    }
     set.run('season_start', start);
     set.run('season_end', end);
     res.json({ season: { start, end } });
@@ -1709,8 +1782,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.patch('/species/:id', requireReview, (req, res) => {
     const points = Number(req.body.pointsPerKg);
     if (!Number.isFinite(points) || points < 0 || points > 100) return res.status(400).json({ error: 'Points per kg must be between 0 and 100.' });
+    const was = db.prepare('SELECT name, points_per_kg AS p FROM species WHERE id = ?').get(intId(req.params.id) ?? 0);
     const r = db.prepare('UPDATE species SET points_per_kg = ? WHERE id = ?').run(points, intId(req.params.id));
     if (!r.changes) return res.status(404).json({ error: 'Species not found.' });
+    // Points concern everyone: said in the feed, by name.
+    if (was.p !== points) {
+      db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, 'Scoring table changed',
+        `${req.user.name} changed ${was.name} from ${was.p} to ${points} points per kg.`);
+    }
     res.json({ ok: true, pointsPerKg: points });
   });
 

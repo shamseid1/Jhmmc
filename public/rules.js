@@ -96,9 +96,9 @@ window.RULES = {
 <h3>Registering fish in the app</h3>
 <p class="notice">Added by the club for registrations made in this app. It is not part of the signed rules above.</p>
 <ol type="a">
-  <li>The captain registers the boat's fish on the day, at the boat's weigh station, with a photo or video of each fish hanging on the scale, the weight readable, taken there and then.</li>
+  <li>The captain registers the boat's fish on the day, at the boat's weigh station, with a photo of each fish hanging on the scale, the weight readable, taken there and then (a video is optional). A released fish needs a photo of the release, from that day.</li>
   <li>By submitting, the captain declares that every fish was caught that day by the angler named, under these rules, and weighed on that station's scale.</li>
-  <li>Registrations can't be changed. A captain may withdraw one until the secretary decides; the app keeps a record of every registration, withdrawal, dispute and decision.</li>
+  <li>A captain can't change a registration but may withdraw one until the secretary decides. The secretary may correct a weight, species, angler or photo, or take a fish off the points, always with a note; the crew is told. The app keeps a record of every registration, withdrawal, dispute, decision and correction, and of everything the officers change.</li>
   <li>Every JHMMC captain can see the registrations waiting for approval. For 24 hours after a fish is registered, any other captain may dispute it, giving a reason. The secretary considers every dispute before approving.</li>
   <li class="warn strong">A false registration (a fish not caught that day, a wrong weight, the wrong angler, or a reused or altered scale photo) disqualifies the boat for that day. The committee may disqualify the boat for the rest of the season.</li>
 </ol>

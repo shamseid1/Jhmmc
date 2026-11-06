@@ -389,6 +389,19 @@ CREATE TABLE IF NOT EXISTS outing_landings (
 CREATE INDEX IF NOT EXISTS outing_landings_outing ON outing_landings(outing_id, id);
 
 -- Announcements from JHMMC's officers (a tournament, membership to pay…), on the feed.
+-- Everything the officers and the admin change, who did it and when; nothing
+-- in the app edits or deletes these rows. Names are copied in so they stay.
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER,
+  user_name TEXT NOT NULL,
+  role TEXT,
+  action TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS activity_log_at ON activity_log(id DESC);
+
 CREATE TABLE IF NOT EXISTS announcements (
   id INTEGER PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,

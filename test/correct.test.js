@@ -86,6 +86,17 @@ test('the secretary corrects species, angler or photo, waiting or approved; poin
     const steps = (await sec('GET', `/registrations/log?catch=${fish.id}`)).body.fish[0].steps.map((e) => e.note).filter((n) => n?.startsWith('Corrected'));
     assert.equal(steps.length, 3);
     assert.match(steps[0], /species Yellowfin tuna to Wahoo: It was a wahoo/);
+    // Everything the secretary did is in the activity log, which captains can't read.
+    const wahooId = species.find((x) => x.name === 'Wahoo').id;
+    assert.equal((await sec('PATCH', `/species/${wahooId}`, { pointsPerKg: 6 })).status, 200);
+    const log = (await sec('GET', '/activity')).body.items.map((x) => `${x.userName}: ${x.action}`);
+    assert.ok(log.some((l) => /Robert Khoueiry: Scoring table: Wahoo from 5 to 6 points per kg/.test(l)), log.join('\n'));
+    assert.ok(log.some((l) => /Corrected Sea Hunter's Yellowfin tuna/.test(l)));
+    assert.ok(log.some((l) => /Approved Sea Hunter's Wahoo/.test(l)));
+    assert.equal((await capA('GET', '/activity')).status, 403);
+    assert.ok((await boss('GET', '/activity')).body.items.length >= 5, 'the admin reads it too');
+    const ann = (await as()('GET', '/feed?type=announcements')).body.items[0];
+    assert.match(`${ann.title} ${ann.body}`, /Scoring table changed Robert Khoueiry changed Wahoo from 5 to 6 points per kg/);
   } finally {
     srv.close();
     fs.rmSync(tmp, { recursive: true, force: true });

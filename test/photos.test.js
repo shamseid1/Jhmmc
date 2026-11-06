@@ -70,6 +70,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     fd.set('fish', JSON.stringify([{ speciesId: sp('Blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' },
       { speciesId: sp('Sailfish'), anglerId: 'other', anglerName: 'Guest', released: true }]));
     fd.set('scalevideo_1', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'release.mp4');
+    fd.set('scale_1', new Blob([PNG, Buffer.from('r')], { type: 'image/png' }), 'release.png');
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'scale.png');
     fd.set('scalevideo_0', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'scale.mp4');
     const r = await capA('POST', '/weigh/sheet', fd);
@@ -108,7 +109,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     const post = (await as()('GET', '/feed?type=weighins')).body.items[0];
     const [m, s2] = ['Blue marlin', 'Sailfish'].map((n) => post.fish.find((f) => f.species === n));
     assert.deepEqual(m.photos, pub.photos.map((x) => x.url), 'the weigh-in post: the crew\'s photo, then the weigh station\'s');
-    assert.deepEqual(s2.photos, [], 'a released fish: no weigh station photo, no crew photo yet');
+    assert.equal(s2.photos.length, 1, 'a released fish: its photo of the release');
     // Added later by the crew; not by another boat or the public.
     const later = new FormData();
     later.set('photo', new Blob([PNG], { type: 'image/png' }), 'later.png');

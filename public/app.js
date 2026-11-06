@@ -1845,7 +1845,7 @@ const pagesFor = (view) => ({
         <label>Angler <select name="anglerId" required>${raw(anglerOptions())}</select></label>
       </div>
       <label class="guest-name" hidden>Angler's name <input name="anglerName" maxlength="80" autocomplete="off"></label>
-      <label class="check"><input type="checkbox" name="released"> Released (no weight; needs a video of the release)</label>
+      <label class="check"><input type="checkbox" name="released"> Released (no weight; a photo of the release)</label>
       <label>Weight (kg) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal"></label>
       <div class="points-field">
         <span class="points-label">Points (automatic)</span>
@@ -1853,7 +1853,7 @@ const pagesFor = (view) => ({
       </div>
       <label>Line class <select name="lineClass">${raw(options(state.meta.lineClasses, null, 'Not recorded'))}</select></label>
       <div class="scale-pick">
-        <span class="scale-label" data-kept="On the scale: a photo or a video (one is enough)" data-released="Video of the release (required)">On the scale: a photo or a video (one is enough)</span>
+        <span class="scale-label" data-kept="Photo on the scale (required); a video is optional" data-released="Photo of the release (required); a video is optional">Photo on the scale (required); a video is optional</span>
         <span class="small muted scale-hint">The whole fish hanging, and the weight readable. A short video from the fish to the scale works best.</span>
         <span class="small muted">Only the secretary, your crew and JHMMC captains see it.</span>
         <img class="scale-preview" alt="Fish on the scale" hidden>
@@ -1861,7 +1861,8 @@ const pagesFor = (view) => ({
         <div class="scale-buttons">
           <label class="btn scale-button">${raw(icon('camera'))} <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-scale></label>
           <label class="btn scale-video-button">${raw(icon('video'))} <span>Record video</span><input type="file" accept="video/*" capture="environment" data-scale-video></label>
-          <label class="btn roll-video-button">${raw(icon('upload'))} <span>From camera roll</span><input type="file" accept="video/*" data-release-video></label>
+          <label class="btn roll-photo-button">${raw(icon('upload'))} <span>Photo from camera roll</span><input type="file" accept="image/*" data-release-photo></label>
+          <label class="btn roll-video-button">${raw(icon('upload'))} <span>Video from camera roll</span><input type="file" accept="video/*" data-release-video></label>
         </div>
       </div>
     </fieldset>`;
@@ -1960,6 +1961,24 @@ const pagesFor = (view) => ({
         row.querySelector('.roll-video-button span').textContent = 'Choose another';
         return;
       }
+      // A release's photo was taken out at sea: from the camera roll, today's.
+      if (e.target.matches('[data-release-photo]')) {
+        const row = e.target.closest('.fish');
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        if (Date.now() - file.lastModified > RELEASE_VIDEO_MAX_AGE) {
+          toast("That photo is more than a day old. Choose today's photo of the release.");
+          return;
+        }
+        scalePhotos.set(row, file);
+        const img = row.querySelector('.scale-preview');
+        URL.revokeObjectURL(img.src);
+        img.src = URL.createObjectURL(file);
+        img.hidden = false;
+        row.querySelector('.roll-photo-button span').textContent = 'Choose another photo';
+        return;
+      }
       if (e.target.matches('[data-scale]')) {
         const row = e.target.closest('.fish');
         const file = e.target.files[0];
@@ -2024,8 +2043,8 @@ const pagesFor = (view) => ({
         const photo = scalePhotos.get(row);
         if (photo) fd.set(`scale_${i}`, await shrinkPhoto(photo));
         const video = scaleVideos.get(row);
-        if (get('released').checked && !video) throw new Error(`Fish ${i + 1}: add the video of the release.`);
-        if (!get('released').checked && !photo && !video) throw new Error(`Fish ${i + 1}: add a photo or video of the fish on the scale.`);
+        // A photo for every fish (it's the picture on the feed and the profiles); a video is optional.
+        if (!photo) throw new Error(`Fish ${i + 1}: add a photo ${get('released').checked ? 'of the release' : 'of the fish on the scale'}.`);
         if (video) fd.set(`scalevideo_${i}`, video);
       }
       fd.set('fish', JSON.stringify(fish));
@@ -2924,6 +2943,7 @@ const pagesFor = (view) => ({
         ${item('#/tournaments?sheets=1', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
+        ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -2954,6 +2974,30 @@ const pagesFor = (view) => ({
   // Admin only: every account, with a one-time password reset link to pass on.
   // Admin: every boat. JHMMC boats get their weigh station (their home port)
   // and Ocean or River here; the rest of a boat's details are on its page.
+  // Everything the officers and the admin changed, who and when. Nobody can edit it.
+  async activity() {
+    if (!state.me?.canReview && !state.me?.isAdmin) return needLogin(view, 'see the activity log');
+    const who = new URLSearchParams(location.hash.split('?')[1] || '').get('user') || '';
+    const q = (before) => `/activity?${new URLSearchParams(Object.entries({ user: who, before: before ?? '' }).filter(([, v]) => v))}`;
+    const first = await api(q());
+    const ROLE = { admin: 'Admin', ...Object.fromEntries(ROLE_OPTIONS) };
+    const row = (x) => html`<li><div><b>${x.userName}</b> <span class="small muted">${ROLE[x.role] || ''} · ${fmtWhen(x.at)}</span></div><div>${x.action}</div></li>`;
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Activity log</h1>
+      <p class="small muted">Every change made by the JHMMC officers and the admin: approvals, corrections, points, the scoring table, season dates, tournaments, memberships and accounts. It can't be edited or deleted by anyone. Changes to a fish are also sent to its crew; changes to the scoring table and season dates are announced in the feed.</p>
+      <label class="chip-select">Who <select id="who"><option value="">Everyone</option>${raw(first.people.map((p) => html`<option value="${p.id}" ${String(p.id) === who ? 'selected' : ''}>${p.name}</option>`).join(''))}</select></label>
+      <div class="card"><ul class="list" id="acts">${first.items.length ? raw(first.items.map(row).join('')) : raw('<li class="muted">Nothing yet.</li>')}</ul></div>
+      <button class="more" id="more" ${first.nextBefore ? '' : 'hidden'}>Load more</button>`;
+    let next = first.nextBefore;
+    view.querySelector('#who').addEventListener('change', (e) => { location.hash = `#/activity${e.target.value ? `?user=${e.target.value}` : ''}`; });
+    view.querySelector('#more').addEventListener('click', async (e) => {
+      const page = await api(q(next));
+      view.querySelector('#acts').insertAdjacentHTML('beforeend', page.items.map(row).join(''));
+      next = page.nextBefore;
+      e.target.hidden = !next;
+    });
+  },
+
   // The admin's backups: nightly copies of the database, emailed, and downloads.
   async backups() {
     if (!state.me?.isAdmin) return needLogin(view, 'see backups');
@@ -3911,7 +3955,7 @@ function renderNav(active = state.navActive) {
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
-    'admin-boats': 'more', backups: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
+    'admin-boats': 'more', backups: 'more', activity: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;

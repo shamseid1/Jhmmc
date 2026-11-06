@@ -571,11 +571,15 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.deepEqual([wahoo.status, wahoo.weightKg, wahoo.weighStation, wahoo.angler], ['pending_review', 21, 'Extreme', 'Ocean Captain']);
     assert.deepEqual([wahoo.points, wahoo.pointsNote], [105, '21 kg × 5 points per kg.'], 'points worked out at registration');
     r = await cap('POST', '/weigh', form({ ...reg, speciesId: sp('Blue marlin').id, released: 'on' }));
-    assert.match(r.body.error, /video of the release/, 'a released fish needs a video');
+    assert.match(r.body.error, /photo of the release/, 'a released fish needs a photo');
+    const onlyRelVideo = form({ ...reg, speciesId: sp('Blue marlin').id, released: 'on' });
+    onlyRelVideo.set('scaleVideo', new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), 'release.mp4');
+    assert.equal((await cap('POST', '/weigh', onlyRelVideo)).status, 400, 'a video alone is not enough');
     const release = form({ ...reg, speciesId: sp('Blue marlin').id, released: 'on' });
     release.set('scaleVideo', new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), 'release.mp4');
+    release.set('scalePhoto', new Blob([PNG], { type: 'image/png' }), 'release.png');
     r = await cap('POST', '/weigh', release);
-    assert.equal(r.status, 201, 'released fish need a video, no weight or scale photo');
+    assert.equal(r.status, 201, 'released fish: a photo, the video optional, no weight');
     assert.match(r.body.catch.scaleVideoUrl, /\.mp4$/);
     const marlin = r.body.catch;
 
@@ -658,8 +662,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(r.status, 400);
     assert.match(r.body.error, /^Fish 2: .*scale/, 'names the fish that is wrong');
     assert.equal((await sec('GET', '/officials/queue')).body.toReview.length, before, 'nothing saved');
-    assert.match((await cap('POST', '/weigh/sheet', sheet(three, [0, 1]))).body.error, /^Fish 3: .*video of the release/);
-    r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1], [2]));
+    assert.match((await cap('POST', '/weigh/sheet', sheet(three, [0, 1], [2]))).body.error, /^Fish 3: .*photo of the release/, 'a video alone is not enough');
+    r = await cap('POST', '/weigh/sheet', sheet(three, [0, 1, 2]));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.deepEqual(r.body.catches.map((c) => [c.species, c.weighStation, c.points]),
       [['Dorado', 'Extreme', 27], ['Barracuda', 'Extreme', 18], ['Sailfish', 'Extreme', 125]]);

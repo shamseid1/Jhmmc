@@ -636,7 +636,9 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .theme-menu button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); }
 .theme-menu .tick { margin-left: auto; }
 :root[data-theme="light"] .badge.status.wait { color: #8a4b00; }/* Kept fish: photo (and optional video). Released: record or choose the release video. */
-.fish:not(.is-released) .roll-video-button, .fish.is-released .scale-button, .fish.is-released .scale-preview { display: none; }
+.fish:not(.is-released) .roll-video-button, .fish:not(.is-released) .roll-photo-button { display: none; }
+.scale-button, .scale-video-button, .roll-video-button, .roll-photo-button { position: relative; }
+.roll-photo-button input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
 /* Install the app. */
 .install-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
