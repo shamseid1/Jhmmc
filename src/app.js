@@ -2739,7 +2739,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     }
     return packs.get(chart.id);
   };
-  const EMPTY_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const EMPTY_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==', 'base64') // fully see-through;
   api.get('/charts/:id/:z/:x/:y.png', auth.requireUser, forCrews, (req, res) => {
     const chart = chartList().find((c) => c.id === req.params.id && c.tiles);
     if (!chart) return res.status(404).json({ error: 'Chart not found.' });

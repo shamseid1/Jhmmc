@@ -302,7 +302,8 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 const depthLayer = (L, charts) => L.layerGroup(charts.map((c) => {
   const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
   return c.tiles
-    ? L.tileLayer(c.tiles, { bounds, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' })
+    // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
+    ? L.tileLayer(c.tiles, { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' })
     : L.imageOverlay(c.url, bounds, { opacity: 0.95 });
 }));
 
@@ -2700,7 +2701,7 @@ const pagesFor = (view) => ({
           [[spotsLink(year, species, ''), 'All months'], ...monthsHere.map((m) => [spotsLink(year, species, String(m)), MONTH_SHORT[m - 1]])], spotsLink(year, species, month)))}</select>`) : ''}
       </div>`) : ''}
       ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
-      ${charts.length ? raw('<p class="small muted">Depth contours: switch them on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
+      ${charts.length ? raw('<p class="small muted">Depth contours: zoom in to see them; switch them on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
       ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
