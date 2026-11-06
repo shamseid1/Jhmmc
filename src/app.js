@@ -1762,7 +1762,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       const title = `New tournament: ${name}`;
       const body = `${when}. JHMMC captains: enter your boat and list your anglers in the app (Leaderboard → Tournaments).`;
       db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, title, body);
-      pushToEveryone({ title: `JHMMC: ${title}`, body: when, url: `/#/tournament/${lastInsertRowid}` }, req.user);
+      pushToEveryone({ title: `JHMMC: ${title}`, body: when, url: '/#/tournaments' }, req.user);
     }
     res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name } });
   });

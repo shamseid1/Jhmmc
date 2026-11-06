@@ -1254,7 +1254,7 @@ const pagesFor = (view) => ({
         const box = view.querySelector('#tournament-call');
         if (!t || !box) return;
         box.innerHTML = !captain
-          ? html`<a class="card pad tournament-call" href="#/tournament/${t.id}">
+          ? html`<a class="card pad tournament-call" href="#/tournaments">
               <div class="tc-head">${raw(icon('trophy'))}<span class="small">Tournament</span></div>
               <b class="tc-name">${t.name}</b>
               <span class="muted">${fmtDays(t)} · ${plural(t.boats, 'boat')} entered</span>
@@ -1268,6 +1268,7 @@ const pagesFor = (view) => ({
               <b class="tc-name">${t.name}</b>
               <span class="muted">${fmtDays(t)}</span>
               <a class="btn primary" href="#/enter/${t.id}">Enter your boat</a>
+              <a class="small" href="#/tournaments">All tournaments ›</a>
             </div>`;
       }).catch(() => {});
     }
@@ -3231,20 +3232,33 @@ const pagesFor = (view) => ({
     const captain = !!state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId);
     const { tournaments, fee } = await api('/tournaments');
     const go = (t) => (official ? `#/sheet/${t.id}` : `#/tournament/${t.id}`);
+    // On the Leaderboard: coming up (to join) first, then the results of those started or over.
+    const listed = official ? tournaments : tournaments.filter((t) => t.date <= today());
     view.innerHTML = html`${official ? raw('<p class="back"><a href="#/more">‹ More</a></p><h1>Tournament sheets</h1>' + recordedNote('Entering or removing a boat, and marking memberships paid, are visible to the officers.')) : raw(html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}`)}
       <p class="small muted">${official
         ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
-        : captain ? `Tap a tournament for its results, and to enter your boat. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
+        : captain ? `Enter your boat under Coming up. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
           : "This season's JHMMC tournaments, for JHMMC boats (for now). Tap one for its results, Ocean and River."}</p>
       ${official && state.me?.canReview ? raw(html`<p><a class="btn primary" href="#/calendar?new=1">${raw(icon('trophy'))} New tournament</a></p>`) : ''}
-      ${tournaments.length ? raw(html`<div class="card menu">${tournaments.map((t) => raw(html`<a class="menu-item" href="${go(t)}">
+      ${!official && tournaments.some((t) => t.open) ? raw(html`<h2 id="coming-up">Coming up</h2>
+      <div class="stack">${tournaments.filter((t) => t.open).map((t) => raw(html`<div class="card pad tournament-call join-card" id="t-${t.id}">
+        <div class="tc-head">${raw(icon('trophy'))}<span class="small">${t.date > today() ? 'Coming up' : 'Under way'}</span></div>
+        <b class="tc-name">${t.name}</b>
+        <span class="muted">${fmtDays(t)} · ${plural(t.boats, 'boat')} entered</span>
+        ${captain ? raw(t.mine
+          ? html`<p class="tournament-now">${raw(icon('check'))} Your boat is entered.</p><a class="btn" href="#/enter/${t.id}">Edit your anglers</a>`
+          : html`<a class="btn primary" href="#/enter/${t.id}">Enter your boat</a>`)
+          : raw(html`<a class="btn" href="#/tournament/${t.id}">See who's in</a>`)}
+      </div>`))}</div>
+      <h2>Results</h2>`) : ''}
+      ${listed.length ? raw(html`<div class="card menu">${listed.map((t) => raw(html`<a class="menu-item" href="${go(t)}">
         <span class="mi-icon">${raw(icon('trophy'))}</span>
         <span class="mi-text"><b>${t.name}</b><span>${fmtDays(t)}${t.open ? '' : ' · over'}</span>
           <span>${official ? `${plural(t.boats, 'boat')} · ${plural(t.anglers, 'angler')} · ${t.guests} non-member${t.guests === 1 ? '' : 's'}${t.unpaid ? ` · ${t.unpaid} unpaid` : ''}`
             : captain ? (t.mine ? 'Your boat is entered' : t.open ? 'Not entered yet' : 'You did not enter') : `${plural(t.boats, 'boat')} entered`}</span></span>
         ${t.mine && captain ? raw(`<span class="badge new">In</span>`) : ''}
         <span class="mi-go" aria-hidden="true">›</span></a>`))}</div>`)
-        : raw(html`<div class="card pad empty">No tournaments on the calendar this season yet.${official ? raw(' <a href="#/calendar">Add one</a>') : ''}</div>`)}`;
+        : raw(html`<div class="card pad empty">${tournaments.length ? 'No results yet: they show here once a tournament starts.' : 'No tournaments on the calendar this season yet.'}${official ? raw(' <a href="#/calendar">Add one</a>') : ''}</div>`)}`;
   },
 
   // A captain enters their boat in a tournament with the anglers fishing on it.

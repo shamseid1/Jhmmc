@@ -951,3 +951,4 @@ a.me-card { color: var(--text); text-decoration: none; }
 .desk-short { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .desk-short a { padding: 14px; text-align: center; font-weight: 700; text-decoration: none; }
 a.tournament-call { color: var(--text); text-decoration: none; }
+.join-card .btn { justify-self: start; margin-top: 6px; }
