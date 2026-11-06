@@ -3317,7 +3317,8 @@ const pagesFor = (view) => ({
       <h2>Not in (${outBoats.length})</h2>
       <div class="card"><ul class="list">${outBoats.length ? outBoats.map((b) => raw(html`<li class="member" data-team="${b.teamId}">
         <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
-        ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>`;
+        ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>
+      ${manage ? raw('<p class="small muted">"Put in" enters a boat, then opens its anglers to fill in. The captain is notified.</p>') : ''}`;
     const put = (teamId, body) => api(`/tournaments/${id}/entries/${teamId}`, { method: 'PUT', body });
     view.addEventListener('change', async (e) => {
       const box = e.target.closest('input[data-act]');
@@ -3342,9 +3343,13 @@ const pagesFor = (view) => ({
       const btn = e.target.closest('button[data-act]');
       if (!btn) return;
       if (btn.dataset.act === 'put-in') {
-        await put(btn.closest('[data-team]').dataset.team, { entered: true });
-        toast('In');
-        route();
+        const teamId = btn.closest('[data-team]').dataset.team;
+        await put(teamId, { entered: true });
+        toast('In: now add its anglers');
+        // Back on the sheet with this boat's angler list open.
+        const to = `#/sheet/${id}?anglers=${teamId}`;
+        if (location.hash === to) route();
+        else location.hash = to;
       } else if (btn.dataset.act === 'edit') {
         const f = btn.nextElementSibling;
         f.hidden = !f.hidden;
@@ -3357,6 +3362,13 @@ const pagesFor = (view) => ({
         copyText(text, 'List copied');
       }
     });
+    // Just put in: open its angler list.
+    const openFor = new URLSearchParams(location.hash.split('?')[1] || '').get('anglers');
+    const justIn = openFor && view.querySelector(`.sheet-boat[data-team="${openFor}"]`);
+    if (justIn) {
+      justIn.querySelector('.angler-edit').hidden = false;
+      setTimeout(() => justIn.scrollIntoView({ block: 'start' }), 50);
+    }
     for (const f of view.querySelectorAll('.angler-edit')) {
       wireAnglerEditor(f);
       bindForm(f, async () => {

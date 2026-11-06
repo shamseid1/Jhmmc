@@ -105,6 +105,16 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.equal((await sec('PATCH', `/admin/teams/${blackStar.id}`, { division: 'river' })).status, 403);
     assert.ok((await sec('GET', '/activity')).body.items.some((x) => /Boat Reel Deal: weighStation Extreme, division river/.test(x.action)));
     await sec('PATCH', `/admin/teams/${reelDeal.id}`, { weighStation: 'Beerville', division: 'ocean' });
+    // The secretary enters a boat in a tournament with its crew; it's on record.
+    const soon = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+    const ev = (await sec('POST', '/events', { kind: 'tournament', name: 'JHMMC Classic', date: soon })).body.event;
+    const crewBId = (await crewB('GET', '/me')).body.user.id;
+    assert.equal((await sec('PUT', `/tournaments/${ev.id}/entries/${reelDeal.id}`, { entered: true })).status, 200);
+    const set = await sec('PUT', `/tournaments/${ev.id}/entries/${reelDeal.id}`, { entered: true, anglers: [{ userId: crewBId }, { name: 'Visiting Angler' }] });
+    assert.deepEqual(set.body.anglers.map((a) => a.name), ['Deck Hand', 'Visiting Angler']);
+    assert.equal((await crewB('PUT', `/tournaments/${ev.id}/entries/${seaHunter.id}`, { entered: true })).status, 403, 'not for crews');
+    const acts = (await sec('GET', '/activity')).body.items.map((x) => x.action);
+    assert.ok(acts.some((a) => a === 'Set the anglers of Reel Deal in "JHMMC Classic": Deck Hand, Visiting Angler'), acts.join('\n'));
     assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).body.error, /disputed/);
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve', note: 'Checked the radio log: caught today' })).status, 200);
     assert.match((await capB('POST', `/catches/${marlin.id}/disputes`, { reason: 'Late' })).body.error, /already decided/);

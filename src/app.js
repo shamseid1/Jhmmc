@@ -397,7 +397,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     ['PATCH', /^\/settings\/season$/, (m, b, before) => `Season dates from ${before.start} – ${before.end} to ${b.start} – ${b.end}`, () => ({ start: setting('season_start'), end: setting('season_end') })],
     ['POST', /^\/events$/, (m, b) => `Added ${b.kind === 'holiday' ? 'a holiday' : 'the tournament'} "${b.name}" (${b.date}${b.endDate && b.endDate !== b.date ? ` to ${b.endDate}` : ''})`],
     ['DELETE', /^\/events\/(\d+)$/, (m, b, before) => `Removed the ${before?.kind || 'event'} "${before?.name}" (${before?.date})`, (m) => db.prepare('SELECT name, kind, date FROM events WHERE id = ?').get(intId(m[1]) ?? 0)],
-    ['PUT', /^\/tournaments\/(\d+)\/entries\/(\d+)$/, (m, b) => `${b.entered ? 'Entered' : 'Took'} ${nameOf('teams', m[2])} ${b.entered ? 'in' : 'out of'} "${nameOf('events', m[1])}"`],
+    ['PUT', /^\/tournaments\/(\d+)\/entries\/(\d+)$/, (m, b) => `${b.entered ? (Array.isArray(b.anglers) ? 'Set the anglers of' : 'Entered') : 'Took'} ${nameOf('teams', m[2])} ${b.entered ? 'in' : 'out of'} "${nameOf('events', m[1])}"${Array.isArray(b.anglers) ? `: ${b.anglers.map((a) => a.name || nameOf(a.userId ? 'users' : 'club_people', a.userId || a.personId)).join(', ') || 'none'}` : ''}`],
     ['PATCH', /^\/tournaments\/(\d+)\/anglers\/(\d+)$/, (m, b) => `Tournament "${nameOf('events', m[1])}": angler entry ${m[2]}${'member' in b ? `, member ${b.member ? 'yes' : 'no'}` : ''}${'paid' in b ? `, paid ${b.paid ? 'yes' : 'no'}` : ''}`],
     ['POST', /^\/announcements$/, (m, b) => `Posted the announcement "${b.title}"`],
     ['DELETE', /^\/announcements\/(\d+)$/, (m, b, before) => `Removed the announcement "${before}"`, (m) => nameOf('announcements', m[1], 'title')],
@@ -2118,6 +2118,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!req.body.entered) {
       db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
       db.prepare('DELETE FROM tournament_anglers WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
+      if (official && team.captainId && team.captainId !== req.user.id) {
+        pushWhere('myFish', { title: event.name, body: `${req.user.name} took your boat out of the tournament.`, url: `/#/tournament/${event.id}` },
+          req.user, (p) => p.id === team.captainId);
+      }
       return res.json({ ok: true, entered: false, anglers: [] });
     }
     // The anglers: crew members by account, anyone else by name.
@@ -2168,6 +2172,15 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     } catch (err) {
       db.exec('ROLLBACK');
       throw err;
+    }
+    // The secretary entered the boat or set its anglers: the captain hears about it.
+    if (official && team.captainId && team.captainId !== req.user.id) {
+      const list = listAnglers(event.id, team.id).map((a) => a.name);
+      pushWhere('myFish', {
+        title: event.name,
+        body: anglers ? `${req.user.name} set your boat's anglers: ${list.join(', ') || 'none'}.` : `${req.user.name} entered your boat.`,
+        url: `/#/tournament/${event.id}`,
+      }, req.user, (p) => p.id === team.captainId);
     }
     res.json({ ok: true, entered: true, anglers: listAnglers(event.id, team.id) });
   });
