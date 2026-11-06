@@ -4055,10 +4055,12 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
-    records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
+    records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
+    // The officials' Tournament sheets live in More; the Tournaments tab in the Leaderboard.
+    tournaments: /[?&]sheets=1/.test(location.hash) ? 'more' : 'leaderboard',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;
