@@ -910,3 +910,8 @@ a.me-card { color: var(--text); text-decoration: none; }
 .trophy-add { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0, 0, 0, .55); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .trophy-add .icon { width: 16px; height: 16px; }
 .trophy-add.busy { opacity: .5; pointer-events: none; }
+/* Tags on the profile wall: weighed in (official), or as logged at sea. */
+.trophy .tag.weighed { background: #1d4ed8; }
+.trophy .tag.boated { background: #b45309; }
+.trophy-stats { grid-template-columns: repeat(4, 1fr); }
+.trophy-stats b { font-size: 20px; }

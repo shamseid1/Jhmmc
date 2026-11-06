@@ -128,6 +128,21 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.equal(wall.biggest.species, 'Blue marlin');
     assert.equal(wall.fish.find((f) => f.species === 'Blue marlin').photoUrl, pub.photoUrl, 'the crew\'s photo on the tile');
     assert.equal((await as()('GET', '/trophies')).status, 400);
+    // A fish logged at sea with a photo shows too, as the log has it; the crew can hide it.
+    const t2 = (await capA('POST', '/outings/fish', { speciesId: sp('Wahoo'), fate: 'released', lat: 6.1, lng: -10.9, landedAt: new Date().toISOString(), date: today })).body.trip;
+    const w = t2.landings.find((l) => l.species === 'Wahoo');
+    const wp = new FormData();
+    wp.set('photo', new Blob([PNG], { type: 'image/png' }), 'wahoo.png');
+    await capA('POST', `/outings/fish/${w.id}/photo`, wp);
+    let wall2 = (await as()('GET', `/trophies?team=${seaHunter.id}`)).body;
+    const tile = wall2.fish.find((f) => f.logged && f.species === 'Wahoo');
+    assert.ok(tile && tile.released && tile.points === null && !('lat' in tile), 'logged, released, no points, no spot');
+    assert.equal(wall2.stats.logged, 1);
+    assert.equal(wall2.fish.filter((f) => f.logged && f.species === 'Blue marlin').length, 0, 'the weighed marlin shows once, as weighed');
+    assert.equal((await crewB('PATCH', `/outings/fish/${w.id}`, { onProfile: false })).status, 403);
+    await capA('PATCH', `/outings/fish/${w.id}`, { onProfile: false });
+    wall2 = (await as()('GET', `/trophies?team=${seaHunter.id}`)).body;
+    assert.equal(wall2.stats.logged, 0, 'hidden by the crew');
     assert.equal(wall.stats.board, 'jhmmc', 'a JHMMC boat shows the JHMMC Season table');
     // A guest angler (a typed name) has a page too.
     const guestWall = (await as()('GET', '/trophies?angler=guest')).body;

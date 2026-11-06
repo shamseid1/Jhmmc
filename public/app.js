@@ -943,10 +943,16 @@ async function renderTrophies(box, query) {
   for (const f of fish) counts.set(f.species, (counts.get(f.species) || 0) + 1);
   const kinds = [...counts].sort((a, b) => b[1] - a[1]);
   const place = stats.place ? ` · ${ordinal(stats.place)}` : '';
-  const tile = (f) => html`<div class="trophy">
+  // A fish logged at sea shows as the log has it, Boated or Released; no points (it wasn't weighed).
+  const tile = (f) => f.logged ? html`<div class="trophy">
+    <a href="${f.photoUrl}" target="_blank" rel="noopener" aria-label="${f.species}, ${f.released ? 'released' : 'boated'}, logged at sea">
+      <img src="${f.photoUrl}" alt="" loading="lazy">
+      <span class="tag ${f.released ? '' : 'boated'}">${f.released ? 'Released' : 'Boated'}</span>
+      <span class="cap"><b>${f.species}</b>${f.estimateKg ? `~${fmtWeight(f.estimateKg)} est. · ` : ''}${fmtDate(f.caughtOn)}</span></a>
+  </div>` : html`<div class="trophy">
     <a href="#/catch/${f.id}" aria-label="${f.species}${f.weightKg ? `, ${fmtWeight(f.weightKg)}` : f.released ? ', released' : ''}">
       ${f.photoUrl ? raw(html`<img src="${f.photoUrl}" alt="" loading="lazy">`) : raw(`<span class="ph">${MARLIN}</span>`)}
-      ${f.released ? raw('<span class="tag">Released</span>') : ''}
+      <span class="tag weighed">${f.released ? 'Released' : 'Weighed'}</span>
       <span class="cap"><b>${f.species}</b>${f.released ? fmtPoints(f.points) : `${fmtWeight(f.weightKg)} · ${fmtPoints(f.points)}`}</span></a>
     ${f.canAddPhoto && !f.ownPhoto ? raw(html`<label class="trophy-add" aria-label="Add your photo of the ${f.species}">${raw(icon('camera'))}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`) : ''}
   </div>`;
@@ -955,6 +961,7 @@ async function renderTrophies(box, query) {
     if (sort === 'biggest') shown.sort((a, b) => (b.weightKg ?? -1) - (a.weightKg ?? -1) || (b.points ?? 0) - (a.points ?? 0));
     box.innerHTML = html`<div class="trophy-stats">
         <div class="card"><b>${stats.weighed}</b><span>fish weighed</span></div>
+        <div class="card"><b>${stats.logged}</b><span>fish logged</span></div>
         <div class="card"><b>${stats.releases}</b><span>releases</span></div>
         <div class="card"><b>${fmtPoints(stats.points).replace(' pts', '')}</b><span>${stats.board === 'jhmmc' ? 'JHMMC Season' : 'season points'}${place}</span></div>
       </div>
@@ -971,7 +978,7 @@ async function renderTrophies(box, query) {
           <button type="button" class="${sort === 'biggest' ? 'on' : ''}" data-sort="biggest">Biggest</button>
         </div>
         <div class="trophy-grid">${shown.map((f) => raw(tile(f)))}</div>`)
-        : raw('<div class="card pad empty muted">No fish weighed in yet. Fish show here once the secretary approves them.</div>')}`;
+        : raw('<div class="card pad empty muted">No fish yet. Fish weighed in show here once the secretary approves them, and fish logged with a photo straight away.</div>')}`;
   }
   box.addEventListener('click', (e) => {
     const b = e.target.closest('[data-species], [data-sort]');
@@ -2214,7 +2221,8 @@ const pagesFor = (view) => ({
       list.innerHTML = [...landed.map((l, n) => html`<li class="fo-row"><div class="fo-main"><b>${n + 1}. ${l.species}</b>${scale(l)} <span class="pill ${l.fate}">${l.fate}</span>
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate === 'released' && l.scaleKg == null && !l.scaleShared ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
-            ${l.fromScale ? '' : raw(html`· <button type="button" class="link small" data-edit="${l.id}">Edit</button> · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}</div></div>
+            ${l.fromScale ? '' : raw(html`· <button type="button" class="link small" data-edit="${l.id}">Edit</button> · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}
+            ${l.photoUrl && l.fate !== 'lost' ? raw(html`<div><label class="small"><input type="checkbox" data-on-profile="${l.id}" ${l.onProfile ? 'checked' : ''}> Show on our profiles</label></div>`) : ''}</div></div>
           <label class="fo-photo" aria-label="${l.photoUrl ? 'Change the photo' : 'Add a photo'} of the ${l.species}">
             ${l.photoUrl ? raw(html`<img src="${l.photoUrl}" alt="">`) : raw(html`${raw(icon('camera'))}<span>Add photo</span>`)}
             <input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label></li>`),
@@ -2278,6 +2286,18 @@ const pagesFor = (view) => ({
         if (view.contains(list)) draw();
       }
     }
+    // Shown on the angler's and boat's profiles, or not.
+    list.addEventListener('change', async (e) => {
+      const box = e.target.closest('[data-on-profile]');
+      if (!box) return;
+      try {
+        trip = (await api(`/outings/fish/${box.dataset.onProfile}`, { method: 'PATCH', body: { onProfile: box.checked } })).trip;
+        toast(box.checked ? 'Shown on your profiles.' : 'Hidden from your profiles.');
+      } catch (err) {
+        box.checked = !box.checked;
+        toast(err.message);
+      }
+    });
     // A photo of a logged fish: take one or pick one, any time.
     list.addEventListener('change', async (e) => {
       const input = e.target.closest('[data-photo-for]');

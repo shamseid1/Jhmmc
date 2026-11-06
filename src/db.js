@@ -382,7 +382,9 @@ CREATE TABLE IF NOT EXISTS outing_landings (
   -- The same fish registered at the weigh station: its scale weight.
   catch_id INTEGER REFERENCES catches(id) ON DELETE SET NULL,
   -- A photo of the fish, added by the crew whenever they like (shown on the feed).
-  photo TEXT
+  photo TEXT,
+  -- Shown on the angler's and boat's profiles (with its photo); the crew can hide it.
+  on_profile INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS outing_landings_outing ON outing_landings(outing_id, id);
 
@@ -600,6 +602,10 @@ function openDb(file) {
   }
   if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'notify')) {
     db.exec('ALTER TABLE users ADD COLUMN notify TEXT');
+  }
+  if (hasTables && db.prepare('PRAGMA table_info(outing_landings)').all().length
+    && !db.prepare('PRAGMA table_info(outing_landings)').all().some((c) => c.name === 'on_profile')) {
+    db.exec('ALTER TABLE outing_landings ADD COLUMN on_profile INTEGER NOT NULL DEFAULT 1');
   }
   if (hasTables && !db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'units')) {
     db.exec('ALTER TABLE users ADD COLUMN units TEXT');

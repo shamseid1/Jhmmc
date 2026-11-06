@@ -1715,6 +1715,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       ? db.prepare('SELECT division, club_id FROM teams WHERE id = ?').get(team)
       : user ? db.prepare('SELECT t.division, t.club_id FROM users u JOIN teams t ON t.id = u.team_id WHERE u.id = ?').get(user)
         : db.prepare('SELECT t.division, t.club_id FROM teams t WHERE t.id = ?').get(rows[0]?.teamId ?? 0);
+    // Fish logged at sea with a photo (boated or released), unless the crew hid them,
+    // and not already here as a weighed fish. Never the spot; never any points.
+    const logged = guest ? [] : db.prepare(`SELECT l.id, s.name AS species, s.id AS speciesId, l.fate, l.weight_kg AS estimateKg, o.date AS caughtOn,
+        l.photo, COALESCE(NULLIF(u.nickname, ''), u.name) AS angler, l.user_id AS userId, COALESCE(t.name, o.boat) AS teamName
+      FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
+        LEFT JOIN users u ON u.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
+      WHERE l.photo IS NOT NULL AND l.on_profile = 1 AND l.fate IN ('kept', 'released') AND COALESCE(l.client_id, '') NOT LIKE 'reg-%'
+        AND NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status = 'approved')
+        AND ${team ? 'o.team_id = :who' : 'l.user_id = :who'}
+      ORDER BY o.date DESC, l.id DESC`).all({ who: team || user }).map((l) => ({
+      id: l.id, logged: true, species: l.species, speciesId: l.speciesId, released: l.fate === 'released', fate: l.fate,
+      estimateKg: l.fate === 'released' ? l.estimateKg : null, caughtOn: l.caughtOn, angler: l.angler, userId: l.userId,
+      teamName: l.teamName, photoUrl: photoUrl(l.photo), points: null,
+    }));
     const division = boat?.division;
     const jhmmc = !!boat && boat.club_id === homeClubId();
     const { base, params } = pointsFilter({ division, board: jhmmc ? 'jhmmc' : 'all' });
@@ -1725,11 +1739,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const me = team || (user ? `u${user}` : `n${guest.toLowerCase()}`);
     const at = table.findIndex((x) => x.who === me);
     const biggest = fish.filter((f) => f.weightKg).sort((a, b) => b.weightKg - a.weightKg)[0] ?? null;
+    const all = [...fish, ...logged].sort((x, y) => (y.caughtOn > x.caughtOn ? 1 : y.caughtOn < x.caughtOn ? -1 : 0));
     res.json({
-      fish,
+      fish: all,
       stats: {
         weighed: fish.filter((f) => !f.released).length,
-        releases: fish.filter((f) => f.released).length,
+        logged: logged.length,
+        releases: all.filter((f) => f.released).length,
         points: at >= 0 ? table[at].points : 0,
         place: at >= 0 ? at + 1 : null,
         division: division === 'river' ? 'river' : 'ocean',
@@ -2342,7 +2358,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // ---- "Fish on": each fish logged as it's landed, spot taken there and then.
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
-  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, l.photo, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt,
+  const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, l.photo, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt, l.on_profile AS onProfile,
       COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
@@ -2436,6 +2452,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id WHERE l.id = ?`).get(intId(req.params.id) ?? 0);
     if (!l) return res.status(404).json({ error: 'Fish not found.' });
     if (!onTrip(req.user, l)) return res.status(403).json({ error: "Only the boat's crew can change its trip." });
+    // Shown on the profiles or not (a logged fish with its photo).
+    if ('onProfile' in req.body && Object.keys(req.body).length === 1) {
+      db.prepare('UPDATE outing_landings SET on_profile = ? WHERE id = ?').run(req.body.onProfile ? 1 : 0, l.id);
+      return res.json({ trip: tripFor(l.outing_id, req.user) });
+    }
     // A wrong tap: change the species or the result, keeping the fish's time and spot.
     if ('speciesId' in req.body || 'fate' in req.body) {
       const cur = db.prepare('SELECT species_id, fate, catch_id, client_id FROM outing_landings WHERE id = ?').get(l.id);
