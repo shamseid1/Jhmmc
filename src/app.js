@@ -673,11 +673,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   // The admin's Boats page: a JHMMC boat's weigh station (its home port) and Ocean or River.
-  api.patch('/admin/teams/:id', requireAdmin, (req, res) => {
+  // The admin and the secretary (he runs everything JHMMC): a boat's weigh station and Ocean/River.
+  api.patch('/admin/teams/:id', requireApprove, (req, res) => {
     const team = db.prepare('SELECT id, club_id AS clubId, weigh_station AS station, division FROM teams WHERE id = ?')
       .get(intId(req.params.id) ?? 0);
     if (!team) return res.status(404).json({ error: 'Boat not found.' });
     if ('weighStation' in req.body && team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats choose a JHMMC weigh station; other boats have their own.' });
+    if (!isAdminUser(req.user) && team.clubId !== homeClubId()) return res.status(403).json({ error: "The secretary sets JHMMC boats; ask the admin for this one." });
     const station = 'weighStation' in req.body ? req.body.weighStation || null : team.station;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
     const division = 'division' in req.body ? req.body.division : team.division;

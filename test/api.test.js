@@ -543,8 +543,8 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     r = await cap('POST', '/weigh', weighed({ ...reg, deviceLat: '', deviceLng: '', speciesId: sp('Wahoo').id, weightKg: '21', weighStation: 'Extreme' }));
     assert.match(r.body.error, /location/, "captains register with the phone's location");
     await sec('PATCH', '/settings/season', { start: day(-180), end: day(180) });
-    // The admin puts each JHMMC boat under a weigh station.
-    assert.equal((await sec('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 403, 'admin only');
+    // The admin or the secretary puts each JHMMC boat under a weigh station.
+    assert.equal((await sec('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 200, 'the secretary runs JHMMC boats too');
     assert.equal((await boss('PATCH', `/admin/teams/${visitor.id}`, { weighStation: 'Extreme' })).status, 400, 'JHMMC boats only');
     assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Nowhere' })).status, 400);
     assert.equal((await boss('PATCH', `/admin/teams/${ocean.id}`, { weighStation: 'Extreme' })).status, 200);

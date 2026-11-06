@@ -2965,6 +2965,7 @@ const pagesFor = (view) => ({
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
         ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
+        ${me.canApprove && !me.isAdmin ? item('#/admin-boats', 'boat', 'JHMMC boats', 'Weigh stations, Ocean or River') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -3089,8 +3090,8 @@ const pagesFor = (view) => ({
   },
 
   async 'admin-boats'() {
-    if (!state.me?.isAdmin) {
-      view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
+    if (!state.me?.isAdmin && !state.me?.canApprove) {
+      view.innerHTML = '<div class="card pad empty">Only the admin and the JHMMC secretary can see this page.</div>';
       return;
     }
     const { teams } = await api('/teams');
@@ -3099,7 +3100,8 @@ const pagesFor = (view) => ({
     const find = (t) => `${t.name} ${t.clubName || ''} ${t.weighStation || t.homePort || ''}`.toLowerCase();
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Boats (${teams.length})</h1>
-      <p class="small muted">Set each JHMMC boat's weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away. Tap a boat to change anything else: name, photo, club, captain or crew.</p>
+      <p class="small muted">Set each JHMMC boat's weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away.</p>
+      ${raw(recordedNote('Changing a boat\'s weigh station or Ocean/River is visible to the officers.'))}
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by boat, club or station" aria-label="Search boats" autocomplete="off"></label>
       <h2>JHMMC boats (${jhmmc.length})</h2>
       <div class="card"><ul class="list">${jhmmc.length ? jhmmc.map((t) => raw(html`<li class="boat-row" data-id="${t.id}" data-find="${find(t)}">

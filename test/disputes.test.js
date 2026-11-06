@@ -98,6 +98,13 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     assert.ok(desk.toReview >= 1 && desk.disputed.some((x) => x.id === marlin.id && x.last?.reason));
     assert.ok(Object.values(desk.stations).reduce((a, b) => a + b, 0) === desk.toReview);
     assert.equal((await capA('GET', '/desk')).status, 403, 'captains have no desk');
+    // The secretary sets JHMMC boats' weigh station and Ocean/River; not other clubs' boats; captains can't.
+    assert.equal((await sec('PATCH', `/admin/teams/${reelDeal.id}`, { weighStation: 'Extreme', division: 'river' })).status, 200);
+    assert.equal((await capA('PATCH', `/admin/teams/${reelDeal.id}`, { division: 'ocean' })).status, 403);
+    const blackStar = (await outsider('GET', '/teams')).body.teams.find((t) => t.name === 'Black Star');
+    assert.equal((await sec('PATCH', `/admin/teams/${blackStar.id}`, { division: 'river' })).status, 403);
+    assert.ok((await sec('GET', '/activity')).body.items.some((x) => /Boat Reel Deal: weighStation Extreme, division river/.test(x.action)));
+    await sec('PATCH', `/admin/teams/${reelDeal.id}`, { weighStation: 'Beerville', division: 'ocean' });
     assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).body.error, /disputed/);
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve', note: 'Checked the radio log: caught today' })).status, 200);
     assert.match((await capB('POST', `/catches/${marlin.id}/disputes`, { reason: 'Late' })).body.error, /already decided/);

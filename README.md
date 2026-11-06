@@ -102,7 +102,7 @@ Each push to the deployed branch redeploys automatically. A persistent disk need
 
 ### Secretary desk
 
-**More → Secretary desk** (the JHMMC officers) is one screen to start the day: fish to review, open disputes and fish registered today; what needs attention (disputed fish with the latest reason, fish waiting over a day); what waits at each weigh station; the next tournament and how many boats have entered; shortcuts; and the officer's own last changes from the activity log.
+The secretary also sets each JHMMC boat's weigh station and Ocean/River (**More → JHMMC boats**; the admin does it for any boat, under Platform admin). **More → Secretary desk** (the JHMMC officers) is one screen to start the day: fish to review, open disputes and fish registered today; what needs attention (disputed fish with the latest reason, fish waiting over a day); what waits at each weigh station; the next tournament and how many boats have entered; shortcuts; and the officer's own last changes from the activity log.
 
 ### Activity log
 
