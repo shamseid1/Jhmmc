@@ -1322,7 +1322,7 @@ const pagesFor = (view) => ({
   async crew() {
     if (!state.me) return needLogin(view, 'join or register a boat');
     if (state.me.teamId) {
-      location.hash = `#/boat/${state.me.teamId}`;
+      location.hash = `#/boat/${state.me.teamId}?manage=1`;
       return;
     }
     const clubs = await loadClubs(true);
@@ -1425,7 +1425,7 @@ const pagesFor = (view) => ({
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
     const facts = [division, station, spec, isJhmmc(team.clubId) ? '' : team.homePort, team.country].filter(Boolean).join(' · ');
     // The boat's page is the same for everyone; the crew manage it on its own page
-    // (invite code, crew, guest anglers, details), opened with the pencil.
+    // (invite code, crew, guest anglers, details), from More → My boat.
     const manage = (team.isMember || team.canManage) && new URLSearchParams(location.hash.split('?')[1] || '').get('manage') === '1';
     const crewList = (actions) => html`<div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
         <span><a href="#/user/${m.id}">${m.name}</a> ${m.id === team.captainId ? raw('<span class="badge">Captain</span>') : ''}
@@ -1434,8 +1434,7 @@ const pagesFor = (view) => ({
       </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>`;
     if (!manage) {
       view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
-        <div class="boat-head"><h1>${team.name}</h1>
-          ${team.isMember || team.canManage ? raw(html`<a class="me-edit" href="#/boat/${team.id}?manage=1" aria-label="Manage the boat" title="Manage the boat">${raw(icon('edit'))}</a>`) : ''}</div>
+        <div class="boat-head"><h1>${team.name}</h1></div>
         <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
         <h2>Catches</h2>
         <div id="trophies"></div>
@@ -1444,8 +1443,9 @@ const pagesFor = (view) => ({
       await renderTrophies(view.querySelector('#trophies'), { team: team.id });
       return;
     }
-    view.innerHTML = html`<p class="back"><a href="#/boat/${team.id}">‹ ${team.name}</a></p>
-      <h1>Manage the boat</h1>
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>My boat</h1>
+      <p><a href="#/boat/${team.id}">See ${team.name}'s page as everyone sees it ›</a></p>
       ${team.isMember || team.canManage ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
@@ -2948,7 +2948,7 @@ const pagesFor = (view) => ({
         <button type="button" class="primary" data-install>${icon('download')} Install</button>
       </div>`)}
       ${me ? raw(`<h2>Account</h2><div class="card menu">
-        ${me.teamId ? item(`#/boat/${me.teamId}`, 'boat', 'My boat', me.teamName) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
+        ${me.teamId ? item(`#/boat/${me.teamId}?manage=1`, 'boat', 'My boat', `${me.teamName}: invite code, crew, details`) : item('#/crew', 'boat', 'Get on a boat', 'Join a crew or register your boat')}
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
