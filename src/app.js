@@ -1525,6 +1525,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       db.prepare('UPDATE catches SET points = ?, points_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
         .run(s.points, s.note, req.user.id, new Date().toISOString(), id);
     } else if (req.body.decision === 'approve') {
+      // A fish taken off the points (or rejected) can be approved again, saying why.
+      if (row.status === 'rejected' && !note) return res.status(400).json({ error: 'Say why it now counts.' });
       if (!note && disputesFor.all(id).length) return res.status(400).json({ error: 'This fish was disputed: add a note on how the dispute was settled.' });
       said = fixWeight();
       const s = suggestPoints(id);

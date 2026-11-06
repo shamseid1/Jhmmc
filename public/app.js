@@ -796,6 +796,12 @@ function catchCard(c, { full = false } = {}) {
         ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.ownPhoto ? 'Change your photo' : 'Add your photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
       </div>
+      ${full && c.status === 'rejected' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
+        <h3>Secretary</h3>
+        <p class="small muted">Not counted. Approving it again gives it its points from the rules; say why. The crew is told.</p>
+        <label>Note <input name="note" maxlength="300" placeholder="Why it now counts"></label>
+        <div class="row-buttons"><button type="button" class="primary" data-act="reapprove">Approve again</button></div>
+      </form>`) : ''}
       ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
         <h3>Secretary</h3>
         <p class="small" data-rules><b>Rules give ${fmtPoints(c.points)}</b></p>
@@ -847,6 +853,18 @@ function wireCards(root, byId) {
       } catch (ex) {
         toast(ex.message);
       }
+    }
+    if (btn.dataset.act === 'reapprove') {
+      const note = btn.closest('[data-secretary]').querySelector('[name=note]').value.trim();
+      if (!note) return toast('Say why it now counts.');
+      try {
+        const { catch: fresh } = await api(`/catches/${c.id}/review`, { method: 'POST', body: { decision: 'approve', note } });
+        toast(`Approved again: ${fmtPoints(fresh.points)}.`);
+        route();
+      } catch (ex) {
+        toast(ex.message);
+      }
+      return;
     }
     if (btn.dataset.act === 'repoint' || btn.dataset.act === 'uncount') {
       const box = btn.closest('[data-secretary]');

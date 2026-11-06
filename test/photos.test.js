@@ -170,10 +170,14 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.deepEqual([k.status, k.points], ['rejected', null]);
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'weight', weightKg: 50, note: 'x' })).status, 400, 'no weight to correct once not counted');
     assert.ok(!(await as()('GET', '/feed?type=weighins')).body.items[0].fish.some((f) => f.id === marlin.id), 'off the weigh-in post');
+    assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).body.error, /why/);
+    k = (await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve', note: 'Dispute withdrawn' })).body.catch;
+    assert.deepEqual([k.status, k.points], ['approved', 1250], 'approved again, points from the rules');
+    assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'reject', note: 'Late dispute upheld' })).status, 200);
     assert.match((await sec('DELETE', `/catches/${sailfish.id}`)).body.error, /reason/);
     assert.equal((await sec('DELETE', `/catches/${sailfish.id}`, { reason: 'Registered twice' })).status, 200);
     const record = (await sec('GET', `/registrations/log?catch=${marlin.id}`)).body.fish[0].steps.map((e) => [e.action, e.note]);
-    assert.deepEqual(record.slice(-3), [['approved', null], ['repointed', 'Weight corrected from 210 to 250 kg: Scale photo says 250'], ['uncounted', 'Late dispute upheld']]);
+    assert.deepEqual(record.slice(-3), [['uncounted', 'Late dispute upheld'], ['approved', 'Dispute withdrawn'], ['uncounted', 'Late dispute upheld']]);
     const gone = (await sec('GET', `/registrations/log?catch=${sailfish.id}`)).body.fish[0].steps.at(-1);
     assert.deepEqual([gone.action, gone.note], ['deleted', 'Registered twice']);
   } finally {
