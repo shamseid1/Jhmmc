@@ -927,3 +927,6 @@ a.me-card { color: var(--text); text-decoration: none; }
 .me-who { display: flex; flex-direction: column; min-width: 0; }
 .me-edit { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--line); color: var(--accent); align-self: flex-start; }
 .me-edit .icon { width: 20px; height: 20px; }
+/* A boat's page: its name, and the crew's pencil to manage it. */
+.boat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.boat-head h1 { margin-bottom: 0; }

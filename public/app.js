@@ -1424,9 +1424,28 @@ const pagesFor = (view) => ({
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
     const facts = [division, station, spec, isJhmmc(team.clubId) ? '' : team.homePort, team.country].filter(Boolean).join(' · ');
-    view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
-      <h1>${team.name}</h1>
-      <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+    // The boat's page is the same for everyone; the crew manage it on its own page
+    // (invite code, crew, guest anglers, details), opened with the pencil.
+    const manage = (team.isMember || team.canManage) && new URLSearchParams(location.hash.split('?')[1] || '').get('manage') === '1';
+    const crewList = (actions) => html`<div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
+        <span><a href="#/user/${m.id}">${m.name}</a> ${m.id === team.captainId ? raw('<span class="badge">Captain</span>') : ''}
+          <span class="muted small">· ${plural(m.catches, 'catch')}</span></span>
+        ${actions && team.canManage && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
+      </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>`;
+    if (!manage) {
+      view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
+        <div class="boat-head"><h1>${team.name}</h1>
+          ${team.isMember || team.canManage ? raw(html`<a class="me-edit" href="#/boat/${team.id}?manage=1" aria-label="Manage the boat" title="Manage the boat">${raw(icon('edit'))}</a>`) : ''}</div>
+        <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+        <h2>Catches</h2>
+        <div id="trophies"></div>
+        <h2>Crew (${team.members.length})</h2>
+        ${raw(crewList(false))}`;
+      await renderTrophies(view.querySelector('#trophies'), { team: team.id });
+      return;
+    }
+    view.innerHTML = html`<p class="back"><a href="#/boat/${team.id}">‹ ${team.name}</a></p>
+      <h1>Manage the boat</h1>
       ${team.isMember || team.canManage ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
@@ -1435,14 +1454,8 @@ const pagesFor = (view) => ({
           ${team.canManage ? raw('<button data-act="new-code">New code</button>') : ''}
         </div>
       </div>`) : ''}
-      <h2>Catches</h2>
-      <div id="trophies"></div>
       <h2>Crew (${team.members.length})</h2>
-      <div class="card"><ul class="list">${team.members.map((m) => raw(html`<li class="member" data-uid="${m.id}">
-        <span><a href="#/user/${m.id}">${m.name}</a> ${m.id === team.captainId ? raw('<span class="badge">Captain</span>') : ''}
-          <span class="muted small">· ${plural(m.catches, 'catch')}</span></span>
-        ${team.canManage && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
-      </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>
+      ${raw(crewList(true))}
       ${team.canManage && team.guests.length ? raw(html`<h2>Guest anglers</h2>
       <p class="small muted">Catches logged under a typed name. If one of them joins the crew, move their catches to their account.</p>
       <div class="card"><ul class="list">${team.guests.map((g) => raw(html`<li class="member guest" data-name="${g.name}">
@@ -1535,7 +1548,6 @@ const pagesFor = (view) => ({
       toast('Boat saved');
       route();
     });
-    await renderTrophies(view.querySelector('#trophies'), { team: team.id });
   },
 
   // Clubs: JHMMC (the admin) opens them; anyone else asks, and the admin decides.
