@@ -934,3 +934,19 @@ a.me-card { color: var(--text); text-decoration: none; }
 .me-photo { flex: none; line-height: 0; }
 .me-links { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }
 .me-links .me-link { text-decoration: none; }
+/* The secretary desk. */
+.desk-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 14px; }
+.desk-kpis a { padding: 12px 8px; text-align: center; text-decoration: none; color: var(--text); }
+.desk-kpis b { display: block; font-size: 26px; }
+.desk-kpis span { font-size: 12px; color: var(--muted); }
+.desk-kpis .hot b { color: #dc2626; }
+.desk-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.desk-row:first-child { border-top: 0; }
+.desk-row > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.desk-row small { color: var(--muted); }
+.desk-link { display: block; color: var(--text); text-decoration: none; }
+.pill-red, .pill-amber { flex: none; border-radius: 99px; padding: 2px 9px; font-weight: 700; font-size: 12px; }
+.pill-red { background: #fee2e2; color: #b91c1c; }
+.pill-amber { background: #fef3c7; color: #92400e; }
+.desk-short { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.desk-short a { padding: 14px; text-align: center; font-weight: 700; text-decoration: none; }

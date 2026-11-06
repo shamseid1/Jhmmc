@@ -93,6 +93,11 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     const queued = (await sec('GET', '/officials/queue')).body.toReview.find((c) => c.id === marlin.id);
     assert.deepEqual(queued.disputes.map((d) => [d.author, d.boat, d.reason]), [['Captain B', 'Reel Deal', 'That marlin was caught yesterday'], ['Tema Captain', 'Black Star', 'Seen it at Tema']]);
     assert.ok(Date.parse(queued.disputeUntil) > Date.now());
+    // The secretary's desk: what waits, and the dispute on top.
+    const desk = (await sec('GET', '/desk')).body;
+    assert.ok(desk.toReview >= 1 && desk.disputed.some((x) => x.id === marlin.id && x.last?.reason));
+    assert.ok(Object.values(desk.stations).reduce((a, b) => a + b, 0) === desk.toReview);
+    assert.equal((await capA('GET', '/desk')).status, 403, 'captains have no desk');
     assert.match((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve' })).body.error, /disputed/);
     assert.equal((await sec('POST', `/catches/${marlin.id}/review`, { decision: 'approve', note: 'Checked the radio log: caught today' })).status, 200);
     assert.match((await capB('POST', `/catches/${marlin.id}/disputes`, { reason: 'Late' })).body.error, /already decided/);

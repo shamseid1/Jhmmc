@@ -100,6 +100,10 @@ The repo includes `render.yaml`, which sets up one web service with a 1 GB persi
 
 Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Render also keeps daily snapshots of the disk (the service's **Disks** tab).
 
+### Secretary desk
+
+**More → Secretary desk** (the JHMMC officers) is one screen to start the day: fish to review, open disputes and fish registered today; what needs attention (disputed fish with the latest reason, fish waiting over a day); what waits at each weigh station; the next tournament and how many boats have entered; shortcuts; and the officer's own last changes from the activity log.
+
 ### Activity log
 
 Everything the JHMMC officers and the admin change is recorded with who did it and when, in plain words and with what it was before where that matters: approvals and rejections, corrected weights, species, anglers and photos, deleted fish (with the reason), weigh-ins sent for a boat, the scoring table, season dates, tournaments and entries, memberships, announcements, accounts, boats and clubs. **More → Activity log** (the admin and the JHMMC officers) shows it, newest first, filtered by person; nothing in the app can edit or delete it. Changes to a fish are also sent to its crew, and changes to the scoring table or the season dates are announced in the feed automatically.

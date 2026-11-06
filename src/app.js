@@ -2054,6 +2054,30 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     });
   });
 
+  // The secretary's desk: what waits for him, what needs attention, today's
+  // weigh-ins, the next tournament and his own last changes.
+  api.get('/desk', requireReview, (req, res) => {
+    const waiting = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.weigh_station AS station,
+        k.created_at AS createdAt, t.name AS boat, (SELECT COUNT(*) FROM disputes d WHERE d.catch_id = k.id) AS disputes
+      FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN teams t ON t.id = k.team_id
+      WHERE k.status = 'pending_review' ORDER BY k.created_at`).all();
+    const stations = {};
+    for (const w of waiting) stations[w.station || 'No station'] = (stations[w.station || 'No station'] || 0) + 1;
+    // created_at is SQLite's "YYYY-MM-DD HH:MM:SS" (UTC); compare like for like.
+    const dayAgo = new Date(Date.now() - 86400000).toISOString().replace('T', ' ').slice(0, 19);
+    const disputed = waiting.filter((w) => w.disputes).map((w) => ({
+      ...w, last: db.prepare(`SELECT d.reason, d.created_at AS at, COALESCE(t.name, u.name) AS by FROM disputes d JOIN users u ON u.id = d.user_id
+        LEFT JOIN teams t ON t.id = u.team_id WHERE d.catch_id = ? ORDER BY d.id DESC LIMIT 1`).get(w.id),
+    }));
+    const old = waiting.filter((w) => !w.disputes && w.createdAt < dayAgo);
+    const today = todayUtc();
+    const weighedToday = db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status <> 'unofficial' AND date(created_at) = ?").get(today).n;
+    const next = db.prepare(`SELECT e.id, e.name, e.date, (SELECT COUNT(*) FROM tournament_entries te WHERE te.event_id = e.id) AS boats
+      FROM events e WHERE e.kind = 'tournament' AND COALESCE(e.end_date, e.date) >= ? ORDER BY e.date LIMIT 1`).get(today) ?? null;
+    const mine = db.prepare('SELECT action, created_at AS at FROM activity_log WHERE user_id = ? ORDER BY id DESC LIMIT 5').all(req.user.id);
+    res.json({ toReview: waiting.length, stations, disputed, old, weighedToday, next, mine });
+  });
+
   // The secretary's registration sheet: every JHMMC boat, entered ones first.
   api.get('/tournaments/:id/sheet', requireMoney, (req, res) => {
     const event = tournamentById(req.params.id);

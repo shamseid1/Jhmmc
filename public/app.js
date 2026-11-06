@@ -2958,6 +2958,7 @@ const pagesFor = (view) => ({
         ${item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours')}
       </div>` : ''}`) : ''}
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
+        ${me.canReview ? item('#/desk', 'review', 'Secretary desk', state.pending ? `${plural(state.pending, 'fish')} waiting · start here` : 'Everything waiting for you, in one place', state.pending) : ''}
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
         ${me.canReview ? item('#/weigh', 'weight', 'Weigh-in', 'For any boat') : ''}
         ${item('#/tournaments?sheets=1', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
@@ -2994,6 +2995,42 @@ const pagesFor = (view) => ({
   // Admin only: every account, with a one-time password reset link to pass on.
   // Admin: every boat. JHMMC boats get their weigh station (their home port)
   // and Ocean or River here; the rest of a boat's details are on its page.
+  // The secretary's desk: one screen to start the day.
+  async desk() {
+    if (!state.me?.canReview) return needLogin(view, 'open the secretary desk');
+    const d = await api('/desk');
+    const hour = new Date().getHours();
+    const hello = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const first = (state.me.displayName || state.me.name || '').split(' ')[0];
+    const fishName = (x) => `${x.boat || 'A boat'}'s ${x.species.toLowerCase()}${x.weightKg ? `, ${fmtWeight(x.weightKg)}` : x.released ? ' (released)' : ''}`;
+    const waitedH = (x) => Math.round((Date.now() - parseTime(x.createdAt)) / 3600000);
+    const stations = Object.entries(d.stations).sort((a, b) => b[1] - a[1]);
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Secretary desk</h1>
+      <p class="small muted">${hello}, ${first}. ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}.</p>
+      <div class="desk-kpis">
+        <a class="card ${d.toReview ? 'hot' : ''}" href="#/review"><b>${d.toReview}</b><span>fish to review</span></a>
+        <a class="card ${d.disputed.length ? 'hot' : ''}" href="#/review"><b>${d.disputed.length}</b><span>${d.disputed.length === 1 ? 'dispute open' : 'disputes open'}</span></a>
+        <a class="card" href="#/history"><b>${d.weighedToday}</b><span>registered today</span></a>
+      </div>
+      ${d.disputed.length || d.old.length ? raw(html`<h2>Needs attention</h2><div class="card">
+        ${d.disputed.map((x) => raw(html`<a class="desk-row" href="#/catch/${x.id}"><span><b>Disputed: ${fishName(x)}</b><small>${x.last ? `${x.last.by}: "${x.last.reason}" · ${fmtWhen(x.last.at)}` : ''}</small></span><span class="pill-red">Dispute</span></a>`))}
+        ${d.old.map((x) => raw(html`<a class="desk-row" href="#/catch/${x.id}"><span><b>${fishName(x)}</b><small>Waiting ${waitedH(x)} hours</small></span><span class="pill-amber">Over a day</span></a>`))}
+      </div>`) : raw('<div class="card pad muted">Nothing needs your attention.</div>')}
+      ${stations.length ? raw(html`<h2>To review, by weigh station</h2><div class="card">
+        ${stations.map(([w, n]) => raw(html`<a class="desk-row" href="#/review?station=${encodeURIComponent(w)}"><b>${w}</b><span class="tab-count">${n}</span></a>`))}
+      </div>`) : ''}
+      ${d.next ? raw(html`<h2>Next tournament</h2><a class="card pad desk-link" href="#/sheet/${d.next.id}"><b>${d.next.name}</b> · ${fmtDay(d.next.date)}<br><small class="muted">${plural(d.next.boats, 'boat')} entered</small></a>`) : ''}
+      <h2>Shortcuts</h2>
+      <div class="desk-short">
+        <a class="card" href="#/review">Review catches</a><a class="card" href="#/weigh">Weigh-in</a>
+        <a class="card" href="#/tournaments?sheets=1">Tournament sheets</a><a class="card" href="#/club-members">Club members</a>
+      </div>
+      <h2>Your last changes</h2>
+      <div class="card">${d.mine.length ? raw(d.mine.map((x) => html`<div class="desk-row"><span>${x.action}<small>${fmtWhen(x.at)}</small></span></div>`).join('')) : raw('<div class="desk-row muted">None yet.</div>')}</div>
+      <p><a href="#/activity">Full activity log ›</a></p>`;
+  },
+
   // Everything the officers and the admin changed, who and when. Nobody can edit it.
   async activity() {
     if (!state.me?.canReview && !state.me?.isAdmin) return needLogin(view, 'see the activity log');
@@ -3976,7 +4013,7 @@ function renderNav(active = state.navActive) {
     records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', tournaments: 'leaderboard', enter: 'leaderboard', sheet: 'leaderboard',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
-    'admin-boats': 'more', backups: 'more', activity: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
+    'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
   }[active] || active;
   // Signed in, More shows your photo (or initials), like a profile tab.
   const me = state.me;
