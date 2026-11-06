@@ -1,12 +1,12 @@
 [
   {
     "id": "coast",
-    "name": "Liberia to Guinea",
+    "name": "Guinea to the Ivory Coast border",
     "bounds": {
-      "south": 5.08893,
-      "west": -15.49231,
-      "north": 9.3258,
-      "east": -10.06964
+      "south": 3.51342,
+      "west": -16.17188,
+      "north": 10.14193,
+      "east": -7.03125
     },
     "tiles": {
       "pack": "coast.tiles",
