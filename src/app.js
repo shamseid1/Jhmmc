@@ -1715,16 +1715,16 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       ? db.prepare('SELECT division, club_id FROM teams WHERE id = ?').get(team)
       : user ? db.prepare('SELECT t.division, t.club_id FROM users u JOIN teams t ON t.id = u.team_id WHERE u.id = ?').get(user)
         : db.prepare('SELECT t.division, t.club_id FROM teams t WHERE t.id = ?').get(rows[0]?.teamId ?? 0);
-    // Fish logged at sea with a photo (boated or released), unless the crew hid them,
+    // On a boat's page only: fish logged at sea with a photo (boated or released), unless the crew hid them,
     // and not already here as a weighed fish. Never the spot; never any points.
-    const logged = guest ? [] : db.prepare(`SELECT l.id, s.name AS species, s.id AS speciesId, l.fate, l.weight_kg AS estimateKg, o.date AS caughtOn,
+    const logged = !team ? [] : db.prepare(`SELECT l.id, s.name AS species, s.id AS speciesId, l.fate, l.weight_kg AS estimateKg, o.date AS caughtOn,
         l.photo, COALESCE(NULLIF(u.nickname, ''), u.name) AS angler, l.user_id AS userId, COALESCE(t.name, o.boat) AS teamName
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
         LEFT JOIN users u ON u.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
       WHERE l.photo IS NOT NULL AND l.on_profile = 1 AND l.fate IN ('kept', 'released') AND COALESCE(l.client_id, '') NOT LIKE 'reg-%'
         AND NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status = 'approved')
-        AND ${team ? 'o.team_id = :who' : 'l.user_id = :who'}
-      ORDER BY o.date DESC, l.id DESC`).all({ who: team || user }).map((l) => ({
+        AND o.team_id = :who
+      ORDER BY o.date DESC, l.id DESC`).all({ who: team }).map((l) => ({
       id: l.id, logged: true, species: l.species, speciesId: l.speciesId, released: l.fate === 'released', fate: l.fate,
       estimateKg: l.fate === 'released' ? l.estimateKg : null, caughtOn: l.caughtOn, angler: l.angler, userId: l.userId,
       teamName: l.teamName, photoUrl: photoUrl(l.photo), points: null,

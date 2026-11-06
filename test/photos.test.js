@@ -138,6 +138,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     const tile = wall2.fish.find((f) => f.logged && f.species === 'Wahoo');
     assert.ok(tile && tile.released && tile.points === null && !('lat' in tile), 'logged, released, no points, no spot');
     assert.equal(wall2.stats.logged, 1);
+    assert.equal((await as()('GET', `/trophies?user=${(await capA('GET', '/me')).body.user.id}`)).body.fish.filter((f) => f.logged).length, 0, 'anglers\' pages: weighed fish only');
     assert.equal(wall2.fish.filter((f) => f.logged && f.species === 'Blue marlin').length, 0, 'the weighed marlin shows once, as weighed');
     assert.equal((await crewB('PATCH', `/outings/fish/${w.id}`, { onProfile: false })).status, 403);
     await capA('PATCH', `/outings/fish/${w.id}`, { onProfile: false });

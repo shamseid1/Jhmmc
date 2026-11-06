@@ -961,7 +961,7 @@ async function renderTrophies(box, query) {
     if (sort === 'biggest') shown.sort((a, b) => (b.weightKg ?? -1) - (a.weightKg ?? -1) || (b.points ?? 0) - (a.points ?? 0));
     box.innerHTML = html`<div class="trophy-stats">
         <div class="card"><b>${stats.weighed}</b><span>fish weighed</span></div>
-        <div class="card"><b>${stats.logged}</b><span>fish logged</span></div>
+        ${query.team ? raw(html`<div class="card"><b>${stats.logged}</b><span>fish logged</span></div>`) : ''}
         <div class="card"><b>${stats.releases}</b><span>releases</span></div>
         <div class="card"><b>${fmtPoints(stats.points).replace(' pts', '')}</b><span>${stats.board === 'jhmmc' ? 'JHMMC Season' : 'season points'}${place}</span></div>
       </div>
@@ -2222,7 +2222,7 @@ const pagesFor = (view) => ({
           <div class="small muted">${where(l)}${l.loggedBy ? ` · ${l.loggedBy}` : ''}
             ${l.fate === 'released' && l.scaleKg == null && !l.scaleShared ? raw(html`· <button type="button" class="link small" data-estimate="${l.id}" data-kg="${l.weightKg ?? ''}">${l.weightKg ? 'Change estimate' : 'Estimate weight'}</button>`) : ''}
             ${l.fromScale ? '' : raw(html`· <button type="button" class="link small" data-edit="${l.id}">Edit</button> · <button type="button" class="link danger small" data-undo="${l.id}">Undo</button>`)}
-            ${l.photoUrl && l.fate !== 'lost' ? raw(html`<div><label class="small"><input type="checkbox" data-on-profile="${l.id}" ${l.onProfile ? 'checked' : ''}> Show on our profiles</label></div>`) : ''}</div></div>
+            ${l.photoUrl && l.fate !== 'lost' ? raw(html`<div><label class="small"><input type="checkbox" data-on-profile="${l.id}" ${l.onProfile ? 'checked' : ''}> Show on our boat's page</label></div>`) : ''}</div></div>
           <label class="fo-photo" aria-label="${l.photoUrl ? 'Change the photo' : 'Add a photo'} of the ${l.species}">
             ${l.photoUrl ? raw(html`<img src="${l.photoUrl}" alt="">`) : raw(html`${raw(icon('camera'))}<span>Add photo</span>`)}
             <input type="file" accept="image/*" hidden data-photo-for="${l.id}"></label></li>`),
@@ -2292,7 +2292,7 @@ const pagesFor = (view) => ({
       if (!box) return;
       try {
         trip = (await api(`/outings/fish/${box.dataset.onProfile}`, { method: 'PATCH', body: { onProfile: box.checked } })).trip;
-        toast(box.checked ? 'Shown on your profiles.' : 'Hidden from your profiles.');
+        toast(box.checked ? "Shown on your boat's page." : "Hidden from your boat's page.");
       } catch (err) {
         box.checked = !box.checked;
         toast(err.message);
