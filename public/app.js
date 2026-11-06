@@ -2982,6 +2982,7 @@ const pagesFor = (view) => ({
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
         ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
+        ${me.canApprove && !me.isAdmin ? item('#/members', 'key', 'Members', 'Everyone on the app: tick who is in JHMMC') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/admin-boats', 'boat', 'JHMMC boats', 'Weigh stations, Ocean or River') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
@@ -3537,25 +3538,28 @@ const pagesFor = (view) => ({
   },
 
   async members() {
-    if (!state.me?.isAdmin) {
-      view.innerHTML = '<div class="card pad empty">Only the club admin can see this page.</div>';
+    if (!state.me?.isAdmin && !state.me?.canApprove) {
+      view.innerHTML = '<div class="card pad empty">Only the admin and the JHMMC secretary can see this page.</div>';
       return;
     }
+    // The secretary ticks who is in JHMMC; reset links and deleting accounts stay the admin's.
+    const admin = !!state.me.isAdmin;
     const { users } = await api('/admin/users');
     const inClub = users.filter((u) => u.jhmmc).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})</h1>
+      ${admin ? '' : raw(recordedNote('Adding someone to JHMMC or taking them out is visible to the officers.'))}
       <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
-        <button data-act="reset-link">Create reset link</button>
+        ${admin ? raw('<button data-act="reset-link">Create reset link</button>') : ''}
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
           ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${roleLabel(u.role)}</span>`) : ''}
         </div>
         <div class="reset-out" hidden></div>
-        ${u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
+        ${!admin || u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
       </li>`))}</ul></div>`;
     view.querySelector('.search input').addEventListener('input', (e) => {
       const term = e.target.value.trim().toLowerCase();
@@ -3572,7 +3576,8 @@ const pagesFor = (view) => ({
           return;
         }
         try {
-          const { role } = await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: { jhmmc: box.checked } });
+          const { role } = admin ? await api(`/admin/users/${row.dataset.id}`, { method: 'PATCH', body: { jhmmc: box.checked } })
+            : { role: hasRole, ...(await api(`/club-members/${row.dataset.id}`, { method: 'PUT', body: { member: box.checked } })) };
           if (!role) row.querySelector('.badge:not(.new)')?.remove();
           toast(box.checked ? `${name} is a JHMMC member` : `${name} is no longer a JHMMC member`);
         } catch (ex) {

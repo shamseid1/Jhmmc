@@ -638,7 +638,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.download(file);
   });
 
-  api.get('/admin/users', requireAdmin, (_req, res) => {
+  // Everyone with an account: the admin, and the secretary (he says who is in JHMMC).
+  api.get('/admin/users', requireApprove, (_req, res) => {
     const users = db.prepare(`
       SELECT u.id, u.name, u.nickname, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
@@ -2018,6 +2019,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if ('member' in req.body) {
       if (!canReview(req.user)) return res.status(403).json({ error: 'Only the secretary says who is a JHMMC member.' });
       if (!req.body.member && isAdminUser(user)) return res.status(400).json({ error: 'The admin stays a JHMMC member.' });
+      if (!req.body.member && !isAdminUser(req.user) && db.prepare('SELECT role FROM users WHERE id = ?').get(user.id).role) {
+        return res.status(403).json({ error: `${user.name} is a club officer: only the admin can take them out of JHMMC.` });
+      }
       db.prepare('UPDATE users SET jhmmc = ? WHERE id = ?').run(req.body.member ? 1 : 0, user.id);
       user.jhmmc = req.body.member ? 1 : 0;
       if (!req.body.member) req.body.paid = false;

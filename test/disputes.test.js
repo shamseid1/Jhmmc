@@ -112,6 +112,9 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     const outsiderId = (await outsider('GET', '/me')).body.user.id;
     assert.ok((await sec('GET', '/club-members')).body.others.some((o) => o.id === outsiderId));
     assert.equal((await capA('PUT', `/club-members/${outsiderId}`, { member: true })).status, 403);
+    assert.ok((await sec('GET', '/admin/users')).body.users.length >= 6, 'the secretary sees everyone on the Members page');
+    assert.equal((await capA('GET', '/admin/users')).status, 403);
+    assert.equal((await sec('PUT', `/club-members/${(await sec('GET', '/me')).body.user.id}`, { member: false })).status, 403, 'officers are the admin\'s to remove');
     assert.equal((await sec('PUT', `/club-members/${outsiderId}`, { member: true, paid: true })).status, 200);
     let cm = (await sec('GET', '/club-members')).body;
     assert.ok(cm.people.some((p) => p.id === outsiderId && p.paid), 'a paid JHMMC member now');
