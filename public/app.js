@@ -2061,8 +2061,10 @@ const pagesFor = (view) => ({
     // Split by weigh station, then grouped by day and boat like the paper forms.
     const NONE = 'No station';
     const stationOf = (c) => c.weighStation || NONE;
-    // Every station always shows, so the secretary sees where nothing is waiting too.
-    const stations = [...state.meta.weighStations, ...(toReview.some((c) => !c.weighStation) ? [NONE] : [])];
+    // Every JHMMC station always shows, so the secretary sees where nothing is waiting too;
+    // then any other place a fish was weighed (a boat outside JHMMC weighs at its home port).
+    const others = [...new Set(toReview.map((c) => c.weighStation).filter((w) => w && !state.meta.weighStations.includes(w)))].sort();
+    const stations = [...state.meta.weighStations, ...others, ...(toReview.some((c) => !c.weighStation) ? [NONE] : [])];
     const pick = new URLSearchParams(location.hash.split('?')[1] || '').get('station');
     const shown = stations.includes(pick) ? [pick] : stations;
     const count = (w) => toReview.filter((c) => stationOf(c) === w).length;
@@ -2083,7 +2085,7 @@ const pagesFor = (view) => ({
         ${raw(tab('All', '#/review', toReview.length, !stations.includes(pick)))}
         ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), pick === w)))}
       </nav>`)}
-      <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; change them with a note if needed.</p>
+      <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; correct the weight with a note if needed.</p>
       ${shown.map((w) => raw(html`<section class="station" data-station="${w}">
         <h2 class="station-head">${w} <span class="muted small" data-left>${count(w) ? plural(count(w), 'fish') : 'nothing waiting'}</span></h2>
         ${sheetsAt(w).map((g) => raw(html`<section class="sheet">
