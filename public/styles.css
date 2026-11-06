@@ -952,3 +952,4 @@ a.me-card { color: var(--text); text-decoration: none; }
 .desk-short a { padding: 14px; text-align: center; font-weight: 700; text-decoration: none; }
 a.tournament-call { color: var(--text); text-decoration: none; }
 .join-card .btn { justify-self: start; margin-top: 6px; }
+#add-member h3, #add-member p { margin: 0; }

@@ -108,6 +108,17 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
     // The secretary enters a boat in a tournament with its crew; it's on record.
     const soon = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
     const ev = (await sec('POST', '/events', { kind: 'tournament', name: 'JHMMC Classic', date: soon })).body.event;
+    // The secretary says who is a JHMMC member (he knows them); captains can't.
+    const outsiderId = (await outsider('GET', '/me')).body.user.id;
+    assert.ok((await sec('GET', '/club-members')).body.others.some((o) => o.id === outsiderId));
+    assert.equal((await capA('PUT', `/club-members/${outsiderId}`, { member: true })).status, 403);
+    assert.equal((await sec('PUT', `/club-members/${outsiderId}`, { member: true, paid: true })).status, 200);
+    let cm = (await sec('GET', '/club-members')).body;
+    assert.ok(cm.people.some((p) => p.id === outsiderId && p.paid), 'a paid JHMMC member now');
+    assert.equal((await sec('PUT', `/club-members/${outsiderId}`, { member: false })).status, 200);
+    cm = (await sec('GET', '/club-members')).body;
+    assert.ok(!cm.people.some((p) => p.id === outsiderId) && cm.others.some((o) => o.id === outsiderId), 'and out again');
+    assert.ok((await sec('GET', '/activity')).body.items.some((x) => /Tema Captain added to JHMMC, marked paid/.test(x.action)));
     const annT = (await as()('GET', '/feed?type=announcements')).body.items[0];
     assert.equal(annT.title, 'New tournament: JHMMC Classic', 'a new tournament is announced in the feed');
     const crewBId = (await crewB('GET', '/me')).body.user.id;

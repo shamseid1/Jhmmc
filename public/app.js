@@ -3405,14 +3405,22 @@ const pagesFor = (view) => ({
   // The secretary's list of who has paid their JHMMC membership this season.
   async 'club-members'() {
     if (!state.me?.canHandleMoney) return needLogin(view, 'keep the membership list (club officers and the treasurer)');
-    const [{ season, people, named }, { teams }] = await Promise.all([api('/club-members'), api('/teams')]);
+    const [{ season, people, named, others, canSetMembers }, { teams }] = await Promise.all([api('/club-members'), api('/teams')]);
     const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
     const paid = people.filter((p) => p.paid).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Club members</h1>
-      <p class="small muted">Tick everyone who has paid their JHMMC membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
-        In tournaments, anyone who isn't ticked here counts as a non-member and pays the temporary membership.</p>
-      ${raw(recordedNote('Marking someone paid or not paid is visible to the officers.'))}
+      <p class="small muted">Everyone in JHMMC, and who has paid their membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
+        In tournaments, anyone who isn't ticked paid here counts as a non-member and pays the temporary membership.</p>
+      ${canSetMembers ? raw(html`<form class="card pad stack" id="add-member">
+        <h3>Add someone to JHMMC</h3>
+        <p class="small muted">Anyone with an account who is a club member. Type to find them.</p>
+        <label class="search">${raw(icon('search'))}<input list="non-members" name="who" placeholder="Name, email or boat" autocomplete="off" aria-label="Find a person"></label>
+        <datalist id="non-members">${raw(others.map((o) => html`<option value="${o.name} · ${o.email}">${o.teamName || 'No boat'}</option>`).join(''))}</datalist>
+        <label class="check"><input type="checkbox" name="paid" checked> Paid ${label}</label>
+        <p class="error"></p><div><button type="submit" class="primary">Add to JHMMC</button></div>
+      </form>`) : ''}
+      ${raw(recordedNote('Adding or removing members and marking them paid is visible to the officers.'))}
       <div class="sheet-totals"><div><span>Paid members</span><b>${paid + named.filter((p) => p.paid).length}</b></div><div><span>Not paid</span><b>${people.length - paid + named.filter((p) => !p.paid).length}</b></div></div>
       <div class="filter-bar member-filter">
         ${[['all', 'Everyone'], ['paid', 'Paid'], ['unpaid', 'Not paid']].map(([k, l]) => raw(html`<button type="button" class="${k === 'all' ? 'filter-toggle on' : 'filter-toggle'}" data-show="${k}">${l}</button>`))}
@@ -3423,7 +3431,8 @@ const pagesFor = (view) => ({
           ${p.isAdmin ? raw('<span class="badge new">Admin</span>')
             : state.me.isAdmin ? raw(html`<label class="role-pick">Role <select data-act="role">${raw(options(ROLE_OPTIONS, p.role || ''))}</select></label>`)
               : p.role ? raw(html`<span class="badge">${roleLabel(p.role)}</span>`) : ''}</span>
-        <label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
+        <span class="pay-col"><label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
+          ${canSetMembers && !p.isAdmin ? raw('<button type="button" class="link danger small" data-act="not-member">Remove from JHMMC</button>') : ''}</span>
       </li>`))}</ul></div>
       <h2>Members without an account</h2>
       <p class="small muted">Children and anyone else who doesn't use the app. Give them their boat so its captain can pick them for tournaments.</p>
@@ -3456,6 +3465,32 @@ const pagesFor = (view) => ({
       show = btn.dataset.show;
       for (const b of view.querySelectorAll('.member-filter [data-show]')) b.classList.toggle('on', b === btn);
       filter();
+    });
+    // The secretary adds someone with an account to JHMMC.
+    const memberForm = view.querySelector('#add-member');
+    if (memberForm) bindForm(memberForm, async () => {
+      const typed = memberForm.who.value.trim().toLowerCase();
+      const who = others.find((o) => `${o.name} · ${o.email}`.toLowerCase() === typed)
+        || others.filter((o) => `${o.name} ${o.email} ${o.teamName || ''}`.toLowerCase().includes(typed)).reduce((a, o, i, l) => (l.length === 1 ? o : a), null);
+      if (!who) throw new Error(typed ? 'Choose one person from the list.' : 'Type a name to find them.');
+      if (!confirm(`Add ${who.name} to JHMMC${memberForm.paid.checked ? `, paid ${label}` : ''}?`)) return;
+      await api(`/club-members/${who.id}`, { method: 'PUT', body: { member: true, ...(memberForm.paid.checked && { paid: true }) } });
+      toast(`${who.name} is a JHMMC member`);
+      route();
+    });
+    view.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act=not-member]');
+      if (!btn) return;
+      const li = btn.closest('[data-id]');
+      const name = li.querySelector('b').textContent;
+      if (!confirm(`Remove ${name} from JHMMC? Their paid tick for this season goes too.`)) return;
+      try {
+        await api(`/club-members/${li.dataset.id}`, { method: 'PUT', body: { member: false } });
+        toast(`${name} is no longer a JHMMC member`);
+        route();
+      } catch (ex) {
+        toast(ex.message);
+      }
     });
     view.addEventListener('change', async (e) => {
       // The admin sets club roles here.

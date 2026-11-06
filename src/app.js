@@ -401,7 +401,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     ['PATCH', /^\/tournaments\/(\d+)\/anglers\/(\d+)$/, (m, b) => `Tournament "${nameOf('events', m[1])}": angler entry ${m[2]}${'member' in b ? `, member ${b.member ? 'yes' : 'no'}` : ''}${'paid' in b ? `, paid ${b.paid ? 'yes' : 'no'}` : ''}`],
     ['POST', /^\/announcements$/, (m, b) => `Posted the announcement "${b.title}"`],
     ['DELETE', /^\/announcements\/(\d+)$/, (m, b, before) => `Removed the announcement "${before}"`, (m) => nameOf('announcements', m[1], 'title')],
-    ['PUT', /^\/club-members\/(\d+)$/, (m, b) => `Membership: ${nameOf('users', m[1])} marked ${b.paid ? 'paid' : 'not paid'}`],
+    ['PUT', /^\/club-members\/(\d+)$/, (m, b) => `Membership: ${nameOf('users', m[1])}${'member' in b ? (b.member ? ' added to JHMMC' : ' removed from JHMMC') : ''}${'paid' in b ? `${'member' in b ? ',' : ''} marked ${b.paid ? 'paid' : 'not paid'}` : ''}`],
     ['POST', /^\/club-members\/named$/, (m, b) => `Membership: added ${b.name}`],
     ['PUT', /^\/club-members\/named\/(\d+)$/, (m, b) => `Membership: changed ${nameOf('club_people', m[1])}${'paid' in b ? `, ${b.paid ? 'paid' : 'not paid'}` : ''}`],
     ['DELETE', /^\/club-members\/named\/(\d+)$/, (m, b, before) => `Membership: removed ${before}`, (m) => nameOf('club_people', m[1])],
@@ -1966,7 +1966,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const peopleOfBoat = (teamId) => db.prepare('SELECT id, name FROM club_people WHERE team_id = ? ORDER BY name COLLATE NOCASE')
     .all(teamId).map((p) => ({ ...p, member: isPaidPerson(p.id) }));
 
-  api.get('/club-members', requireMoney, (_req, res) => {
+  api.get('/club-members', requireMoney, (req, res) => {
     const season = { start: setting('season_start'), end: setting('season_end') };
     const people = db.prepare(`SELECT u.id, u.name, u.nickname, u.email, u.role, t.name AS teamName,
         EXISTS (SELECT 1 FROM club_members m WHERE m.user_id = u.id AND m.season = ?) AS paid
@@ -1976,7 +1976,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         EXISTS (SELECT 1 FROM club_people_paid c WHERE c.person_id = p.id AND c.season = ?) AS paid
       FROM club_people p LEFT JOIN teams t ON t.id = p.team_id ORDER BY p.name COLLATE NOCASE`).all(season.start)
       .map((p) => ({ ...p, paid: !!p.paid }));
-    res.json({ season, people, named });
+    // Everyone else with an account, for the secretary to add to JHMMC: he knows who's a member.
+    const others = canReview(req.user) ? db.prepare(`SELECT u.id, u.name, u.nickname, u.email, t.name AS teamName
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 0 ORDER BY u.name COLLATE NOCASE`).all() : [];
+    res.json({ season, people, named, others, canSetMembers: canReview(req.user) });
   });
 
   // Add a member who has no account (a child, say), optionally with their boat.
@@ -2000,7 +2003,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     else db.prepare('DELETE FROM club_people_paid WHERE person_id = ? AND season = ?').run(person.id, memberSeason());
     db.prepare('UPDATE tournament_anglers SET member = ?, paid = CASE WHEN ? THEN 0 ELSE paid END WHERE person_id = ?')
       .run(req.body.paid ? 1 : 0, req.body.paid ? 1 : 0, person.id);
-    res.json({ ok: true, paid: !!req.body.paid });
+    res.json({ ok: true, paid: !!req.body.paid, member: !!user.jhmmc });
   });
 
   api.delete('/club-members/named/:id', requireMoney, (req, res) => {
@@ -2009,8 +2012,17 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   api.put('/club-members/:userId', requireMoney, (req, res) => {
-    const user = db.prepare('SELECT id, name, jhmmc FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
+    const user = db.prepare('SELECT id, name, email, jhmmc FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
     if (!user) return res.status(404).json({ error: 'Member not found.' });
+    // The secretary (and the officers) say who is a JHMMC member: he knows them.
+    if ('member' in req.body) {
+      if (!canReview(req.user)) return res.status(403).json({ error: 'Only the secretary says who is a JHMMC member.' });
+      if (!req.body.member && isAdminUser(user)) return res.status(400).json({ error: 'The admin stays a JHMMC member.' });
+      db.prepare('UPDATE users SET jhmmc = ? WHERE id = ?').run(req.body.member ? 1 : 0, user.id);
+      user.jhmmc = req.body.member ? 1 : 0;
+      if (!req.body.member) req.body.paid = false;
+      else if (!('paid' in req.body)) return res.json({ ok: true, member: true });
+    }
     if (req.body.paid && !user.jhmmc) return res.status(400).json({ error: `${user.name} isn't a JHMMC member: the admin adds people to JHMMC on the Members page.` });
     if (req.body.paid) {
       db.prepare('INSERT OR IGNORE INTO club_members (user_id, season, marked_by) VALUES (?, ?, ?)').run(user.id, memberSeason(), req.user.id);
