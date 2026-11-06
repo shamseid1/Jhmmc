@@ -2727,9 +2727,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     : res.status(403).json({ error: 'Depth charts are for boat crews.' }));
   api.get('/charts', auth.requireUser, forCrews, (_req, res) => {
     res.json({ charts: chartList().map(({ id, name, bounds, tiles }) => (tiles
-      ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom }
+      // The version (the pack's size and date) changes with the chart, so phones fetch the new tiles instead of saved ones.
+      ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png?v=${chartVersion(tiles)}`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom }
       : { id, name, bounds, url: `/api/charts/${id}` })) });
   });
+  const chartVersion = (tiles) => {
+    try {
+      const st = fs.statSync(path.join(CHART_DIR, path.basename(tiles.pack)));
+      return `${st.size.toString(36)}${Math.floor(st.mtimeMs / 1000).toString(36)}`;
+    } catch {
+      return '0';
+    }
+  };
   // A tiled chart is one packed file of map tiles and an index ("z/x/y": [offset, length]).
   const packs = new Map();
   const packFor = (chart) => {
@@ -2748,7 +2757,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const at = [z, x, y].every((v) => /^\d{1,7}$/.test(v)) ? index[`${+z}/${+x}/${+y}`] : null;
     res.set('Cache-Control', 'private, max-age=604800');
     res.type('png');
-    if (!at) return res.send(EMPTY_TILE); // outside the chart: nothing to draw
+    if (!at) return res.set('Cache-Control', 'private, max-age=3600').send(EMPTY_TILE); // outside the chart: nothing to draw
     const buf = Buffer.alloc(at[1]);
     const fd = fs.openSync(file, 'r');
     try {
