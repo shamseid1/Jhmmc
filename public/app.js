@@ -2921,9 +2921,12 @@ const pagesFor = (view) => ({
       <span class="mi-go" aria-hidden="true">›</span></a>`;
     view.innerHTML = html`<div class="page-head"><h1 class="center">More</h1>${raw(themeButton())}</div>
       ${me ? raw(html`<div class="card pad me-card">
-          <a href="#/user/${me.id}" class="me-photo" aria-label="My dashboard">${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}</a>
-          <div class="me-who"><b>${me.displayName}</b><div class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</div>
-            <div class="small me-links"><a class="me-link" href="#/user/${me.id}">My dashboard ›</a><a class="me-link" href="#/profile">Edit profile ›</a></div></div>
+          <a class="me-main" href="#/user/${me.id}">
+            ${me.photoUrl ? raw(html`<img src="${me.photoUrl}" alt="">`) : raw(`<span class="me-ph">${icon('user')}</span>`)}
+            <span class="me-who"><b>${me.displayName}</b><span class="muted small">${me.teamName ? `${me.teamName}${me.isCaptain ? ' · Captain' : ''}` : 'Individual angler'}</span>
+              <span class="small me-link">My dashboard ›</span></span>
+          </a>
+          <a class="me-edit" href="#/profile" aria-label="Edit profile" title="Edit profile">${raw(icon('edit'))}</a>
         </div>`)
         : raw(`<div class="card pad"><p style="margin-top:0">Sign in to log fish with your boat.</p>
           <a class="btn primary" href="#/login">Sign in</a> <a class="btn" href="#/register">Create account</a></div>`)}
