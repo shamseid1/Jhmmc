@@ -930,3 +930,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 /* A boat's page: its name, and the crew's pencil to manage it. */
 .boat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .boat-head h1 { margin-bottom: 0; }
+/* Your card on More: your dashboard and your boat's, side by side. */
+.me-photo { flex: none; line-height: 0; }
+.me-links { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }
+.me-links .me-link { text-decoration: none; }
