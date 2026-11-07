@@ -70,6 +70,9 @@ function createApp({
   // Nightly copies of the database (next to it, in "backups"), emailed to the admin.
   backupDir,
   nightlyBackups = true,
+  // A demo copy for showing the club: sample data (src/demo.js), shared sign-ins
+  // listed on the sign-in page, and nothing a visitor can lock the others out with.
+  demo = false,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
@@ -128,6 +131,19 @@ function createApp({
   app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js'), { headers: { 'Cache-Control': 'no-cache' } }));
 
   const api = express.Router();
+  if (demo) {
+    const { DEMO_ACCOUNTS } = require('./demo');
+    // The shared demo accounts keep their passwords and emails.
+    const locked = [['POST', '/me/password'], ['POST', '/auth/forgot'], ['POST', '/auth/reset'], ['DELETE', /^\/admin\/users\//]];
+    api.use((req, res, next) => {
+      const hit = locked.some(([m, p]) => req.method === m && (typeof p === 'string' ? req.path === p : p.test(req.path)));
+      if (hit || (req.method === 'PATCH' && req.path === '/me' && 'email' in (req.body ?? {}))) {
+        return res.status(403).json({ error: 'Not in the demo copy: the sign-ins are shared.' });
+      }
+      next();
+    });
+    api.get('/demo', (_req, res) => res.json({ accounts: DEMO_ACCOUNTS }));
+  }
 
   const photoUrl = (file) => (file ? `/uploads/${file}` : null);
 
@@ -214,7 +230,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({
       countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name,
       emailEnabled: mailer.configured, adminEmail, weighStations: WEIGH_STATIONS, homeClubId: homeClubId(),
-      season: { start: setting('season_start'), end: setting('season_end') },
+      season: { start: setting('season_start'), end: setting('season_end') }, demo,
     });
   });
 

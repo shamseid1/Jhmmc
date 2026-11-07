@@ -100,6 +100,14 @@ The repo includes `render.yaml`, which sets up one web service with a 1 GB persi
 
 Each push to the deployed branch redeploys automatically. A persistent disk needs a paid instance (Starter); Render shows the price before you confirm. Render also keeps daily snapshots of the disk (the service's **Disks** tab).
 
+### Demo copy
+
+A second service, for showing the club, runs the same code with a made-up season: three JHMMC boats, weighed and approved fish with pictures, likes and comments, a tournament coming up, a trip logged at sea, and one fish waiting for the secretary. The sign-in page lists shared accounts (a captain, an angler, the secretary), one tap each, and every page says it is a demo copy. Nobody can change those accounts' passwords or emails, so one visitor can't lock out the next.
+
+1. On Render, **New → Web Service**, the same repository and branch, build `npm ci`, start `npm start`, the Free instance type.
+2. Add the environment variable `DEMO=1` (and `NODE_ENV=production`). No disk and no email.
+3. Deploy. The season fills itself in on first start (dates are relative to that day); on the Free type the disk is wiped when the service restarts, which starts a fresh season. Share its address with the club.
+
 ### Secretary desk
 
 The secretary also sets each JHMMC boat's weigh station and Ocean/River (**More → JHMMC boats**; the admin does it for any boat, under Platform admin). **More → Secretary desk** (the JHMMC officers) is one screen to start the day: fish to review, open disputes and fish registered today; what needs attention (disputed fish with the latest reason, fish waiting over a day); what waits at each weigh station; the next tournament and how many boats have entered; shortcuts; and the officer's own last changes from the activity log.
@@ -139,6 +147,8 @@ server.js         entry point
 src/app.js        Express app and JSON API (/api/...)
 src/auth.js       password hashing (scrypt) and cookie sessions
 src/db.js         SQLite schema, species and country lists
+src/demo.js       the demo copy's made-up season (DEMO=1)
+demo/             its fish pictures
 public/           single-page front end (vanilla JS, no build step)
 test/             API tests (node:test)
 ```

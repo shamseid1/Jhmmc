@@ -3035,7 +3035,7 @@ const pagesFor = (view) => ({
       ${d.disputed.length || d.old.length ? raw(html`<h2>Needs attention</h2><div class="card">
         ${d.disputed.map((x) => raw(html`<a class="desk-row" href="#/catch/${x.id}"><span><b>Disputed: ${fishName(x)}</b><small>${x.last ? `${x.last.by}: "${x.last.reason}" · ${fmtWhen(x.last.at)}` : ''}</small></span><span class="pill-red">Dispute</span></a>`))}
         ${d.old.map((x) => raw(html`<a class="desk-row" href="#/catch/${x.id}"><span><b>${fishName(x)}</b><small>Waiting ${waitedH(x)} hours</small></span><span class="pill-amber">Over a day</span></a>`))}
-      </div>`) : raw('<div class="card pad muted">Nothing needs your attention.</div>')}
+      </div>`) : raw(`<div class="card pad muted">${d.toReview ? 'Nothing urgent: no disputes, and no fish waiting over a day.' : 'Nothing needs your attention.'}</div>`)}
       ${stations.length ? raw(html`<h2>To review, by weigh station</h2><div class="card">
         ${stations.map(([w, n]) => raw(html`<a class="desk-row" href="#/review?station=${encodeURIComponent(w)}"><b>${w}</b><span class="tab-count">${n}</span></a>`))}
       </div>`) : ''}
@@ -3821,7 +3821,12 @@ const pagesFor = (view) => ({
   },
 
   async login() {
+    // The demo copy: shared accounts, one tap each.
+    const demo = state.meta.demo ? (await api('/demo').catch(() => ({ accounts: [] }))).accounts : [];
     view.innerHTML = html`<h1>Sign in</h1>
+      ${demo.length ? raw(html`<div class="card pad stack demo-accounts"><p style="margin:0"><b>Demo copy.</b> Try the app as one of these
+        (made-up people, shared with everyone who has the link):</p>
+        ${demo.map((a) => raw(html`<button type="button" data-demo="${a.email}">${a.role}</button>`))}</div>`) : ''}
       <form class="card pad stack" id="f">
         <label>Email <input name="email" type="email" required autocomplete="email"></label>
         <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
@@ -3831,7 +3836,16 @@ const pagesFor = (view) => ({
       <p><a href="#/forgot">Forgot your password?</a></p>
       <p>New here? <a href="#/register">Create an account</a>.</p>`;
     const form = view.querySelector('#f');
+    for (const b of view.querySelectorAll('[data-demo]')) {
+      b.addEventListener('click', () => {
+        const a = demo.find((x) => x.email === b.dataset.demo);
+        form.email.value = a.email;
+        form.password.value = a.password;
+        form.requestSubmit();
+      });
+    }
     bindForm(form, async () => {
+      if (state.me) await api('/auth/logout', { method: 'POST' }).catch(() => {});
       state.me = (await api('/auth/login', { method: 'POST', body: formData(form) })).user;
       location.hash = state.afterLogin || '#/';
       state.afterLogin = null;
@@ -4119,7 +4133,7 @@ async function route() {
   const view = document.createElement('div');
   const pages = pagesFor(view);
   let page = Object.hasOwn(pages, name) ? name : 'home';
-  if (state.me && (page === 'login' || page === 'register')) page = 'home';
+  if (state.me && (page === 'login' || page === 'register') && !(page === 'login' && state.meta?.demo)) page = 'home';
   renderNav(page);
   refreshPending();
   main.replaceChildren(view);
@@ -4257,6 +4271,11 @@ window.addEventListener('online', () => {
     }),
     refreshMe(),
   ]);
+  // The demo copy says so on every page, with a way to sign in as someone else.
+  if (state.meta.demo) {
+    document.querySelector('.topbar')?.insertAdjacentHTML('afterend',
+      '<div class="demo-bar">Demo copy: made-up data. <a href="#/login">Switch account</a></div>');
+  }
   window.addEventListener('hashchange', route);
   route();
 })();
