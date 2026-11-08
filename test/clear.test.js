@@ -6,8 +6,9 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { createApp } = require('../src/app');
 const { seedDemo } = require('../src/demo');
+const { clearTestData } = require('../scripts/clear-test-data');
 
-test('clear test data: keeps the ticked boats, accounts, boats and tournaments; backup first; admin only', async () => {
+test('clear test data (a one-time server command): keeps the named boats, accounts, boats and tournaments; backup first', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-clear-'));
   const dbFile = path.join(tmp, 'fishing.db');
   const app = createApp({ dbFile, uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com', nightlyBackups: false });
@@ -32,18 +33,16 @@ test('clear test data: keeps the ticked boats, accounts, boats and tournaments; 
     const monkeyFish = before(`SELECT COUNT(*) AS n FROM catches WHERE team_id = ${monkey}`);
     const monkeyTrips = before(`SELECT COUNT(*) AS n FROM outings WHERE team_id = ${monkey}`);
     assert.ok(monkeyFish > 0 && monkeyTrips > 0);
+    // Not in the app: nobody, the admin included, can clear data from it.
     const shams = await login('shams@example.com', 'demo-pass-1');
-    assert.equal((await shams('GET', '/admin/clear-test-data')).status, 403, 'the admin only');
-    const { hashPassword } = require('../src/auth');
-    raw.prepare("UPDATE users SET password_hash = ? WHERE email = 'boss@example.com'").run(hashPassword('password1'));
-    const boss = await login('boss@example.com', 'password1');
-    const preview = await boss('GET', `/admin/clear-test-data?keep=${monkey}`);
-    assert.equal(preview.status, 200);
-    assert.equal(preview.body.keep[0].name, 'Sea Monkey');
-    assert.equal(preview.body.counts.keptWeighIns, monkeyFish);
-    assert.equal((await boss('POST', '/admin/clear-test-data', { keep: [monkey] })).status, 400, 'needs CLEAR');
-    const done = await boss('POST', '/admin/clear-test-data', { keep: [monkey], confirm: 'CLEAR' });
-    assert.equal(done.status, 200, JSON.stringify(done.body));
+    assert.equal((await shams('POST', '/admin/clear-test-data', { confirm: 'CLEAR' })).status, 404);
+    const quiet = () => {};
+    assert.throws(() => clearTestData({ dbFile, uploadDir: path.join(tmp, 'up'), keep: ['No Such Boat'], log: quiet }), /No boat called/);
+    const look = clearTestData({ dbFile, uploadDir: path.join(tmp, 'up'), keep: ['sea monkey'], log: quiet });
+    assert.equal(look.cleared, false, 'without --yes it only shows');
+    assert.equal(look.counts.keptWeighIns, monkeyFish);
+    assert.equal(before('SELECT COUNT(*) AS n FROM announcements') > 0, true);
+    const done = { body: clearTestData({ dbFile, uploadDir: path.join(tmp, 'up'), keep: ['Sea Monkey'], yes: true, log: quiet }) };
     assert.ok(fs.existsSync(path.join(tmp, 'backups', done.body.backup)), 'backup made first');
     // What stays.
     assert.equal(before('SELECT COUNT(*) AS n FROM users'), users);

@@ -125,7 +125,11 @@ To restore: stop the service, unzip the copy (`gunzip fishing-….db.gz`), put i
 ### Before the whole club starts using it
 
 1. **Set up email** (SMTP, below), so password resets reach members and the nightly backups reach the admin.
-2. **Clear the test data**: **More → Platform admin → Clear test data**. Tick the boats whose data is real; every other boat's weigh-ins, points, logged trips and photos, feed posts and all announcements go. Accounts, boats, crews, memberships, tournaments and the activity log stay, and a backup is made first.
+2. **Clear the test data**, once, from the service's **Shell** tab on Render (there's no button for it in the app, on purpose). Name the boats whose data is real:
+   ```
+   node scripts/clear-test-data.js --keep "Sea Monkey"
+   ```
+   That only shows what would go. Add `--yes` to clear it: every other boat's weigh-ins, points, logged trips and photos, feed posts by anyone not on a kept boat, and all announcements. Accounts, boats, crews, memberships, tournaments and the activity log stay, a backup is made first, and the clear is recorded in the activity log.
 3. Check a backup arrives by email the next morning.
 
 ## Email (password resets)

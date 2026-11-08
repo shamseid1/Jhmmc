@@ -1372,51 +1372,6 @@ const pagesFor = (view) => ({
     });
   },
 
-  // The admin, once, before the club starts: clears the test data, keeping the boats whose data is real.
-  async cleardata() {
-    if (!state.me?.isAdmin) return needLogin(view, 'clear the test data (the admin)');
-    const keep = new Set();
-    const first = await api('/admin/clear-test-data');
-    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Clear test data</h1>
-      <p class="muted">For when testing is over. <b>Stays:</b> every account, boat, crew, club membership and tournament, the activity log,
-      and everything belonging to the boats you tick below. <b>Goes:</b> every other boat's weigh-ins and points (with their likes, comments
-      and disputes), their logged trips and photos, feed posts by anyone not on a ticked boat, and all announcements.
-      A backup is made first (More → Backups), so it can be undone.</p>
-      <h2>Boats whose data is real</h2>
-      <div class="card pad stack">${first.teams.map((t) => raw(html`<label class="check"><input type="checkbox" data-keep="${t.id}"> ${t.name}</label>`))}</div>
-      <h2>What will be cleared</h2>
-      <div class="card pad" id="counts"></div>
-      <form class="card pad stack" id="go">
-        <label>Type CLEAR to confirm <input name="confirm" autocomplete="off" autocapitalize="characters"></label>
-        <p class="error"></p>
-        <div><button type="submit" class="danger">Clear the test data</button></div>
-      </form>`;
-    const show = (c, kept) => {
-      view.querySelector('#counts').innerHTML = html`<ul>
-        <li><b>${c.weighIns}</b> weigh-ins (fish and points)</li><li><b>${c.trips}</b> logged trips (${c.loggedFish} fish logged at sea)</li>
-        <li><b>${c.posts}</b> feed posts</li><li><b>${c.announcements}</b> announcements</li></ul>
-        <p class="small muted">Kept${kept.length ? ` for ${kept.map((t) => t.name).join(', ')}` : ''}: ${plural(c.keptWeighIns, 'weigh-in')} and ${plural(c.keptTrips, 'trip')}.</p>`;
-    };
-    show(first.counts, first.keep);
-    const refresh = async () => {
-      const r = await api(`/admin/clear-test-data?keep=${[...keep].join(',')}`);
-      show(r.counts, r.keep);
-    };
-    view.addEventListener('change', (e) => {
-      const box = e.target.closest('[data-keep]');
-      if (!box) return;
-      if (box.checked) keep.add(box.dataset.keep); else keep.delete(box.dataset.keep);
-      refresh();
-    });
-    const form = view.querySelector('#go');
-    bindForm(form, async () => {
-      if (form.confirm.value.trim().toUpperCase() !== 'CLEAR') throw new Error('Type CLEAR to confirm.');
-      const r = await api('/admin/clear-test-data', { method: 'POST', body: { confirm: 'CLEAR', keep: [...keep] } });
-      toast(`Cleared. Backup first: ${r.backup}`);
-      location.hash = '#/';
-    });
-  },
-
   async crew() {
     if (!state.me) return needLogin(view, 'join or register a boat');
     if (state.me.teamId) {
@@ -3086,7 +3041,6 @@ const pagesFor = (view) => ({
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh stations, Ocean or River')}
         ${item('#/clubs', 'clubs', 'Clubs', clubRequests ? 'Requests to open a club waiting for you' : 'Open clubs and answer requests', clubRequests)}
         ${item('#/backups', 'download', 'Backups', 'Copies of every fish, account and point')}
-        ${item('#/cleardata', 'settings', 'Clear test data', 'Before the club starts: keep the real boats, clear the rest')}
       </div>`) : ''}
       <h2>Info</h2><div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
@@ -4206,7 +4160,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
-    records: 'leaderboard', points: 'leaderboard', join: 'more', cleardata: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
+    records: 'leaderboard', points: 'leaderboard', join: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
