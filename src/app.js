@@ -127,7 +127,19 @@ function createApp({
   // The app's own files: browsers check for a newer version each time (a quick
   // "not modified" when nothing changed), so an update shows up straight away.
   const fresh = { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') };
-  app.use(express.static(path.join(__dirname, '..', 'public'), fresh));
+  // The page itself, with a link preview (WhatsApp and the like want full addresses for the picture).
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const sendIndex = (req, res) => {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const title = demo ? 'West Africa Big Game (demo)' : 'West Africa Big Game';
+    const text = 'Log fish, weigh-ins, points, tournaments and catch maps for JHMMC and West Africa.';
+    const og = [['og:type', 'website'], ['og:title', title], ['og:description', text], ['og:url', `${origin}/`],
+      ['og:image', `${origin}/og.jpg`], ['og:image:width', '1200'], ['og:image:height', '630']]
+      .map(([k, v]) => `<meta property="${k}" content="${v.replace(/"/g, '&quot;')}">`).join('\n  ');
+    res.set('Cache-Control', 'no-cache').type('html').send(indexHtml.replace('<!--og-->', og));
+  };
+  app.get(['/', '/index.html'], sendIndex);
+  app.use(express.static(path.join(__dirname, '..', 'public'), { ...fresh, index: false }));
   app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js'), { headers: { 'Cache-Control': 'no-cache' } }));
 
   const api = express.Router();
@@ -3177,7 +3189,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Single-page app: let the client router handle everything else.
-  app.get('/{*path}', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+  app.get('/{*path}', sendIndex);
 
   app.use((err, req, res, _next) => {
     discardUploads(req);
