@@ -80,6 +80,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     await u.call('POST', '/teams/join', { code: t.joinCode });
   };
   await aboard(rayan, 0); await aboard(ziad, 0); await aboard(charbel, 1); await aboard(maamoun, 1); await aboard(elie, 2); await aboard(lewaa, 3);
+  await aboard(sec, 4); // the secretary fishes too
   const sp = Object.fromEntries((await boss.call('GET', '/meta')).species.map((s) => [s.name, s.id]));
 
   // Weigh-ins over the last three weeks, approved by the secretary.
