@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 44;
+const SCHEMA_VERSION = 45;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -606,6 +606,36 @@ function openDb(file) {
       DELETE FROM club_post_comments; DELETE FROM club_post_likes; DELETE FROM club_posts;
       DELETE FROM catches;
       COMMIT;`);
+  }
+  if (hasTables && version < 45) {
+    // End of testing (8 Nov 2026): a clean start again, once. Seamonkey's data is real and
+    // stays (its weigh-ins, trips and posts by its crew); every other boat's fish, trips and
+    // posts, and all announcements, go. People, boats, crews, memberships, tournaments and the
+    // activity log stay. Without a boat called Seamonkey nothing is cleared.
+    const keep = db.prepare("SELECT id, name FROM teams WHERE lower(replace(name, ' ', '')) = 'seamonkey'").get();
+    if (keep) {
+      const k = keep.id;
+      const gone = `SELECT id FROM catches WHERE COALESCE(team_id, 0) <> ${k}`;
+      const posts = `SELECT id FROM club_posts WHERE user_id NOT IN (SELECT id FROM users WHERE team_id = ${k})`;
+      const n = (q) => db.prepare(`SELECT COUNT(*) AS n FROM (${q})`).get().n;
+      const counts = [n(gone), n(`SELECT id FROM outings WHERE COALESCE(team_id, 0) <> ${k}`), n(posts), n('SELECT id FROM announcements')];
+      db.exec(`BEGIN;
+        DELETE FROM post_photos WHERE kind = 'catch' AND post_id IN (${gone});
+        DELETE FROM post_photos WHERE kind = 'club' AND post_id IN (${posts});
+        DELETE FROM registration_log WHERE catch_id IN (${gone});
+        DELETE FROM catches WHERE id IN (${gone});
+        DELETE FROM outings WHERE COALESCE(team_id, 0) <> ${k};
+        DELETE FROM club_posts WHERE id IN (${posts});
+        DELETE FROM announcements;
+        COMMIT;`);
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'activity_log'").get()) {
+        db.prepare("INSERT INTO activity_log (user_id, user_name, role, action, details) VALUES (NULL, 'Server', 'admin', 'Cleared the test data', ?)")
+          .run(`End of testing: kept ${keep.name}'s data. Removed ${counts[0]} weigh-ins, ${counts[1]} trips, ${counts[2]} posts and ${counts[3]} announcements.`);
+      }
+      console.log(`Clean start: kept ${keep.name}; removed ${counts.join(' / ')} weigh-ins / trips / posts / announcements.`);
+    } else {
+      console.warn('Clean start skipped: no boat called Seamonkey.');
+    }
   }
   if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'pending')) {
     db.exec('ALTER TABLE clubs ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');

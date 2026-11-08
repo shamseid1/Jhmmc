@@ -171,7 +171,7 @@ function createApp({
   // a scale photo, the registration record) stays, and so does anything less
   // than an hour old.
   function removeUnusedUploads() {
-    if (setting('uploads_cleaned') === '39') return;
+    if (setting('uploads_cleaned') === '45') return;
     const text = [];
     for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()) {
       const cols = db.prepare(`PRAGMA table_info("${name}")`).all().filter((c) => !c.type || /TEXT/i.test(c.type)).map((c) => `"${c.name}"`);
@@ -188,7 +188,7 @@ function createApp({
       fs.rmSync(full, { force: true });
       removed++;
     }
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('uploads_cleaned', '39');
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('uploads_cleaned', '45');
     if (removed) console.log(`Removed ${removed} unused upload${removed === 1 ? '' : 's'} left from the clear.`);
   }
   try {
