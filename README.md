@@ -125,7 +125,7 @@ To restore: stop the service, unzip the copy (`gunzip fishing-….db.gz`), put i
 ### Before the whole club starts using it
 
 1. **Set up email** (SMTP, below), so password resets reach members and the nightly backups reach the admin.
-2. **Clear the test data**: the fish, weigh-ins, logs and posts made while testing (accounts and boats can stay).
+2. **Clear the test data**: **More → Platform admin → Clear test data**. Tick the boats whose data is real; every other boat's weigh-ins, points, logged trips and photos, feed posts and all announcements go. Accounts, boats, crews, memberships, tournaments and the activity log stay, and a backup is made first.
 3. Check a backup arrives by email the next morning.
 
 ## Email (password resets)
