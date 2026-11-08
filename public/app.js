@@ -1330,6 +1330,48 @@ const pagesFor = (view) => ({
   },
 
   // Join a crew with a code, register a boat, or carry on as an individual.
+  // An invite link from a captain: #/join/CODE. Shows the boat, then joins in one tap
+  // (after signing up or in, for a visitor).
+  async join(code = '') {
+    const res = await fetch(`/api/teams/invite/${encodeURIComponent(code)}`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      view.innerHTML = html`<div class="card pad empty"><p>${body.error || "This invite link doesn't work."}</p><a href="#/">Go to the feed</a></div>`;
+      return;
+    }
+    const { team } = body;
+    const who = team.captain ? `${team.captain} invites you` : "You're invited";
+    const head = html`<h1>Join ${team.name}</h1>
+      <p class="muted">${who} to join the crew of <b>${team.name}</b>${team.clubName ? ` (${team.clubName})` : ''} on West Africa Big Game.
+      As crew you log your fish at sea, keep the boat's log and see its catch map.</p>`;
+    if (!state.me) {
+      state.afterLogin = location.hash;
+      view.innerHTML = html`${raw(head)}<div class="card pad stack">
+        <a class="btn primary" href="#/register">Create my account</a>
+        <a class="btn" href="#/login">I already have an account</a></div>`;
+      return;
+    }
+    if (state.me.teamId === team.id) {
+      toast(`You're already on ${team.name}.`);
+      location.hash = `#/boat/${team.id}`;
+      return;
+    }
+    if (state.me.teamId) {
+      view.innerHTML = html`${raw(head)}<div class="card pad"><p>You're on <b>${state.me.teamName}</b> now. To join ${team.name},
+        leave ${state.me.teamName} first from <a href="#/boat/${state.me.teamId}?manage=1">My boat</a>, then open this link again.</p></div>`;
+      return;
+    }
+    view.innerHTML = html`${raw(head)}<form class="card pad stack" id="join-it"><p class="error"></p>
+      <div><button type="submit" class="primary">Join ${team.name}</button></div></form>`;
+    const form = view.querySelector('#join-it');
+    bindForm(form, async () => {
+      const r = await api('/teams/join', { method: 'POST', body: { code } });
+      state.me = r.user;
+      toast(`Welcome aboard ${team.name}!`);
+      location.hash = `#/boat/${r.team.id}`;
+    });
+  },
+
   async crew() {
     if (!state.me) return needLogin(view, 'join or register a boat');
     if (state.me.teamId) {
@@ -1430,7 +1472,8 @@ const pagesFor = (view) => ({
 
   async boat(id) {
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
-    const inviteMsg = `Join our boat ${team.name} on the West Africa Big Game app: sign up at ${location.origin} then enter invite code ${team.joinCode}`;
+    const inviteLink = `${location.origin}/#/join/${team.joinCode}`;
+    const inviteMsg = `Join ${team.name} on the West Africa Big Game app. Tap the link, sign up, and you're on the boat:\n${inviteLink}\n\n(Or enter the invite code ${team.joinCode} under More → Get on a boat.)`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
@@ -1459,10 +1502,12 @@ const pagesFor = (view) => ({
       <p><a href="#/boat/${team.id}">See ${team.name}'s page as everyone sees it ›</a></p>
       ${team.isMember && !team.canManage ? raw('<p class="small muted">New crew join with the boat\'s invite code: ask your captain.</p>') : ''}
       ${team.canManage ? raw(html`<div class="card pad invite">
-        <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
+        <div><div class="muted small">Invite your crew: they tap the link, sign up and they're aboard</div><div class="code">${team.joinCode}</div>
+          <div class="muted small">The code is for anyone who'd rather type it in. Only you see it.</div></div>
         <div class="actions">
+          <a class="btn primary" target="_blank" rel="noopener" href="${whatsapp(inviteMsg)}">Invite on WhatsApp</a>
+          <button data-act="copy-link">Copy invite link</button>
           <button data-act="copy-code">Copy code</button>
-          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(inviteMsg)}">Invite on WhatsApp</a>
           <button data-act="new-code">New code</button>
         </div>
       </div>`) : ''}
@@ -1510,6 +1555,8 @@ const pagesFor = (view) => ({
         switch (btn.dataset.act) {
           case 'copy-code':
             return copyText(team.joinCode, 'Invite code copied');
+          case 'copy-link':
+            return copyText(inviteLink, 'Invite link copied');
           case 'new-code':
             if (!confirm('Make a new invite code? The old one stops working.')) return;
             await api(`/teams/${id}/code`, { method: 'POST' });
@@ -3929,8 +3976,10 @@ const pagesFor = (view) => ({
       const units = unitsFrom(form);
       saveUnitsHere(units);
       state.me = (await api('/auth/register', { method: 'POST', body: { ...formData(form), units } })).user;
-      toast('Welcome aboard!');
-      location.hash = '#/crew';
+      toast('Welcome!');
+      // Came from an invite link: back to it, to join that boat.
+      location.hash = state.afterLogin?.startsWith('#/join/') ? state.afterLogin : '#/crew';
+      state.afterLogin = null;
     });
   },
 });
@@ -4111,7 +4160,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
-    records: 'leaderboard', points: 'leaderboard', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
+    records: 'leaderboard', points: 'leaderboard', join: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',

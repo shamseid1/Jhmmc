@@ -75,6 +75,13 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   await kofi('POST', '/auth/register', { name: 'Kofi Mensah', email: 'kofi@example.com', password: 'tuna12345' });
   r = await kofi('GET', `/teams/${team.id}`);
   assert.equal(r.body.team.joinCode, undefined, 'code hidden from non-crew');
+  // An invite link shows the boat and its captain before joining.
+  r = await client()('GET', `/teams/invite/${team.joinCode.toLowerCase()}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.team.name, 'Sea Hunter');
+  assert.equal(typeof r.body.team.captain, 'string');
+  assert.equal(r.body.team.joinCode, undefined);
+  assert.equal((await client()('GET', '/teams/invite/NOPE99')).status, 404);
   assert.equal((await kofi('POST', '/teams', { name: 'sea hunter' })).status, 409, 'boat names are unique');
   assert.equal((await kofi('POST', '/teams/join', { code: 'WRONG1' })).status, 404);
   r = await kofi('POST', '/teams/join', { code: team.joinCode.toLowerCase() });

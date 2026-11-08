@@ -937,6 +937,18 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ team, stats });
   });
 
+  // An invite link (#/join/CODE) shows which boat it is before joining. Open to visitors,
+  // so they see who invited them before making an account; limited, so codes can't be guessed.
+  const inviteLimit = auth.rateLimit({ windowMs: 15 * 60 * 1000, max: 30, key: (req) => req.ip, message: 'Too many tries. Wait a few minutes.' });
+  api.get('/teams/invite/:code', inviteLimit, (req, res) => {
+    const code = String(req.params.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    const team = code && db.prepare(`SELECT t.id, t.name, t.home_port AS homePort, c.name AS clubName,
+        (SELECT ${SHOWN} FROM users u WHERE u.id = t.captain_id) AS captain
+      FROM teams t LEFT JOIN clubs c ON c.id = t.club_id WHERE t.join_code = ?`).get(code);
+    if (!team) return res.status(404).json({ error: 'This invite link no longer works. Ask your captain for a new one.' });
+    res.json({ team });
+  });
+
   api.post('/teams/join', (req, res) => {
     if (req.user.teamId) return res.status(409).json({ error: 'Leave your current boat before joining another.' });
     const code = str(req.body.code, 12)?.toUpperCase().replace(/[^A-Z0-9]/g, '');
