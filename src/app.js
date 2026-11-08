@@ -139,6 +139,12 @@ function createApp({
     res.set('Cache-Control', 'no-cache').type('html').send(indexHtml.replace('<!--og-->', og));
   };
   app.get(['/', '/index.html'], sendIndex);
+  // The privacy policy, at a plain address the app stores can link to.
+  const privacyHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'privacy.html'), 'utf8');
+  app.get(['/privacy', '/privacy.html'], (_req, res) => {
+    const contact = (adminEmail || 'shamseid4@gmail.com').replace(/[<>"&]/g, '');
+    res.set('Cache-Control', 'no-cache').type('html').send(privacyHtml.replaceAll('{{contact}}', contact));
+  });
   app.use(express.static(path.join(__dirname, '..', 'public'), { ...fresh, index: false }));
   app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js'), { headers: { 'Cache-Control': 'no-cache' } }));
 
@@ -146,7 +152,7 @@ function createApp({
   if (demo) {
     const { DEMO_ACCOUNTS } = require('./demo');
     // The shared demo accounts keep their passwords and emails.
-    const locked = [['POST', '/me/password'], ['POST', '/auth/forgot'], ['POST', '/auth/reset'], ['DELETE', /^\/admin\/users\//]];
+    const locked = [['POST', '/me/password'], ['POST', '/auth/forgot'], ['POST', '/auth/reset'], ['DELETE', /^\/admin\/users\//], ['DELETE', '/me']];
     api.use((req, res, next) => {
       const hit = locked.some(([m, p]) => req.method === m && (typeof p === 'string' ? req.path === p : p.test(req.path)));
       if (hit || (req.method === 'PATCH' && req.path === '/me' && 'email' in (req.body ?? {}))) {
@@ -721,13 +727,24 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The admin deletes a member's account. Their catches stay, under their
   // name like a guest angler's, so standings and records don't change; their
   // comments and likes go. A boat they captained passes to its longest-serving crew.
-  api.delete('/admin/users/:id', requireAdmin, (req, res) => {
-    const user = db.prepare('SELECT id, name, nickname, email, photo FROM users WHERE id = ?').get(intId(req.params.id) ?? 0);
-    if (!user) return res.status(404).json({ error: 'Member not found.' });
-    if (user.id === req.user.id || isAdminUser(user)) return res.status(400).json({ error: "The admin's own account can't be deleted." });
+  // Deleting an account. Goes: the account, its sessions and phones, profile photo, comments
+  // and likes, and (when members delete their own) their posts. Stays: fish already weighed
+  // in for a boat (the season's points can't change), as "Former member" when members delete
+  // their own and under their name when the admin does, and the boat's logged trips.
+  function deleteAccount(user, { anglerName, removePosts }) {
+    const files = [user.photo, ...(!removePosts ? [] : db.prepare(`SELECT photo AS f FROM catches WHERE user_id = :u AND status = 'unofficial'
+      UNION ALL SELECT video FROM catches WHERE user_id = :u AND status = 'unofficial'
+      UNION ALL SELECT file FROM post_photos WHERE kind = 'catch' AND post_id IN (SELECT id FROM catches WHERE user_id = :u AND status = 'unofficial')
+      UNION ALL SELECT photo FROM club_posts WHERE user_id = :u UNION ALL SELECT video FROM club_posts WHERE user_id = :u
+      UNION ALL SELECT file FROM post_photos WHERE kind = 'club' AND post_id IN (SELECT id FROM club_posts WHERE user_id = :u)`).all({ u: user.id }).map((r) => r.f))];
     db.exec('BEGIN');
     try {
-      db.prepare('UPDATE catches SET angler_name = ?, user_id = NULL WHERE user_id = ?').run(user.nickname || user.name, user.id);
+      if (removePosts) {
+        db.prepare("DELETE FROM post_photos WHERE kind = 'catch' AND post_id IN (SELECT id FROM catches WHERE user_id = ? AND status = 'unofficial')").run(user.id);
+        db.prepare("DELETE FROM post_photos WHERE kind = 'club' AND post_id IN (SELECT id FROM club_posts WHERE user_id = ?)").run(user.id);
+        db.prepare("DELETE FROM catches WHERE user_id = ? AND status = 'unofficial'").run(user.id);
+      }
+      db.prepare('UPDATE catches SET angler_name = ?, user_id = NULL WHERE user_id = ?').run(anglerName, user.id);
       for (const { id } of db.prepare('SELECT id FROM teams WHERE captain_id = ?').all(user.id)) {
         const next = db.prepare('SELECT id FROM users WHERE team_id = ? AND id != ? ORDER BY id LIMIT 1').get(id, user.id);
         db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(next?.id ?? null, id);
@@ -738,8 +755,28 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       db.exec('ROLLBACK');
       throw ex;
     }
-    removeUpload(user.photo);
+    for (const f of files) removeUpload(f);
+  }
+  const ACCOUNT = 'SELECT id, name, nickname, email, photo, password_hash FROM users WHERE id = ?';
+
+  api.delete('/admin/users/:id', requireAdmin, (req, res) => {
+    const user = db.prepare(ACCOUNT).get(intId(req.params.id) ?? 0);
+    if (!user) return res.status(404).json({ error: 'Member not found.' });
+    if (user.id === req.user.id || isAdminUser(user)) return res.status(400).json({ error: "The admin's own account can't be deleted." });
+    deleteAccount(user, { anglerName: user.nickname || user.name, removePosts: false });
     res.json({ ok: true, name: user.name });
+  });
+
+  // A member deletes their own account (the app stores require it), with their password.
+  api.delete('/me', (req, res) => {
+    const user = db.prepare(ACCOUNT).get(req.user.id);
+    if (isAdminUser(user)) return res.status(400).json({ error: "The admin's account can't be deleted here. Hand the admin role over first." });
+    if (!auth.verifyPassword(String(req.body?.password ?? ''), user.password_hash)) {
+      return res.status(400).json({ error: 'Your password is not right.' });
+    }
+    auth.destroySession(db, req, res);
+    deleteAccount(user, { anglerName: 'Former member', removePosts: true });
+    res.json({ ok: true });
   });
 
   // A one-time link the admin passes on (e.g. by WhatsApp) to a member who forgot their password.

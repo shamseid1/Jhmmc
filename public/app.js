@@ -3049,6 +3049,7 @@ const pagesFor = (view) => ({
         ${raw(me?.canReview ? '' : item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
         ${raw(me?.isAdmin ? '' : item('#/clubs', 'clubs', 'Clubs', 'Every club, or ask to open one'))}
         ${raw(me ? '' : item('#/log', 'history', 'Regional log', "Every boat's trips"))}
+        ${raw(item('/privacy', 'key', 'Privacy policy', 'What the app keeps, who sees it, deleting your account'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
     view.querySelector('#logout')?.addEventListener('click', async () => {
@@ -3835,6 +3836,18 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit">Change password</button></div>
       </form>
+      ${me.isAdmin ? '' : raw(html`<h2>Delete my account</h2>
+      <details class="card pad delete-account"><summary>Delete my account and my data</summary>
+        <form class="stack" id="del">
+          <p class="small">This can't be undone. <b>Deleted:</b> your account, email and password, your profile photo, your posts,
+          comments and likes, and the phones getting your notifications. <b>Kept, without your name:</b> fish already weighed in
+          for a boat (shown as "Former member", so the season's points don't change) and your boat's logged trips.
+          See the <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
+          <label>Your password <input name="password" type="password" required autocomplete="current-password"></label>
+          <label>Type DELETE to confirm <input name="confirm" required autocomplete="off" autocapitalize="characters"></label>
+          <p class="error"></p>
+          <div><button type="submit" class="danger">Delete my account</button></div>
+        </form></details>`)}
       <p><a href="#/more">‹ Back to More</a></p>`;
     // Units: saved on the account (and this phone) as soon as one is tapped.
     view.querySelector('#units').addEventListener('change', async (e) => {
@@ -3848,6 +3861,18 @@ const pagesFor = (view) => ({
       }
       toast('Units saved.');
     });
+    const del = view.querySelector('#del');
+    if (del) {
+      bindForm(del, async () => {
+        if (del.confirm.value.trim().toUpperCase() !== 'DELETE') throw new Error('Type DELETE to confirm.');
+        await api('/me', { method: 'DELETE', body: { password: del.password.value } });
+        state.me = null;
+        try { localStorage.removeItem('kept-me'); } catch {}
+        toast('Your account has been deleted.');
+        location.hash = '#/';
+        location.reload();
+      });
+    }
     const pw = view.querySelector('#pw');
     bindForm(pw, async () => {
       await api('/me/password', { method: 'POST', body: formData(pw) });
@@ -3970,6 +3995,7 @@ const pagesFor = (view) => ({
         <p class="error"></p>
         <div><button type="submit" class="primary">Create account</button></div>
       </form>
+      <p class="small muted">By creating an account you agree to the <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
       <p>Already a member? <a href="#/login">Sign in</a>.</p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {

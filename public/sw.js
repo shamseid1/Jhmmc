@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v61';
+const CACHE = 'app-v62';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/boat.svg', '/logo.svg', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
@@ -32,6 +32,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  // Standalone pages (the privacy policy) aren't the app: straight through, never kept as it.
+  if (url.pathname.startsWith('/privacy')) return;
   const page = req.mode === 'navigate';
   if (!page && !APP_FILES.includes(url.pathname) && !KEEP_API.includes(url.pathname)) return;
   const key = page ? '/index.html' : url.pathname;
