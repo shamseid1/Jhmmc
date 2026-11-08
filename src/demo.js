@@ -9,6 +9,7 @@ const PASSWORD = 'demo-pass-1';
 const DEMO_ACCOUNTS = [
   // The first is who every visitor arrives as: a captain of his own boat, so nobody plays with a real member's boat.
   { role: 'Captain of Demo Boat', email: 'captain@example.com', password: PASSWORD },
+  { role: 'Angler on Demo Boat', email: 'angler@example.com', password: PASSWORD },
   { role: 'Secretary', email: 'secretary@example.com', password: PASSWORD },
 ];
 const PICTURES = path.join(__dirname, '..', 'demo');
@@ -62,13 +63,14 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     await member('Charbel', 'Chakour', 'charbel@example.com'), await member('Maamoun', 'Hassoun', 'maamoun@example.com'),
     await member('Elie', 'Daher', 'elie@example.com'), await member('Lewaa', 'Mosleh', 'lewaa@example.com')];
   const demoCap = await member('Demo', 'Captain', 'captain@example.com');
+  const demoAngler = await member('Demo', 'Angler', 'angler@example.com');
   const caps = [shams, jack, steve, faris, demoCap];
 
   const jh = (await boss.call('GET', '/clubs')).clubs.find((c) => c.name === 'JHMMC').id;
-  for (const u of [sec, ...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await boss.call('PATCH', `/admin/users/${u.id}`, { jhmmc: true });
+  for (const u of [sec, ...caps, demoAngler, rayan, ziad, charbel, maamoun, elie, lewaa]) await boss.call('PATCH', `/admin/users/${u.id}`, { jhmmc: true });
   await boss.call('PATCH', `/admin/users/${sec.id}`, { role: 'secretary' });
   // Paid up for the season.
-  for (const u of [...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await sec.call('PUT', `/club-members/${u.id}`, { paid: true });
+  for (const u of [...caps, demoAngler, rayan, ziad, charbel, maamoun, elie, lewaa]) await sec.call('PUT', `/club-members/${u.id}`, { paid: true });
   const boats = [['Liberian Girl', 'Beerville'], ['Bait Master', 'Extreme'], ['Aquaholic', 'Extreme'], ['Sea Monkey', 'Beerville'], ['Demo Boat', 'Beerville']];
   const teams = [];
   for (const [i, [name, weighStation]] of boats.entries()) {
@@ -80,7 +82,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     await u.call('POST', '/teams/join', { code: t.joinCode });
   };
   await aboard(rayan, 0); await aboard(ziad, 0); await aboard(charbel, 1); await aboard(maamoun, 1); await aboard(elie, 2); await aboard(lewaa, 3);
-  await aboard(sec, 4); // the secretary fishes too
+  await aboard(demoAngler, 4); await aboard(sec, 4); // the secretary fishes too
   const sp = Object.fromEntries((await boss.call('GET', '/meta')).species.map((s) => [s.name, s.id]));
 
   // Weigh-ins over the last three weeks, approved by the secretary.

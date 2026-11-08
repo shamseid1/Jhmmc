@@ -4284,7 +4284,7 @@ window.addEventListener('online', () => {
       }
     }
     document.querySelector('.topbar')?.insertAdjacentHTML('afterend',
-      '<div class="demo-bar">Demo copy: made-up data. You\'re the captain of Demo Boat.</div>');
+      '<div class="demo-bar">Demo copy: made-up data. <a href="#/login">Try it as a captain, an angler or the secretary</a></div>');
   }
   window.addEventListener('hashchange', route);
   route();
