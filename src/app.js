@@ -915,8 +915,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     // The captain runs the boat; the club admin can do the same on any boat.
     const isCaptain = team.captainId === viewerId;
     const canManage = isCaptain || isAdminUser(viewerId && db.prepare('SELECT email FROM users WHERE id = ?').get(viewerId));
-    // The invite code is the key to the boat: crew (and the admin) only.
-    if (!isMember && !canManage) delete team.joinCode;
+    // The invite code is the key to the boat: the captain decides who comes aboard (and the admin can help).
+    if (!canManage) delete team.joinCode;
     // Names typed for anglers without an account, so the captain can move them to one.
     const guests = db.prepare(`
       SELECT angler_name AS name, MIN(id) AS first, COUNT(*) AS catches FROM catches
@@ -2032,7 +2032,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     else db.prepare('DELETE FROM club_people_paid WHERE person_id = ? AND season = ?').run(person.id, memberSeason());
     db.prepare('UPDATE tournament_anglers SET member = ?, paid = CASE WHEN ? THEN 0 ELSE paid END WHERE person_id = ?')
       .run(req.body.paid ? 1 : 0, req.body.paid ? 1 : 0, person.id);
-    res.json({ ok: true, paid: !!req.body.paid, member: !!user.jhmmc });
+    // Everyone on this list is in JHMMC (people without an account are added by the club).
+    res.json({ ok: true, paid: !!req.body.paid, member: true });
   });
 
   api.delete('/club-members/named/:id', requireMoney, (req, res) => {

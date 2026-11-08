@@ -80,6 +80,8 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   r = await kofi('POST', '/teams/join', { code: team.joinCode.toLowerCase() });
   assert.equal(r.status, 200);
   assert.equal(r.body.user.teamName, 'Sea Hunter');
+  assert.equal(r.body.team.joinCode, undefined, 'crew don\'t get the invite code: only the captain');
+  assert.equal(typeof (await awa('GET', `/teams/${team.id}`)).body.team.joinCode, 'string', 'the captain does');
 
   const meta = (await awa('GET', '/meta')).body;
   const marlin = meta.species.find((s) => s.name === 'Blue marlin');

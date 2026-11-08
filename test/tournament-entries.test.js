@@ -112,7 +112,7 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
       anglers: [{ userId: mine.crew[1].id }, { personId: sami, member: false }, { personId: lea, member: true }] });
     assert.deepEqual(r.body.anglers.map((a) => [a.name, a.member]), [['Rayan Eid', true], ['Sami', true], ['Lea', false]],
       'their membership comes from the paid list too');
-    await sec('PUT', `/club-members/named/${lea}`, { paid: true });
+    assert.equal((await sec('PUT', `/club-members/named/${lea}`, { paid: true })).status, 200);
     assert.equal((await sec('GET', `/tournaments/${memorial.id}/sheet`)).body.boats[1].anglers.find((a) => a.name === 'Lea').member, true);
     counts = (await sec('GET', '/tournaments')).body.tournaments.find((t) => t.id === memorial.id);
     assert.equal(counts.guests, 0, 'everyone on the boat is now a paid member');

@@ -1457,12 +1457,13 @@ const pagesFor = (view) => ({
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>My boat</h1>
       <p><a href="#/boat/${team.id}">See ${team.name}'s page as everyone sees it ›</a></p>
-      ${team.isMember || team.canManage ? raw(html`<div class="card pad invite">
+      ${team.isMember && !team.canManage ? raw('<p class="small muted">New crew join with the boat\'s invite code: ask your captain.</p>') : ''}
+      ${team.canManage ? raw(html`<div class="card pad invite">
         <div><div class="muted small">Crew invite code</div><div class="code">${team.joinCode}</div></div>
         <div class="actions">
           <button data-act="copy-code">Copy code</button>
           <a class="btn" target="_blank" rel="noopener" href="${whatsapp(inviteMsg)}">Invite on WhatsApp</a>
-          ${team.canManage ? raw('<button data-act="new-code">New code</button>') : ''}
+          <button data-act="new-code">New code</button>
         </div>
       </div>`) : ''}
       <h2>Crew (${team.members.length})</h2>
