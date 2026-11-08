@@ -28,7 +28,7 @@ test('demo copy: a made-up season, shared sign-ins that cannot be locked', async
     // ...and nobody can lock the others out.
     assert.equal((await call('POST', '/me/password', { currentPassword: 'demo-pass-1', newPassword: 'mine-now-1' })).status, 403);
     assert.equal((await call('PATCH', '/me', { email: 'me@example.com' })).status, 403);
-    assert.equal((await call('POST', '/auth/forgot', { email: 'tony@example.com' })).status, 403);
+    assert.equal((await call('POST', '/auth/forgot', { email: 'shams@example.com' })).status, 403);
     // The season: approved fish in the board, one waiting for the secretary.
     const points = await (await fetch(`${base}/api/points`)).json();
     assert.ok(JSON.stringify(points).includes('Liberian Girl'));
