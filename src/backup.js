@@ -43,7 +43,7 @@ function createBackups(db, { dir, mailer, adminEmail, now = () => new Date() }) 
     if (!mailer?.configured || !adminEmail) return false;
     await mailer.send({
       to: adminEmail,
-      subject: `West Africa Big Game backup ${b.name.match(NAME)[1]}`,
+      subject: `West Africa Sportfishing backup ${b.name.match(NAME)[1]}`,
       text: `The app's database as of ${b.at}: every fish, account and point.\n\n`
         + 'Keep this email. To restore, see "Backups" in the README.',
       attachments: [{ filename: b.name, path: path.join(dir, b.name) }],

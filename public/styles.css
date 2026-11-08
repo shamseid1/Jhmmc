@@ -368,6 +368,16 @@ button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
 .brand .mark { width: 34px; height: 34px; fill: currentColor; flex: none; }
 .brand span { font-size: 17px; letter-spacing: .01em; }
+/* Narrow phones: the name and the JHMMC badge still fit on one line. */
+@media (max-width: 380px) {
+  .topbar { gap: 8px; }
+  .brand { gap: 6px; }
+  .brand span { font-size: 15px; letter-spacing: 0; }
+  .brand .mark { width: 26px; height: 26px; }
+}
+@media (max-width: 340px) {
+  .brand span { font-size: 13.5px; }
+}
 .catch-photo.placeholder .marlin { width: 48%; max-width: 240px; height: auto; fill: rgba(255, 255, 255, .85); }
 .pcard .ph .icon { width: 56px; height: 56px; color: rgba(255, 255, 255, .8); stroke-width: 1.5; }
 .me-ph .icon { width: 30px; height: 30px; color: var(--muted); }

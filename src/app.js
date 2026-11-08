@@ -131,7 +131,7 @@ function createApp({
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   const sendIndex = (req, res) => {
     const origin = `${req.protocol}://${req.get('host')}`;
-    const title = demo ? 'West Africa Big Game (demo)' : 'West Africa Big Game';
+    const title = demo ? 'West Africa Sportfishing (demo)' : 'West Africa Sportfishing';
     const text = 'Log fish, weigh-ins, points, tournaments and catch maps for JHMMC and West Africa.';
     const og = [['og:type', 'website'], ['og:title', title], ['og:description', text], ['og:url', `${origin}/`],
       ['og:image', `${origin}/og.jpg`], ['og:image:width', '1200'], ['og:image:height', '630']]
@@ -218,7 +218,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The admin always belongs to JHMMC.
   const markAdminMember = () => adminEmail && db.prepare('UPDATE users SET jhmmc = 1 WHERE lower(email) = ?').run(adminEmail);
   markAdminMember();
-  // For now JHMMC is West Africa Big Game: every boat's fish are weighed in and
+  // For now JHMMC is West Africa Sportfishing: every boat's fish are weighed in and
   // approved through JHMMC, unless its club runs its own weigh-ins (self_run).
   // Only JHMMC's own boats compete in the JHMMC Season and Tournaments.
   const THROUGH_JHMMC = 'NOT EXISTS (SELECT 1 FROM clubs sc WHERE sc.id = k.club_id AND sc.self_run = 1)';
@@ -329,8 +329,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function passwordChangedEmail(user, req) {
     return mailer.send({
       to: user.email,
-      subject: 'Your West Africa Big Game password was changed',
-      text: `Hello ${user.name},\n\nThe password for your West Africa Big Game account was just changed. ` +
+      subject: 'Your West Africa Sportfishing password was changed',
+      text: `Hello ${user.name},\n\nThe password for your West Africa Sportfishing account was just changed. ` +
         `If this was you, there is nothing to do.\n\nIf it wasn't, reset your password straight away at ` +
         `${baseUrl(req)}/#/forgot and tell your club.\n`,
     }).catch((err) => console.error('Password-changed email failed:', err.message));
@@ -353,8 +353,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     try {
       await mailer.send({
         to: user.email,
-        subject: 'Reset your West Africa Big Game password',
-        text: `Hello ${user.name},\n\nSomeone asked to reset the password for your West Africa Big Game account. ` +
+        subject: 'Reset your West Africa Sportfishing password',
+        text: `Hello ${user.name},\n\nSomeone asked to reset the password for your West Africa Sportfishing account. ` +
           `To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\n` +
           `If you didn't ask for this, ignore this email; your password stays the same.\n`,
       });
