@@ -1147,7 +1147,8 @@ const HERO = `<section class="hero">
 // Shown to anglers who are signed in but not on a boat, and to visitors.
 function noBoatBanner() {
   if (!state.me) return HERO;
-  return state.me.teamId ? '' : `<div class="card pad banner">
+  // Officers (the secretary often has no boat) aren't asked to join one.
+  return state.me.teamId || state.me.canReview || state.me.canHandleMoney ? '' : `<div class="card pad banner">
     <div><b>You're browsing as an individual angler.</b><br><span class="muted small">You can follow the feed and the leaderboard. To log fish, join a boat's crew or register your boat.</span></div>
     <a class="btn primary" href="#/crew">Get on a boat</a>
   </div>`;

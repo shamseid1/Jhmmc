@@ -141,7 +141,9 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     }
   }
   // Waiting for the secretary: today's marlin from Bait Master.
-  await boss.call('POST', '/weigh/sheet', sheet(bait, 0, [['Blue marlin', '186', maamoun, 'marlin3.jpg']]));
+  const waiting = (await boss.call('POST', '/weigh/sheet', sheet(bait, 0, [['Blue marlin', '186', maamoun, 'marlin3.jpg']]))).catches[0];
+  // ...and another captain questions it.
+  await faris.call('POST', `/catches/${waiting.id}/disputes`, { reason: 'The scale reading isn\u2019t clear in the photo.' });
   return true;
 }
 
