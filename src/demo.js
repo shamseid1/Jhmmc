@@ -55,7 +55,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     throw err;
   }
   // JHMMC members and their Ocean boats (made-up catches). The secretary is a stand-in.
-  const sec = await member('Club', 'Secretary', 'secretary@example.com');
+  const sec = await member('Secretary', '(demo)', 'secretary@example.com');
   const [shams, jack, steve, faris] = [await member('Shams', 'Eid', 'shams@example.com'), await member('Jack', 'Asmar', 'jack@example.com'),
     await member('Steve', 'Kissik', 'steve@example.com'), await member('Faris', 'Eid', 'faris@example.com')];
   const [rayan, ziad, charbel, maamoun, elie, lewaa] = [await member('Rayan', 'Eid', 'rayan@example.com'), await member('Ziad', 'Sankari', 'ziad@example.com'),
@@ -66,6 +66,8 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   const jh = (await boss.call('GET', '/clubs')).clubs.find((c) => c.name === 'JHMMC').id;
   for (const u of [sec, ...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await boss.call('PATCH', `/admin/users/${u.id}`, { jhmmc: true });
   await boss.call('PATCH', `/admin/users/${sec.id}`, { role: 'secretary' });
+  // Paid up for the season.
+  for (const u of [...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await sec.call('PUT', `/club-members/${u.id}`, { paid: true });
   const boats = [['Liberian Girl', 'Beerville'], ['Bait Master', 'Extreme'], ['Aquaholic', 'Extreme'], ['Sea Monkey', 'Beerville']];
   const teams = [];
   for (const [i, [name, weighStation]] of boats.entries()) {
@@ -103,9 +105,9 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   }
   for (const u of [sec, steve, ziad, lewaa]) await u.call('POST', `/catches/${ids[0]}/like`);
 
-  // A tournament in two weeks, two boats already in; an announcement.
+  // A tournament in two weeks, two boats already in (Liberian Girl not yet); an announcement.
   const ev = (await sec.call('POST', '/events', { kind: 'tournament', name: 'JHMMC Marlin Classic', date: day(-13), endDate: day(-14) })).event;
-  await shams.call('PUT', `/tournaments/${ev.id}/entries/${girl.id}`, { entered: true, anglers: [{ userId: shams.id }, { userId: rayan.id }, { userId: ziad.id }] });
+  await steve.call('PUT', `/tournaments/${ev.id}/entries/${aqua.id}`, { entered: true, anglers: [{ userId: steve.id }, { userId: elie.id }] });
   await jack.call('PUT', `/tournaments/${ev.id}/entries/${bait.id}`, { entered: true, anglers: [{ userId: jack.id }, { userId: charbel.id }, { userId: maamoun.id }] });
   await sec.call('POST', '/announcements', { title: 'Weigh station hours', body: 'Beerville and Extreme are open 3–7 pm every Saturday and Sunday this season.' });
 
@@ -117,6 +119,24 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   await rayan.call('POST', '/outings/fish', { speciesId: sp.Sailfish, fate: 'released', lat: '6.02', lng: '-10.99', landedAt: hoursAgo(2) });
   for (const [u, ago, name, released, kept] of [[ziad, 11, 'Yellowfin tuna', 0, 3], [elie, 8, 'Dorado', 2, 4], [rayan, 4, 'Sailfish', 2, 0]]) {
     await u.call('POST', '/outings', { date: day(ago), fish: [{ speciesId: sp[name], released, kept, lost: 0 }] });
+  }
+  // Two months of trips logged at sea by every boat, for the log, the season numbers and the catch maps.
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const catches = [['Yellowfin tuna', 'kept'], ['Yellowfin tuna', 'kept'], ['Sailfish', 'released'], ['Sailfish', 'released'], ['Blue marlin', 'released'],
+    ['Dorado', 'kept'], ['Wahoo', 'kept'], ['Skipjack tuna', 'kept'], ['Barracuda', 'released'], ['Yellowfin tuna', 'lost']];
+  for (const [u, every, from] of [[rayan, 5, 2], [charbel, 6, 3], [elie, 7, 4], [lewaa, 8, 6]]) {
+    for (let ago = from + 5; ago < 70; ago += every + Math.floor(rnd() * 3)) {
+      const date = day(ago);
+      // Mostly off Monrovia, some further up towards Robertsport.
+      const north = rnd() < 0.3;
+      const [lat0, lng0] = north ? [6.55, -11.55] : [5.95, -11.05];
+      for (let k = 1 + Math.floor(rnd() * 3); k > 0; k -= 1) {
+        const [name, fate] = catches[Math.floor(rnd() * catches.length)];
+        const lat = (lat0 + (rnd() - 0.5) * 0.35).toFixed(4); const lng = (lng0 + (rnd() - 0.5) * 0.35).toFixed(4);
+        await u.call('POST', '/outings/fish', { speciesId: sp[name], fate, date, lat, lng, landedAt: new Date(`${date}T${String(8 + k).padStart(2, '0')}:${10 + Math.floor(rnd() * 40)}:00Z`).toISOString() });
+      }
+    }
   }
   // Waiting for the secretary: today's marlin from Bait Master.
   await boss.call('POST', '/weigh/sheet', sheet(bait, 0, [['Blue marlin', '186', maamoun, 'marlin3.jpg']]));
