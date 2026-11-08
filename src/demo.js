@@ -7,8 +7,8 @@ const crypto = require('node:crypto');
 // Anyone with the link signs in with these; their passwords can't be changed.
 const PASSWORD = 'demo-pass-1';
 const DEMO_ACCOUNTS = [
-  { role: 'Captain of Liberian Girl (Shams Eid)', email: 'shams@example.com', password: PASSWORD },
-  { role: 'Angler on Liberian Girl (Rayan Eid)', email: 'rayan@example.com', password: PASSWORD },
+  // The first is who every visitor arrives as: a captain of his own boat, so nobody plays with a real member's boat.
+  { role: 'Captain of Demo Boat', email: 'captain@example.com', password: PASSWORD },
   { role: 'Secretary', email: 'secretary@example.com', password: PASSWORD },
 ];
 const PICTURES = path.join(__dirname, '..', 'demo');
@@ -61,19 +61,20 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   const [rayan, ziad, charbel, maamoun, elie, lewaa] = [await member('Rayan', 'Eid', 'rayan@example.com'), await member('Ziad', 'Sankari', 'ziad@example.com'),
     await member('Charbel', 'Chakour', 'charbel@example.com'), await member('Maamoun', 'Hassoun', 'maamoun@example.com'),
     await member('Elie', 'Daher', 'elie@example.com'), await member('Lewaa', 'Mosleh', 'lewaa@example.com')];
-  const caps = [shams, jack, steve, faris];
+  const demoCap = await member('Demo', 'Captain', 'captain@example.com');
+  const caps = [shams, jack, steve, faris, demoCap];
 
   const jh = (await boss.call('GET', '/clubs')).clubs.find((c) => c.name === 'JHMMC').id;
   for (const u of [sec, ...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await boss.call('PATCH', `/admin/users/${u.id}`, { jhmmc: true });
   await boss.call('PATCH', `/admin/users/${sec.id}`, { role: 'secretary' });
   // Paid up for the season.
   for (const u of [...caps, rayan, ziad, charbel, maamoun, elie, lewaa]) await sec.call('PUT', `/club-members/${u.id}`, { paid: true });
-  const boats = [['Liberian Girl', 'Beerville'], ['Bait Master', 'Extreme'], ['Aquaholic', 'Extreme'], ['Sea Monkey', 'Beerville']];
+  const boats = [['Liberian Girl', 'Beerville'], ['Bait Master', 'Extreme'], ['Aquaholic', 'Extreme'], ['Sea Monkey', 'Beerville'], ['Demo Boat', 'Beerville']];
   const teams = [];
   for (const [i, [name, weighStation]] of boats.entries()) {
     teams.push((await caps[i].call('POST', '/teams', { name, clubId: jh, weighStation, country: 'Liberia' })).team);
   }
-  const [girl, bait, aqua, monkey] = teams;
+  const [girl, bait, aqua, monkey, demoBoat] = teams;
   const aboard = async (u, i) => {
     const t = (await caps[i].call('POST', `/teams/${teams[i].id}/code`)).team;
     await u.call('POST', '/teams/join', { code: t.joinCode });
@@ -95,6 +96,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     [bait, 6, [['Blue marlin', '168', maamoun, 'marlin2.jpg']]],
     [monkey, 5, [['Yellowfin tuna', '71', lewaa, 'tuna2.jpg']]],
     [aqua, 3, [['Yellowfin tuna', '52', steve, 'tuna1.jpg'], ['Wahoo', '19', elie, 'wahoo1.jpg']]],
+    [demoBoat, 10, [['Yellowfin tuna', '58', demoCap, 'tuna2.jpg']]],
   ];
   const ids = [];
   for (const [t, ago, fish] of sheets) ids.push(...(await boss.call('POST', '/weigh/sheet', sheet(t, ago, fish))).catches.map((k) => k.id));
@@ -125,7 +127,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const catches = [['Yellowfin tuna', 'kept'], ['Yellowfin tuna', 'kept'], ['Sailfish', 'released'], ['Sailfish', 'released'], ['Blue marlin', 'released'],
     ['Dorado', 'kept'], ['Wahoo', 'kept'], ['Skipjack tuna', 'kept'], ['Barracuda', 'released'], ['Yellowfin tuna', 'lost']];
-  for (const [u, every, from] of [[rayan, 5, 2], [charbel, 6, 3], [elie, 7, 4], [lewaa, 8, 6]]) {
+  for (const [u, every, from] of [[rayan, 5, 2], [charbel, 6, 3], [elie, 7, 4], [lewaa, 8, 6], [demoCap, 6, 1]]) {
     for (let ago = from + 5; ago < 70; ago += every + Math.floor(rnd() * 3)) {
       const date = day(ago);
       // Mostly off Monrovia, some further up towards Robertsport.

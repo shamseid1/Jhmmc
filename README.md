@@ -102,7 +102,7 @@ Each push to the deployed branch redeploys automatically. A persistent disk need
 
 ### Demo copy
 
-A second service, for showing the club, runs the same code with a made-up season: four JHMMC Ocean boats with club members' names (the catches are made up), weighed and approved fish with pictures, likes and comments, a tournament coming up, a trip logged at sea, and one fish waiting for the secretary. The sign-in page lists shared accounts (a captain, an angler, the secretary), one tap each, and every page says it is a demo copy. Nobody can change those accounts' passwords or emails, so one visitor can't lock out the next.
+A second service, for showing the club, runs the same code with a made-up season: four JHMMC Ocean boats with club members' names (the catches are made up), weighed and approved fish with pictures, likes and comments, a tournament coming up, a trip logged at sea, and one fish waiting for the secretary. Visitors arrive already signed in as the captain of a made-up Demo Boat (with its own trips and a weighed fish), so nobody plays with a real member's boat; every page says it is a demo copy. Nobody can change those accounts' passwords or emails, so one visitor can't lock out the next.
 
 1. On Render, **New → Web Service**, the same repository and branch, build `npm ci`, start `npm start`, the Free instance type.
 2. Add the environment variable `DEMO=1` (and `NODE_ENV=production`). No disk and no email.

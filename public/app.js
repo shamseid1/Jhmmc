@@ -4271,10 +4271,19 @@ window.addEventListener('online', () => {
     }),
     refreshMe(),
   ]);
-  // The demo copy says so on every page, with a way to sign in as someone else.
+  // The demo copy: everyone arrives signed in as the captain of its first boat, and every page says it's a demo.
   if (state.meta.demo) {
+    if (!state.me) {
+      try {
+        const [captain] = (await api('/demo')).accounts;
+        state.me = (await api('/auth/login', { method: 'POST', body: { email: captain.email, password: captain.password } })).user;
+        keep('kept-me', state.me);
+      } catch {
+        // Signed out after all: the sign-in page lists the demo accounts.
+      }
+    }
     document.querySelector('.topbar')?.insertAdjacentHTML('afterend',
-      '<div class="demo-bar">Demo copy: made-up data. <a href="#/login">Switch account</a></div>');
+      '<div class="demo-bar">Demo copy: made-up data. You\'re the captain of Demo Boat.</div>');
   }
   window.addEventListener('hashchange', route);
   route();
