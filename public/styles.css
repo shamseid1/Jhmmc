@@ -269,7 +269,7 @@ button.more[hidden] { display: none; }
     position: sticky; top: 0; z-index: 15; justify-content: center; margin: 0; padding: 10px 0 8px;
     background: var(--bg); border: 0; border-radius: 0; box-shadow: none;
   }
-  .brand .mark { width: 30px; height: 30px; }
+  .brand .mark { width: 36px; height: 36px; }
 
   /* The tab bar floats above the page, clear of the screen edges. */
   #nav {
@@ -366,7 +366,9 @@ label[hidden] { display: none; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
-.brand .mark { width: 36px; height: 36px; fill: currentColor; flex: none; object-fit: contain; }
+.brand .mark { width: 40px; height: 40px; fill: currentColor; flex: none; object-fit: contain; }
+/* The logo (marlin over Africa) is navy line art: white on the dark theme. */
+:root:not([data-theme="light"]) .brand img.mark { filter: brightness(0) invert(1); }
 
 .brand span { font-size: 17px; letter-spacing: .01em; }
 /* Narrow phones: the name and the JHMMC badge still fit on one line. */
@@ -374,7 +376,7 @@ button.liked .icon { fill: currentColor; }
   .topbar { gap: 8px; }
   .brand { gap: 6px; }
   .brand span { font-size: 15px; letter-spacing: 0; }
-  .brand .mark { width: 26px; height: 26px; }
+  .brand .mark { width: 32px; height: 32px; }
 }
 @media (max-width: 340px) {
   .brand span { font-size: 13.5px; }
