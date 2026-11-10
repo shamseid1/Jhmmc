@@ -700,8 +700,8 @@ async function shareCatch(c) {
 }
 
 // Line icons from the ICONS set further down.
-// The club marlin, drawn from public/marlin.svg in the current text colour.
-const MARLIN = '<svg class="marlin" viewBox="0 0 670 658"><use href="/marlin.svg#m"/></svg>';
+// The logo, where a fish or a boat has no photo yet.
+const MARLIN = '<img class="marlin logo-ph" src="/logo-mark.png" alt="">';
 const icon = (name, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 
 // Members have a profile page; anglers without an account link to their catches.
@@ -976,7 +976,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
 </article>` : html`<article class="feed-item">
   <div class="feed-head">
     <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
-      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}
+      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${MARLIN}</span>`)}
       <b>${x.boat || 'A boat'}</b></a>
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
