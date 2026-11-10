@@ -702,7 +702,9 @@ async function shareCatch(c) {
 // Line icons from the ICONS set further down.
 // The logo, where a fish or a boat has no photo yet.
 const MARLIN = '<img class="marlin logo-ph" src="/logo-mark.png" alt="">';
-const icon = (name, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+// The fish is the logo's own marlin, drawn in the text colour (a mask), so it matches everywhere.
+const icon = (name, cls = 'icon') => (name === 'fish' ? `<span class="${cls} fish-mark" aria-hidden="true"></span>`
+  : `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`);
 
 // Members have a profile page; anglers without an account link to their catches.
 // An angler with an account has a page; one typed in at the weigh-in (a guest) has one by name.
@@ -976,7 +978,7 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
 </article>` : html`<article class="feed-item">
   <div class="feed-head">
     <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
-      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${MARLIN}</span>`)}
+      ${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}
       <b>${x.boat || 'A boat'}</b></a>
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
@@ -4291,7 +4293,7 @@ function renderNav(active = state.navActive) {
     : `<span class="nav-avatar initials">${esc(((me.firstName || me.name)[0] + (me.lastName?.[0] || '')).toUpperCase())}</span>`);
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}${key === 'more' ? ' data-nav="more"' : ''}>
-      <span class="nav-icon">${key === 'more' && avatar ? avatar : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
+      <span class="nav-icon">${key === 'more' && avatar ? avatar : icon === 'fish' ? '<span class="fish-mark" aria-hidden="true"></span>' : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
 }

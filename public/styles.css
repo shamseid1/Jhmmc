@@ -367,8 +367,7 @@ label[hidden] { display: none; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
 .brand .mark { width: 36px; height: 36px; fill: currentColor; flex: none; object-fit: contain; }
-/* The logo is navy line art: white on the dark theme. */
-:root:not([data-theme="light"]) .brand img.mark { filter: brightness(0) invert(1); }
+
 .brand span { font-size: 17px; letter-spacing: .01em; }
 /* Narrow phones: the name and the JHMMC badge still fit on one line. */
 @media (max-width: 380px) {
@@ -994,5 +993,10 @@ a.tournament-call { color: var(--text); text-decoration: none; }
 img.logo-ph { object-fit: contain; filter: brightness(0) invert(1); opacity: .9; }
 .catch-photo.placeholder img.logo-ph { width: 48%; max-width: 240px; height: auto; }
 .pcard .ph img.logo-ph, .trophy-best .ph img.logo-ph { width: 62%; height: 62%; border-radius: 0; }
-.feed-boat .feed-ph img.logo-ph { width: 34px; height: 34px; border-radius: 0; object-fit: contain; filter: none; opacity: 1; }
-:root:not([data-theme="light"]) .feed-boat .feed-ph img.logo-ph { filter: brightness(0) invert(1); }
+
+/* The logo's marlin as an icon, in the current text colour. */
+.fish-mark { display: inline-block; flex: none; background: currentColor;
+  -webkit-mask: url(/fish-mark.png) center / contain no-repeat; mask: url(/fish-mark.png) center / contain no-repeat; }
+.icon.fish-mark { width: 1.6em; height: 1.6em; }
+#nav .fish-mark { width: 28px; height: 28px; }
+.feed-ph .fish-mark { width: 32px; height: 32px; }
