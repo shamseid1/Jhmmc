@@ -236,7 +236,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // that station. A captain weighs only his own boat's fish, and picks from a list why there was
   // no weighmaster.
   const weighmasterAt = (u) => (u ? db.prepare('SELECT weigh_station AS s FROM users WHERE id = ?').get(u.id)?.s || null : null);
-  const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u) || !!weighmasterAt(u);
+  const canWeigh = (u) => canApprove(u) || captainsJhmmcBoat(u) || !!weighmasterAt(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
   const requireWeigh = requireOfficial(canWeigh, "a weighmaster, a boat's captain or the JHMMC secretary");
@@ -251,7 +251,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (wmAt && team?.club_id === homeClubId() && team.weigh_station === wmAt) return { role: 'weighmaster' };
     const onBoat = captain || db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(user.id, teamId);
     if (!onBoat && weighmasterAt(user)) return { role: 'weighmaster' };
-    if (!onBoat && canReview(user)) return { role: 'officer' };
+    if (!onBoat && canApprove(user)) return { role: 'officer' };
     if (!onBoat) return { role: null };
     // Boats outside JHMMC weigh at their home port, where there are no JHMMC weighmasters.
     if (team.club_id !== homeClubId()) return { role: 'captain' };
@@ -1219,7 +1219,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // a fish on the scale is evidence: the secretary, JHMMC captains (to dispute),
   // the boat's crew and whoever registered it. A release video shows to everyone
   // once the secretary has approved the fish. The log photo stays on the "boated" line.
-  const seesEvidence = (row, viewer) => !!viewer && (canWeigh(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
+  const seesEvidence = (row, viewer) => !!viewer && (canWeigh(viewer) || canReview(viewer) || viewer.teamId === row.teamId || row.loggedBy === viewer.id);
   const seesVideo = seesEvidence;
   const canAddFeedPhoto = (row, viewer) => !!viewer && row.status !== 'unofficial' && row.status !== 'rejected'
     && (viewer.teamId === row.teamId || row.userId === viewer.id || row.loggedBy === viewer.id || isAdminUser(viewer));
@@ -1289,7 +1289,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // home port). The secretary may name another; a boat without one chooses.
   function stationFor(user, chosen, boatStation) {
     const pick = WEIGH_STATIONS.includes(chosen) ? chosen : null;
-    const station = canReview(user) ? pick || boatStation : boatStation || pick;
+    const station = canApprove(user) ? pick || boatStation : boatStation || pick;
     return station ? { station } : { error: 'Choose the weigh station.' };
   }
 
@@ -1313,12 +1313,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
     if (official && !throughJhmmc(team.club_id)) return { error: "This boat's club weighs its own fish." };
-    const wmStation = official && !canReview(user) && team.captain_id !== user.id && jhmmcBoat ? weighmasterAt(user) : null;
+    const wmStation = official && !canApprove(user) && team.captain_id !== user.id && jhmmcBoat ? weighmasterAt(user) : null;
     if (wmStation && team.weigh_station !== wmStation) {
       return { error: `As weighmaster at ${wmStation} you weigh the boats registered at ${wmStation}.` };
     }
     const asWeighmaster = wmStation;
-    if (official && !canReview(user) && team.captain_id !== user.id && !asWeighmaster) {
+    if (official && !canApprove(user) && team.captain_id !== user.id && !asWeighmaster) {
       return { error: "Captains register their own boat's fish only; the station's weighmaster weighs the others." };
     }
     // A feed post can be any photo; a registration is always a fish.
@@ -1349,7 +1349,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
     // Captains register at the weigh station on the day: today only (Monrovia time is UTC).
     // The secretary may enter an earlier day's paper form.
-    if (official && !canReview(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
+    if (official && !canApprove(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
       return { error: "Registrations are for today's fish only." };
     }
     const lineClass = str(b.lineClass, 20);
@@ -1512,7 +1512,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   }
   // Captains declare their sheet is true; the secretary and admin don't need to.
   const DECLARATION = 'Tick the declaration that these fish are true before sending.';
-  const declared = (user, b) => canReview(user) || b.declared === 'yes';
+  const declared = (user, b) => canApprove(user) || b.declared === 'yes';
   // Every registration takes the phone's location, officials' included.
   const LOCATION_NEEDED = "The phone's location is needed for the weigh-in. Turn on location for this site and send again.";
   const located = (user, b) => !!deviceSpot(b);

@@ -1900,7 +1900,8 @@ const pagesFor = (view) => ({
     const [{ toReview }, { teams }, { events }] = await Promise.all([api('/officials/queue'), api('/teams'), api('/events')]);
     // Fish on a tournament day count for the season and for that tournament.
     const onNow = events.find((e) => e.kind === 'tournament' && e.date <= today() && today() <= e.endDate);
-    const official = state.me.canReview;
+    // The secretary enters a weigh-in for any boat and any day (a paper form, say).
+    const official = state.me.canApprove;
     // Fish count for today's tournament only if the boat is entered in it.
     const entryNote = (teamId) => (!teamId ? 'choose the boat to see if it is entered'
       : onNow.entries.includes(Number(teamId)) ? "entered: today's fish also count for this tournament"
@@ -3111,14 +3112,14 @@ const pagesFor = (view) => ({
         ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
-      ${me.canWeigh && !me.canReview ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
+      ${me.canWeigh && !me.canApprove ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
         ${item('#/weigh', 'weight', 'Weigh-in', me.weighmasterAt ? `You're the weighmaster at ${me.weighmasterAt}: its boats` : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
         ${item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours')}
       </div>` : ''}`) : ''}
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
         ${me.canReview ? item('#/desk', 'review', 'Secretary desk', state.pending ? `${plural(state.pending, 'fish')} waiting · start here` : 'Everything waiting for you, in one place', state.pending) : ''}
         ${me.canApprove ? item('#/review', 'review', 'Review catches', state.pending ? `${plural(state.pending, 'registration')} waiting` : 'Check and approve points', state.pending) : ''}
-        ${me.canReview ? item('#/weigh', 'weight', 'Weigh-in', 'For any boat') : ''}
+        ${me.canApprove ? item('#/weigh', 'weight', 'Weigh-in', 'For any boat, any day (a paper form)') : ''}
         ${item('#/tournaments?sheets=1', 'trophy', 'Tournament sheets', "Who's in, anglers, memberships to collect")}
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
@@ -3185,7 +3186,7 @@ const pagesFor = (view) => ({
       ${d.next ? raw(html`<h2>Next tournament</h2><a class="card pad desk-link" href="#/sheet/${d.next.id}"><b>${d.next.name}</b> · ${fmtDay(d.next.date)}<br><small class="muted">${plural(d.next.boats, 'boat')} entered</small></a>`) : ''}
       <h2>Shortcuts</h2>
       <div class="desk-short">
-        <a class="card" href="#/review">Review catches</a><a class="card" href="#/weigh">Weigh-in</a>
+        ${state.me.canApprove ? raw('<a class="card" href="#/review">Review catches</a><a class="card" href="#/weigh">Weigh-in</a>') : ''}
         <a class="card" href="#/tournaments?sheets=1">Tournament sheets</a><a class="card" href="#/club-members">Club members</a>
       </div>
       <h2>Your last changes</h2>

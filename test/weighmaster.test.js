@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
 const { createApp } = require('../src/app');
 const { seedDemo } = require('../src/demo');
 
@@ -10,7 +11,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
 test('weighmasters: appointed members weigh their station\'s boats; a captain only his own boat, picking why', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-wm-'));
-  const app = createApp({ dbFile: path.join(tmp, 'fishing.db'), uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com', nightlyBackups: false });
+  const dbFile = path.join(tmp, 'fishing.db');
+  const app = createApp({ dbFile, uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com', nightlyBackups: false });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const base = `http://127.0.0.1:${srv.address().port}`;
@@ -88,6 +90,15 @@ test('weighmasters: appointed members weigh their station\'s boats; a captain on
     assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: null })).status, 200);
     assert.equal((await rayan('GET', '/me')).body.user.weighmasterAt, null);
     assert.equal((await rayan('POST', '/weigh/sheet', sheet(boat('Sea Monkey')))).status, 403, 'crew without the role can\'t weigh');
+    // Entering a weigh-in for any boat (a paper form) is the secretary's alone: not the president's.
+    const raw = new DatabaseSync(dbFile);
+    raw.prepare("UPDATE users SET role = 'president' WHERE email = 'charbel@example.com'").run();
+    raw.close();
+    const pres = await login('charbel@example.com');
+    assert.equal((await pres('POST', '/weigh/sheet', sheet(boat('Aquaholic')))).status, 403);
+    const old = sheet(boat('Aquaholic'), { caughtOn: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10) });
+    r = await sec('POST', '/weigh/sheet', old);
+    assert.deepEqual([r.status, r.body.catches?.[0].weighRole], [201, 'officer'], 'the secretary enters an earlier day for any boat');
   } finally {
     srv.close();
   }
