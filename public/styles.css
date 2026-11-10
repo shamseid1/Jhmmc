@@ -979,7 +979,7 @@ a.tournament-call { color: var(--text); text-decoration: none; }
 .demo-accounts button { width: 100%; }
 
 /* Weighmasters: a captain per row, his station on the right. */
-.wm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wm-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .weigher { margin: 6px 0; }
 
 /* A weighmaster's boats at his station: tap one, weigh it, tap the next. */

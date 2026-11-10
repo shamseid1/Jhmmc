@@ -682,9 +682,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // Weighmasters: JHMMC members the secretary appoints (a captain, the treasurer...), one weigh station each,
   // who weigh the boats registered at that station.
   api.get('/weighmasters', requireApprove, (_req, res) => {
-    const members = db.prepare(`SELECT u.id, ${SHOWN} AS name, u.role, t.name AS boat, t.captain_id = u.id AS captain, u.weigh_station AS station
+    // Officers' pages use real names; the nickname comes alongside.
+    const members = db.prepare(`SELECT u.id, u.name, NULLIF(u.nickname, '') AS nickname, u.role, t.name AS boat, t.captain_id = u.id AS captain, u.weigh_station AS station
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 OR u.weigh_station IS NOT NULL
-      ORDER BY u.weigh_station IS NULL, name COLLATE NOCASE`).all().map((m) => ({ ...m, captain: !!m.captain }));
+      ORDER BY u.weigh_station IS NULL, u.name COLLATE NOCASE`).all().map((m) => ({ ...m, captain: !!m.captain }));
     res.json({ members, stations: WEIGH_STATIONS });
   });
   api.put('/weighmasters/:userId', requireApprove, (req, res) => {
@@ -1175,7 +1176,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       k.notes, k.photo, k.video, k.scale_video AS scaleVideo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       k.lat, k.lng, k.spot_public AS spotPublic, k.no_angler AS noAngler,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
-      k.weigh_role AS weighRole, k.weigh_reason AS weighReason, (SELECT ${SHOWN} FROM users u WHERE u.id = k.weighed_by) AS weighedByName,
+      k.weigh_role AS weighRole, k.weigh_reason AS weighReason, (SELECT u.name FROM users u WHERE u.id = k.weighed_by) AS weighedByName, u.name AS anglerFullName,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
       u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler,
@@ -1250,6 +1251,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       canAddPhoto: canAddFeedPhoto(row, viewer),
       scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
       weighReason: seesEvidence(row, viewer) ? row.weighReason : null,
+      // The angler's real name, for the club officers' screens (everyone else sees the nickname).
+      anglerFullName: viewer && (canReview(viewer) || canHandleMoney(viewer)) ? row.anglerFullName : null,
       canDelete: canDelete(row, viewer),
       worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
     };
@@ -1519,7 +1522,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // When disputes close: 24 hours after the fish was registered.
   const disputeUntil = (createdAt) => new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + DISPUTE_HOURS * 3600e3).toISOString();
   const disputesFor = db.prepare(`
-    SELECT d.id, d.reason, d.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author, t.name AS boat
+    SELECT d.id, d.reason, d.created_at AS createdAt, u.id AS userId, u.name AS author, t.name AS boat
     FROM disputes d JOIN users u ON u.id = d.user_id LEFT JOIN teams t ON t.id = u.team_id
     WHERE d.catch_id = ? ORDER BY d.id`);
 

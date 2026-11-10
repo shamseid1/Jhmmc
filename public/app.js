@@ -805,7 +805,7 @@ function catchCard(c, { full = false } = {}) {
         <summary><b>Secretary: fix species, angler or photo</b></summary>
         <form class="stack" data-fix-form>
           <label>Species <select name="speciesId">${raw(speciesOptions(c.speciesId))}</select></label>
-          <label>Angler <select name="anglerId"><option value="">${c.angler} (as now)</option></select></label>
+          <label>Angler <select name="anglerId"><option value="">${c.anglerFullName || c.angler} (as now)</option></select></label>
           <label data-fix-name hidden>Angler's name <input name="anglerName" maxlength="80"></label>
           <label>New weigh-station photo <input type="file" name="scalePhoto" accept="image/*"></label>
           <label>Note <input name="note" maxlength="300" placeholder="What was wrong" required></label>
@@ -1390,8 +1390,8 @@ const pagesFor = (view) => ({
       <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
       <h2>JHMMC members</h2>
       <div class="filter-chips"><input type="search" id="wm-find" placeholder="Search by name or boat" aria-label="Search members"></div>
-      <div class="card"><ul class="list" id="wm-list">${members.length ? members.map((m) => raw(html`<li class="wm-row" data-find="${`${m.name} ${m.boat || ''}`.toLowerCase()}">
-        <div><b>${m.name}</b><div class="small muted">${who(m) || 'JHMMC member'}</div></div>
+      <div class="card"><ul class="list" id="wm-list">${members.length ? members.map((m) => raw(html`<li class="wm-row" data-find="${`${m.name} ${m.nickname || ''} ${m.boat || ''}`.toLowerCase()}">
+        <div><b>${m.name}</b>${m.nickname ? raw(html` <span class="muted">“${m.nickname}”</span>`) : ''}<div class="small muted">${who(m) || 'JHMMC member'}</div></div>
         <label class="small">Weighmaster at <select data-user="${m.id}">${raw(options(stations, m.station, 'Not a weighmaster'))}</select></label>
       </li>`)) : raw('<li class="muted">No JHMMC members yet.</li>')}</ul></div>`;
     view.querySelector('#wm-find').addEventListener('input', (e) => {
@@ -2260,7 +2260,7 @@ const pagesFor = (view) => ({
         ${g.catches.map((c) => raw(html`<article class="card pad review-item">
           <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
             <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
-          <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
+          <p class="meta">${c.anglerFullName || c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
           ${c.weighRole ? raw(`<p class="weigher">${weigherBadge(c)}</p>`) : ''}
           <div class="thumbs">
             ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
