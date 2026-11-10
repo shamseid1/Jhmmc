@@ -1385,8 +1385,6 @@ const pagesFor = (view) => ({
     const who = (m) => [m.role ? Object.fromEntries(ROLE_OPTIONS)[m.role] || m.role : '', m.boat ? `${m.captain ? 'Captain of ' : ''}${m.boat}` : ''].filter(Boolean).join(' · ');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Weighmasters</h1>
       ${raw(recordedNote('A weighmaster weighs the boats registered at his station.'))}
-      <p class="muted">Under the club rules, every fish is weighed by the station's weighmaster. Choose any JHMMC member: a captain, the treasurer...
-        A weighmaster weighs the boats registered at his station. Other captains weigh only their own boat's fish, and pick from a list why there was no weighmaster.</p>
       <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
       <h2>JHMMC members</h2>
       <div class="filter-chips"><input type="search" id="wm-find" placeholder="Search by name or boat" aria-label="Search members"></div>
