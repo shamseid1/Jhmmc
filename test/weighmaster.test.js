@@ -8,7 +8,7 @@ const { seedDemo } = require('../src/demo');
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 
-test('weighmasters: every captain at his boat\'s station, others appointed; weighing your own boat you pick why', async () => {
+test('weighmasters: appointed members weigh their station\'s boats; a captain only his own boat, picking why', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-wm-'));
   const app = createApp({ dbFile: path.join(tmp, 'fishing.db'), uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com', nightlyBackups: false });
   const srv = app.listen(0);
@@ -51,10 +51,11 @@ test('weighmasters: every captain at his boat\'s station, others appointed; weig
     r = await steve('POST', '/weigh/sheet', sheet(boat('Aquaholic'), { noWeighmaster: 'closed', noWeighmasterNote: 'power cut' }));
     assert.equal(r.status, 201);
     assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighReason], ['captain', 'The weigh station was closed: power cut']);
-    // Every captain is weighmaster at his boat's station: Jack (Bait Master, Extreme) weighs Aquaholic there.
-    assert.equal((await jack('GET', '/me')).body.user.weighmasterAt, 'Extreme');
-    const jw = await jack('POST', '/weigh/sheet', sheet(boat('Aquaholic')));
-    assert.deepEqual([jw.status, jw.body.catches?.[0].weighRole, jw.body.catches?.[0].weighStation], [201, 'weighmaster', 'Extreme']);
+    // A captain who isn't a weighmaster weighs only his own boat.
+    assert.equal((await jack('GET', '/me')).body.user.weighmasterAt, null);
+    assert.match((await jack('POST', '/weigh/sheet', sheet(boat('Aquaholic')))).body.error, /own boat/);
+    // A weighmaster weighs only the boats registered at his station.
+    assert.match((await steve('POST', '/weigh/sheet', sheet(boat('Liberian Girl')))).body.error, /boats registered at Extreme/);
     // The reason is for the officers and the crew; anyone else sees who weighed, not why.
     const id = r.body.catches[0].id;
     assert.equal((await sec('GET', `/catches/${id}`)).body.catch.weighReason, 'The weigh station was closed: power cut');
@@ -66,7 +67,6 @@ test('weighmasters: every captain at his boat\'s station, others appointed; weig
     const rayanId = users.find((u) => u.email === 'rayan@example.com').id;
     const shamsId = (await shams('GET', '/me')).body.user.id;
     assert.equal((await shams('PUT', `/weighmasters/${shamsId}`, { station: 'Beerville' })).status, 403);
-    assert.match((await sec('PUT', `/weighmasters/${shamsId}`, { station: 'Extreme' })).body.error, /captain/, 'captains are automatic');
     assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: 'Nowhere' })).status, 400);
     const outsider2 = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ firstName: 'Not', lastName: 'Member', email: 'nm@example.com', password: 'password123' }) });
@@ -76,7 +76,9 @@ test('weighmasters: every captain at his boat\'s station, others appointed; weig
     assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: 'Beerville' })).status, 200);
     const list = (await sec('GET', '/weighmasters')).body.members;
     assert.equal(list.find((m) => m.id === rayanId).station, 'Beerville');
-    assert.deepEqual([list.find((m) => m.id === shamsId).auto, list.find((m) => m.id === shamsId).station], ['Beerville', 'Beerville']);
+    assert.equal(list.find((m) => m.id === shamsId).station, null, 'captains are weighmasters only when appointed');
+    assert.equal((await sec('PUT', `/weighmasters/${shamsId}`, { station: 'Beerville' })).status, 200, 'a captain can be appointed');
+    assert.equal((await sec('PUT', `/weighmasters/${shamsId}`, { station: null })).status, 200);
     const rayan = await login('rayan@example.com');
     r = await rayan('POST', '/weigh/sheet', sheet(boat('Sea Monkey')));
     assert.deepEqual([r.status, r.body.catches?.[0].weighRole, r.body.catches?.[0].weighStation], [201, 'weighmaster', 'Beerville']);

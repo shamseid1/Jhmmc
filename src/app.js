@@ -231,12 +231,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const throughJhmmc = (clubId) => !clubId || !db.prepare('SELECT 1 FROM clubs WHERE id = ? AND self_run = 1').get(clubId);
   const captainsJhmmcBoat = (u) => !!u && !!db.prepare(`SELECT 1 FROM teams t LEFT JOIN clubs c ON c.id = t.club_id
     WHERE t.captain_id = ? AND COALESCE(c.self_run, 0) = 0`).get(u.id);
-  // The rules want every fish weighed by the station's weighmaster. Every JHMMC captain is one
-  // at his boat's weigh station; the secretary appoints others (the treasurer...), one station
-  // each. Without one, a captain weighs his own boat's fish and picks why from a list.
-  const autoStation = (id) => db.prepare(`SELECT t.weigh_station AS s FROM teams t JOIN clubs c ON c.id = t.club_id
-    WHERE t.captain_id = ? AND c.name = ? COLLATE NOCASE AND t.weigh_station IS NOT NULL`).get(id, HOME_CLUB.name)?.s || null;
-  const weighmasterAt = (u) => (u ? db.prepare('SELECT weigh_station AS s FROM users WHERE id = ?').get(u.id)?.s || autoStation(u.id) : null);
+  // The rules want every fish weighed by the station's weighmaster: club members the secretary
+  // appoints (a captain, the treasurer...), one station each, who weigh the boats registered at
+  // that station. A captain weighs only his own boat's fish, and picks from a list why there was
+  // no weighmaster.
+  const weighmasterAt = (u) => (u ? db.prepare('SELECT weigh_station AS s FROM users WHERE id = ?').get(u.id)?.s || null : null);
   const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u) || !!weighmasterAt(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
@@ -677,15 +676,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ catch: getCatch(id, req.user) });
   });
 
-  // Weighmasters: JHMMC members the secretary appoints (a captain, the treasurer...), one weigh station each.
+  // Weighmasters: JHMMC members the secretary appoints (a captain, the treasurer...), one weigh station each,
+  // who weigh the boats registered at that station.
   api.get('/weighmasters', requireApprove, (_req, res) => {
     const members = db.prepare(`SELECT u.id, ${SHOWN} AS name, u.role, t.name AS boat, t.captain_id = u.id AS captain, u.weigh_station AS station
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 OR u.weigh_station IS NOT NULL
-      ORDER BY name COLLATE NOCASE`).all().map((m) => {
-      const auto = autoStation(m.id);
-      // Captains are weighmasters at their boat's station without being appointed.
-      return { ...m, captain: !!m.captain, auto, station: m.station || auto };
-    });
+      ORDER BY u.weigh_station IS NULL, name COLLATE NOCASE`).all().map((m) => ({ ...m, captain: !!m.captain }));
     res.json({ members, stations: WEIGH_STATIONS });
   });
   api.put('/weighmasters/:userId', requireApprove, (req, res) => {
@@ -693,8 +689,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!user) return res.status(404).json({ error: 'Member not found.' });
     const station = req.body?.station || null;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
-    const auto = autoStation(user.id);
-    if (auto) return res.status(400).json({ error: `${user.name} is a captain: he's the weighmaster at ${auto}, his boat's weigh station, already.` });
     if (station && !db.prepare('SELECT jhmmc FROM users WHERE id = ?').get(user.id).jhmmc) {
       return res.status(400).json({ error: `${user.name} isn't a JHMMC member. Add them to JHMMC first.` });
     }
@@ -1314,9 +1308,13 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
     if (official && !throughJhmmc(team.club_id)) return { error: "This boat's club weighs its own fish." };
-    const asWeighmaster = official && !canReview(user) && team.captain_id !== user.id && jhmmcBoat && weighmasterAt(user);
+    const wmStation = official && !canReview(user) && team.captain_id !== user.id && jhmmcBoat ? weighmasterAt(user) : null;
+    if (wmStation && team.weigh_station !== wmStation) {
+      return { error: `As weighmaster at ${wmStation} you weigh the boats registered at ${wmStation}.` };
+    }
+    const asWeighmaster = wmStation;
     if (official && !canReview(user) && team.captain_id !== user.id && !asWeighmaster) {
-      return { error: "Captains register their own boat's fish only; the weighmaster weighs any JHMMC boat's." };
+      return { error: "Captains register their own boat's fish only; the station's weighmaster weighs the others." };
     }
     // A feed post can be any photo; a registration is always a fish.
     const speciesId = intId(b.speciesId);
