@@ -366,7 +366,9 @@ label[hidden] { display: none; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
-.brand .mark { width: 34px; height: 34px; fill: currentColor; flex: none; }
+.brand .mark { width: 36px; height: 36px; fill: currentColor; flex: none; object-fit: contain; }
+/* The logo is navy line art: white on the dark theme. */
+:root:not([data-theme="light"]) .brand img.mark { filter: brightness(0) invert(1); }
 .brand span { font-size: 17px; letter-spacing: .01em; }
 /* Narrow phones: the name and the JHMMC badge still fit on one line. */
 @media (max-width: 380px) {
