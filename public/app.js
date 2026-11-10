@@ -1947,7 +1947,6 @@ const pagesFor = (view) => ({
           <legend><b>No weighmaster?</b></legend>
           <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, pick why there was none; the secretary sees it.</p>
           <label>Why <select name="noWeighmaster">${raw(options([['absent', 'No weighmaster at the station'], ['closed', 'The weigh station was closed'], ['other', 'Other reason']], null, 'Choose…'))}</select></label>
-          <label>Note (optional) <input name="noWeighmasterNote" maxlength="200" placeholder="e.g. weighmaster away this weekend"></label>
         </fieldset>
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
@@ -1973,7 +1972,8 @@ const pagesFor = (view) => ({
     // Weighing your own boat (no weighmaster): the reason is asked for.
     const syncReason = () => {
       const box = view.querySelector('.no-weighmaster');
-      const ownBoat = !!myBoat && String(sheet.teamId.value) === String(myBoat.id);
+      // ...unless you're the weighmaster at its station: then it's simply your weigh-in.
+      const ownBoat = !!myBoat && String(sheet.teamId.value) === String(myBoat.id) && !(wm && myBoat.weighStation === wm);
       box.hidden = !ownBoat;
       sheet.noWeighmaster.required = ownBoat;
     };
@@ -2186,7 +2186,6 @@ const pagesFor = (view) => ({
       if (sheet.declared?.checked) fd.set('declared', 'yes');
       if (!view.querySelector('.no-weighmaster').hidden) {
         fd.set('noWeighmaster', sheet.noWeighmaster.value);
-        fd.set('noWeighmasterNote', sheet.noWeighmasterNote.value);
       }
       // Where the phone is: required from everyone.
       const btn = view.querySelector('#submit-sheet');

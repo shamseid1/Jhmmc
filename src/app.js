@@ -241,11 +241,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
   const requireWeigh = requireOfficial(canWeigh, "a weighmaster, a boat's captain or the JHMMC secretary");
   const NO_WEIGHMASTER = { absent: 'No weighmaster at the station', closed: 'The weigh station was closed', other: 'Other reason' };
-  // Who is weighing this boat's fish, and as what. Weighing a boat you're on (its captain, or a
-  // weighmaster who is crew) is that boat's own weigh-in, with the reason there was no weighmaster.
+  // Who is weighing this boat's fish, and as what. Weighing a boat you're on, unless you're the
+  // weighmaster at its station, is that boat's own weigh-in, with the reason there was no weighmaster.
   function weighRole(user, teamId, b) {
-    const team = db.prepare('SELECT captain_id, club_id FROM teams WHERE id = ?').get(teamId);
+    const team = db.prepare('SELECT captain_id, club_id, weigh_station FROM teams WHERE id = ?').get(teamId);
     const captain = team?.captain_id === user.id;
+    // A weighmaster weighs every boat registered at his station, his own included.
+    const wmAt = weighmasterAt(user);
+    if (wmAt && team?.club_id === homeClubId() && team.weigh_station === wmAt) return { role: 'weighmaster' };
     const onBoat = captain || db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(user.id, teamId);
     if (!onBoat && weighmasterAt(user)) return { role: 'weighmaster' };
     if (!onBoat && canReview(user)) return { role: 'officer' };
