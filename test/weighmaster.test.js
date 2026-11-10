@@ -44,7 +44,10 @@ test('weighmasters: appointed captains weigh any JHMMC boat at their station; a 
     assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighedByName, r.body.catches[0].weighStation], ['weighmaster', 'Steve Kissik', 'Extreme']);
     // His own boat: he's its captain there, so he says why there was no weighmaster.
     assert.match((await steve('POST', '/weigh/sheet', sheet(boat('Aquaholic')))).body.error, /weighmaster/);
-    assert.match((await steve('POST', '/weigh/sheet', sheet(boat('Aquaholic'), { noWeighmaster: 'other' }))).body.error, /Say why/);
+    // Picking a reason is enough: no need to type one.
+    let other = await steve('POST', '/weigh/sheet', sheet(boat('Aquaholic'), { noWeighmaster: 'other' }));
+    assert.equal(other.status, 201);
+    assert.equal(other.body.catches[0].weighReason, 'Other reason');
     r = await steve('POST', '/weigh/sheet', sheet(boat('Aquaholic'), { noWeighmaster: 'closed', noWeighmasterNote: 'power cut' }));
     assert.equal(r.status, 201);
     assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighReason], ['captain', 'The weigh station was closed: power cut']);
@@ -56,17 +59,30 @@ test('weighmasters: appointed captains weigh any JHMMC boat at their station; a 
     const outsider = await (await fetch(`${base}/api/catches/${id}`)).json();
     assert.deepEqual([outsider.catch.weighRole, outsider.catch.weighReason], ['captain', null]);
 
-    // Appointing: the secretary only, and only captains of JHMMC boats.
-    const rayan = (await sec('GET', '/admin/users')).body.users.find((u) => u.email === 'rayan@example.com').id;
+    // Appointing: the secretary only, and any JHMMC member (the treasurer, say), not only captains.
+    const users = (await sec('GET', '/admin/users')).body.users;
+    const rayanId = users.find((u) => u.email === 'rayan@example.com').id;
     const shamsId = (await shams('GET', '/me')).body.user.id;
     assert.equal((await shams('PUT', `/weighmasters/${shamsId}`, { station: 'Beerville' })).status, 403);
-    assert.equal((await sec('PUT', `/weighmasters/${rayan}`, { station: 'Beerville' })).status, 400, 'not a captain');
     assert.equal((await sec('PUT', `/weighmasters/${shamsId}`, { station: 'Nowhere' })).status, 400);
-    assert.equal((await sec('PUT', `/weighmasters/${shamsId}`, { station: 'Beerville' })).status, 200);
-    const list = (await sec('GET', '/weighmasters')).body.captains;
-    assert.equal(list.find((c) => c.id === shamsId).station, 'Beerville');
-    assert.equal((await sec('PUT', `/weighmasters/${shamsId}`, { station: null })).status, 200);
-    assert.equal((await shams('GET', '/me')).body.user.weighmasterAt, null);
+    const outsider2 = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ firstName: 'Not', lastName: 'Member', email: 'nm@example.com', password: 'password123' }) });
+    const nmId = (await outsider2.json()).user.id;
+    assert.match((await sec('PUT', `/weighmasters/${nmId}`, { station: 'Beerville' })).body.error, /isn't a JHMMC member/);
+    // Rayan (crew on Liberian Girl, not a captain) weighs at Beerville.
+    assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: 'Beerville' })).status, 200);
+    const list = (await sec('GET', '/weighmasters')).body.members;
+    assert.equal(list.find((m) => m.id === rayanId).station, 'Beerville');
+    const rayan = await login('rayan@example.com');
+    r = await rayan('POST', '/weigh/sheet', sheet(boat('Sea Monkey')));
+    assert.deepEqual([r.status, r.body.catches?.[0].weighRole, r.body.catches?.[0].weighStation], [201, 'weighmaster', 'Beerville']);
+    // His own boat is that boat's own weigh-in, with a reason.
+    assert.match((await rayan('POST', '/weigh/sheet', sheet(boat('Liberian Girl')))).body.error, /weighmaster/);
+    r = await rayan('POST', '/weigh/sheet', sheet(boat('Liberian Girl'), { noWeighmaster: 'absent' }));
+    assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighReason], ['own', 'No weighmaster at the station']);
+    assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: null })).status, 200);
+    assert.equal((await rayan('GET', '/me')).body.user.weighmasterAt, null);
+    assert.equal((await rayan('POST', '/weigh/sheet', sheet(boat('Sea Monkey')))).status, 403, 'crew without the role can\'t weigh');
   } finally {
     srv.close();
   }

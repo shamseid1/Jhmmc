@@ -231,29 +231,30 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const throughJhmmc = (clubId) => !clubId || !db.prepare('SELECT 1 FROM clubs WHERE id = ? AND self_run = 1').get(clubId);
   const captainsJhmmcBoat = (u) => !!u && !!db.prepare(`SELECT 1 FROM teams t LEFT JOIN clubs c ON c.id = t.club_id
     WHERE t.captain_id = ? AND COALESCE(c.self_run, 0) = 0`).get(u.id);
-  // The rules want every fish weighed by the station's weighmaster: captains the secretary
-  // appoints, one station each. A captain weighs his own boat's fish only when there's no
-  // weighmaster, and says why.
+  // The rules want every fish weighed by the station's weighmaster: club members the secretary
+  // appoints (a captain, the treasurer...), one station each. Without one, a captain weighs his
+  // own boat's fish and picks why from a list.
   const weighmasterAt = (u) => (u ? db.prepare('SELECT weigh_station AS s FROM users WHERE id = ?').get(u.id)?.s || null : null);
   const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u) || !!weighmasterAt(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
   const requireWeigh = requireOfficial(canWeigh, "a weighmaster, a boat's captain or the JHMMC secretary");
-  const NO_WEIGHMASTER = { absent: 'No weighmaster at the station', closed: 'The weigh station was closed' };
-  // Who is weighing this boat's fish, and as what.
+  const NO_WEIGHMASTER = { absent: 'No weighmaster at the station', closed: 'The weigh station was closed', other: 'Other reason' };
+  // Who is weighing this boat's fish, and as what. Weighing a boat you're on (its captain, or a
+  // weighmaster who is crew) is that boat's own weigh-in, with the reason there was no weighmaster.
   function weighRole(user, teamId, b) {
     const team = db.prepare('SELECT captain_id, club_id FROM teams WHERE id = ?').get(teamId);
-    const own = team?.captain_id === user.id;
-    if (!own && weighmasterAt(user)) return { role: 'weighmaster' };
-    if (!own && canReview(user)) return { role: 'officer' };
-    if (!own) return { role: null };
+    const captain = team?.captain_id === user.id;
+    const onBoat = captain || db.prepare('SELECT 1 FROM users WHERE id = ? AND team_id = ?').get(user.id, teamId);
+    if (!onBoat && weighmasterAt(user)) return { role: 'weighmaster' };
+    if (!onBoat && canReview(user)) return { role: 'officer' };
+    if (!onBoat) return { role: null };
     // Boats outside JHMMC weigh at their home port, where there are no JHMMC weighmasters.
     if (team.club_id !== homeClubId()) return { role: 'captain' };
-    const note = str(b.noWeighmasterNote, 200);
-    if (b.noWeighmaster === 'other') return note ? { role: 'captain', reason: note } : { error: 'Say why there was no weighmaster.' };
     const why = NO_WEIGHMASTER[b.noWeighmaster];
-    if (!why) return { error: 'The rules want a weighmaster to weigh. Say why there was none.' };
-    return { role: 'captain', reason: note ? `${why}: ${note}` : why };
+    if (!why) return { error: 'The rules want a weighmaster to weigh. Choose why there was none.' };
+    const note = str(b.noWeighmasterNote, 200);
+    return { role: captain ? 'captain' : 'own', reason: note ? `${why}: ${note}` : why };
   }
   const markWeighed = (ids, { role, reason }) => {
     for (const id of ids) db.prepare('UPDATE catches SET weigh_role = ?, weigh_reason = ? WHERE id = ?').run(role ?? null, reason ?? null, id);
@@ -674,19 +675,20 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({ catch: getCatch(id, req.user) });
   });
 
-  // Weighmasters: captains of JHMMC boats the secretary appoints, one weigh station each.
+  // Weighmasters: JHMMC members the secretary appoints (a captain, the treasurer...), one weigh station each.
   api.get('/weighmasters', requireApprove, (_req, res) => {
-    const captains = db.prepare(`SELECT u.id, ${SHOWN} AS name, t.name AS boat, t.weigh_station AS boatStation, u.weigh_station AS station
-      FROM users u JOIN teams t ON t.captain_id = u.id WHERE t.club_id = ? ORDER BY name COLLATE NOCASE`).all(homeClubId());
-    res.json({ captains, stations: WEIGH_STATIONS });
+    const members = db.prepare(`SELECT u.id, ${SHOWN} AS name, u.role, t.name AS boat, t.captain_id = u.id AS captain, u.weigh_station AS station
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.jhmmc = 1 OR u.weigh_station IS NOT NULL
+      ORDER BY u.weigh_station IS NULL, name COLLATE NOCASE`).all().map((m) => ({ ...m, captain: !!m.captain }));
+    res.json({ members, stations: WEIGH_STATIONS });
   });
   api.put('/weighmasters/:userId', requireApprove, (req, res) => {
     const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
     if (!user) return res.status(404).json({ error: 'Member not found.' });
     const station = req.body?.station || null;
     if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
-    if (station && !db.prepare('SELECT 1 FROM teams WHERE captain_id = ? AND club_id = ?').get(user.id, homeClubId())) {
-      return res.status(400).json({ error: `${user.name} isn't the captain of a JHMMC boat. Weighmasters are captains.` });
+    if (station && !db.prepare('SELECT jhmmc FROM users WHERE id = ?').get(user.id).jhmmc) {
+      return res.status(400).json({ error: `${user.name} isn't a JHMMC member. Add them to JHMMC first.` });
     }
     db.prepare('UPDATE users SET weigh_station = ? WHERE id = ?').run(station, user.id);
     res.json({ ok: true, station });

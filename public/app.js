@@ -118,7 +118,7 @@ const fmtWhen = (d) => parseTime(d).toLocaleString(undefined, { day: 'numeric', 
 const today = () => new Date().toISOString().slice(0, 10);
 // Who weighed a registered fish: the weighmaster (as the rules want) or, without one, the captain.
 const weigherBadge = (c) => (c.weighRole === 'weighmaster' ? `<span class="badge new">Weighmaster${c.weighedByName ? `: ${esc(c.weighedByName)}` : ''}</span>`
-  : c.weighRole === 'captain' ? `<span class="badge guest">Captain's weigh-in</span>${c.weighReason ? ` <span class="small">${esc(c.weighReason)}</span>` : ''}`
+  : c.weighRole === 'captain' || c.weighRole === 'own' ? `<span class="badge guest">${c.weighRole === 'captain' ? "Captain's weigh-in" : "Own boat's weigh-in"}${c.weighedByName ? `: ${esc(c.weighedByName)}` : ''}</span>${c.weighReason ? ` <span class="small">${esc(c.weighReason)}</span>` : ''}`
     : c.weighRole === 'officer' ? `<span class="badge">Entered by ${c.weighedByName ? esc(c.weighedByName) : 'an officer'}</span>` : '');
 const plural = (n, word) => `${n} ${word}${n === 1 || word.endsWith('fish') ? '' : word.endsWith('ch') ? 'es' : 's'}`;
 
@@ -1377,21 +1377,27 @@ const pagesFor = (view) => ({
     });
   },
 
-  // The secretary appoints weighmasters: captains of JHMMC boats, one weigh station each.
+  // The secretary appoints weighmasters: JHMMC members (a captain, the treasurer...), one weigh station each.
   async weighmasters() {
     if (!state.me?.canApprove) return needLogin(view, 'appoint weighmasters (the secretary)');
-    const { captains, stations } = await api('/weighmasters');
-    const at = (st) => captains.filter((c) => c.station === st).map((c) => c.name);
+    const { members, stations } = await api('/weighmasters');
+    const at = (st) => members.filter((m) => m.station === st).map((m) => m.name);
+    const who = (m) => [m.role ? Object.fromEntries(ROLE_OPTIONS)[m.role] || m.role : '', m.boat ? `${m.captain ? 'Captain of ' : ''}${m.boat}` : ''].filter(Boolean).join(' · ');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Weighmasters</h1>
       ${raw(recordedNote('A weighmaster weighs any JHMMC boat at his station.'))}
-      <p class="muted">The rules want each fish weighed by the station's weighmaster. A weighmaster is a captain: he weighs any JHMMC boat's fish
-        at his station, and his weigh-ins are marked as his. Without one, a captain weighs his own boat's fish and says why.</p>
+      <p class="muted">The rules want each fish weighed by the station's weighmaster: any JHMMC member you choose, such as a captain or the treasurer.
+        His weigh-ins are marked as his. Without one, a captain weighs his own boat's fish and picks why from a list.</p>
       <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
-      <h2>Captains</h2>
-      <div class="card"><ul class="list">${captains.length ? captains.map((c) => raw(html`<li class="wm-row">
-        <div><b>${c.name}</b><div class="small muted">${c.boat}${c.boatStation ? ` · ${c.boatStation}` : ''}</div></div>
-        <label class="small">Weighmaster at <select data-user="${c.id}">${raw(options(stations, c.station, 'Not a weighmaster'))}</select></label>
-      </li>`)) : raw('<li class="muted">No JHMMC boat has a captain yet.</li>')}</ul></div>`;
+      <h2>JHMMC members</h2>
+      <div class="filter-chips"><input type="search" id="wm-find" placeholder="Search by name or boat" aria-label="Search members"></div>
+      <div class="card"><ul class="list" id="wm-list">${members.length ? members.map((m) => raw(html`<li class="wm-row" data-find="${`${m.name} ${m.boat || ''}`.toLowerCase()}">
+        <div><b>${m.name}</b><div class="small muted">${who(m) || 'JHMMC member'}</div></div>
+        <label class="small">Weighmaster at <select data-user="${m.id}">${raw(options(stations, m.station, 'Not a weighmaster'))}</select></label>
+      </li>`)) : raw('<li class="muted">No JHMMC members yet.</li>')}</ul></div>`;
+    view.querySelector('#wm-find').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      for (const li of view.querySelectorAll('#wm-list [data-find]')) li.hidden = !!q && !li.dataset.find.includes(q);
+    });
     view.addEventListener('change', async (e) => {
       const sel = e.target.closest('select[data-user]');
       if (!sel) return;
@@ -1906,7 +1912,8 @@ const pagesFor = (view) => ({
     // A weighmaster weighs any JHMMC boat at his station; a captain only his own boat.
     const wm = !official && state.me.weighmasterAt;
     const own = official || wm ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
-    const myBoat = jhmmcBoats.find((t) => t.id === state.me.teamId && state.me.isCaptain && isJhmmc(t.clubId));
+    // The boat you're on: weighing it is its own weigh-in (no weighmaster), with a reason picked from the list.
+    const myBoat = jhmmcBoats.find((t) => t.id === state.me.teamId && (state.me.isCaptain || wm) && isJhmmc(t.clubId));
     const atHomePort = (t) => t && !isJhmmc(t.clubId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
@@ -1930,9 +1937,9 @@ const pagesFor = (view) => ({
             <p class="station-fixed" id="home-port" hidden></p>`)}
         <fieldset class="card pad no-weighmaster" hidden>
           <legend><b>No weighmaster?</b></legend>
-          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, say why there was none; the secretary sees it.</p>
-          <label>Why <select name="noWeighmaster">${raw(options([['absent', 'No weighmaster at the station'], ['closed', 'The weigh station was closed'], ['other', 'Other (say why)']], null, 'Choose…'))}</select></label>
-          <label>Note <input name="noWeighmasterNote" maxlength="200" placeholder="e.g. weighmaster away this weekend"></label>
+          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, pick why there was none; the secretary sees it.</p>
+          <label>Why <select name="noWeighmaster">${raw(options([['absent', 'No weighmaster at the station'], ['closed', 'The weigh station was closed'], ['other', 'Other reason']], null, 'Choose…'))}</select></label>
+          <label>Note (optional) <input name="noWeighmasterNote" maxlength="200" placeholder="e.g. weighmaster away this weekend"></label>
         </fieldset>
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
@@ -1961,7 +1968,6 @@ const pagesFor = (view) => ({
       const ownBoat = !!myBoat && String(sheet.teamId.value) === String(myBoat.id);
       box.hidden = !ownBoat;
       sheet.noWeighmaster.required = ownBoat;
-      sheet.noWeighmasterNote.required = ownBoat && sheet.noWeighmaster.value === 'other';
     };
     sheet.addEventListener('change', syncReason);
     const anglerOptions = (selected) => options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], selected, crew.length ? 'Choose…' : 'Choose the boat first');
@@ -3091,7 +3097,7 @@ const pagesFor = (view) => ({
         ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/members', 'key', 'Members', 'Everyone on the app: tick who is in JHMMC') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/admin-boats', 'boat', 'JHMMC boats', 'Weigh stations, Ocean or River') : ''}
-        ${me.canApprove ? item('#/weighmasters', 'weight', 'Weighmasters', 'The captain who weighs at each weigh station') : ''}
+        ${me.canApprove ? item('#/weighmasters', 'weight', 'Weighmasters', 'Who weighs at each weigh station') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
