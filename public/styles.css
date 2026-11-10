@@ -981,3 +981,8 @@ a.tournament-call { color: var(--text); text-decoration: none; }
 /* Weighmasters: a captain per row, his station on the right. */
 .wm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .weigher { margin: 6px 0; }
+
+/* A weighmaster's boats at his station: tap one, weigh it, tap the next. */
+.wm-boat-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.wm-boat-chips .chip { border-radius: 999px; padding: 8px 14px; }
+.wm-boat-chips .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
