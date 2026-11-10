@@ -110,7 +110,7 @@ A second service, for showing the club, runs the same code with a made-up season
 
 ### Weighmasters
 
-The rules want every fish weighed by the weigh station's weighmaster. The secretary appoints them under **More → Weighmasters**: any JHMMC member (a captain, the treasurer...), one station each. A weighmaster's weigh-in screen lets him pick any JHMMC boat; his weigh-ins are at his station and marked "Weighmaster: name". When there's no weighmaster, a captain still weighs his own boat's fish and picks why from a list (no weighmaster at the station, the station was closed, or another reason; a note is optional). Those are marked "Captain's weigh-in" with the reason on the secretary's review screen; a weighmaster weighing a boat he's on is marked "Own boat's weigh-in". Once approved they all count the same.
+The rules want every fish weighed by the weigh station's weighmaster. **Every JHMMC captain is the weighmaster at his boat's weigh station automatically**; the secretary adds anyone else (the treasurer, a member without a boat...) under **More → Weighmasters**, one station each. A weighmaster's weigh-in screen starts on his own boat (if he has one) and lets him pick any JHMMC boat; his weigh-ins are at his station and marked "Weighmaster: name". Weighing his own boat's fish, he picks why there was no other weighmaster from a list (no weighmaster at the station, the station was closed, or another reason; a note is optional); those are marked "Captain's weigh-in" (or "Own boat's weigh-in" for crew) with the reason on the secretary's review screen. Once approved they all count the same.
 
 ### Privacy and deleting an account
 

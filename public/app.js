@@ -1385,14 +1385,16 @@ const pagesFor = (view) => ({
     const who = (m) => [m.role ? Object.fromEntries(ROLE_OPTIONS)[m.role] || m.role : '', m.boat ? `${m.captain ? 'Captain of ' : ''}${m.boat}` : ''].filter(Boolean).join(' · ');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Weighmasters</h1>
       ${raw(recordedNote('A weighmaster weighs any JHMMC boat at his station.'))}
-      <p class="muted">The rules want each fish weighed by the station's weighmaster: any JHMMC member you choose, such as a captain or the treasurer.
-        His weigh-ins are marked as his. Without one, a captain weighs his own boat's fish and picks why from a list.</p>
+      <p class="muted">The rules want each fish weighed by the station's weighmaster. Every captain is the weighmaster at his boat's weigh station,
+        automatically. You can add any other JHMMC member, such as the treasurer. A weighmaster weighs any JHMMC boat at his station;
+        weighing his own boat's fish, he picks why there was no other weighmaster from a list.</p>
       <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
       <h2>JHMMC members</h2>
       <div class="filter-chips"><input type="search" id="wm-find" placeholder="Search by name or boat" aria-label="Search members"></div>
       <div class="card"><ul class="list" id="wm-list">${members.length ? members.map((m) => raw(html`<li class="wm-row" data-find="${`${m.name} ${m.boat || ''}`.toLowerCase()}">
         <div><b>${m.name}</b><div class="small muted">${who(m) || 'JHMMC member'}</div></div>
-        <label class="small">Weighmaster at <select data-user="${m.id}">${raw(options(stations, m.station, 'Not a weighmaster'))}</select></label>
+        ${m.auto ? raw(html`<span class="small muted">Weighmaster at <b>${m.auto}</b> (captain, automatic)</span>`)
+          : raw(html`<label class="small">Weighmaster at <select data-user="${m.id}">${raw(options(stations, m.station, 'Not a weighmaster'))}</select></label>`)}
       </li>`)) : raw('<li class="muted">No JHMMC members yet.</li>')}</ul></div>`;
     view.querySelector('#wm-find').addEventListener('input', (e) => {
       const q = e.target.value.trim().toLowerCase();
@@ -1925,7 +1927,7 @@ const pagesFor = (view) => ({
       <form class="card pad stack" id="sheet">
         <div class="row">
           ${own ? raw(html`<p class="station-fixed">Boat: <b>${own.name}</b><input type="hidden" name="teamId" value="${own.id}"></p>`)
-            : raw(html`<label>Boat <select name="teamId" required>${raw(boatOptions(jhmmcBoats, null))}</select></label>`)}
+            : raw(html`<label>Boat <select name="teamId" required>${raw(boatOptions(jhmmcBoats, wm || null))}</select></label>`)}
           ${official
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
@@ -2043,6 +2045,11 @@ const pagesFor = (view) => ({
       updatePoints();
     };
     addFish();
+    // A captain (weighmaster at his station) starts on his own boat, and can pick another.
+    if (wm && myBoat && sheet.teamId.tagName === 'SELECT') {
+      sheet.teamId.value = String(myBoat.id);
+      sheet.teamId.dispatchEvent(new Event('change'));
+    }
     syncReason();
     view.querySelector('#add-fish').addEventListener('click', () => {
       addFish();

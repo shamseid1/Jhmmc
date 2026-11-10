@@ -144,10 +144,9 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
     }
   }
   // Waiting for the secretary: today's marlin from Bait Master.
-  // Weighmasters: Steve at Extreme, Faris at Beerville.
-  await sec.call('PUT', `/weighmasters/${steve.id}`, { station: 'Extreme' });
-  await sec.call('PUT', `/weighmasters/${faris.id}`, { station: 'Beerville' });
-  // Today Steve was out fishing, so Bait Master's captain weighed his own marlin and said why.
+  // Captains are weighmasters at their boat's station; the secretary adds Lewaa at Barracuda Club.
+  await sec.call('PUT', `/weighmasters/${lewaa.id}`, { station: 'Barracuda Club' });
+  // Today nobody else was at Extreme, so Bait Master's captain weighed his own marlin and said why.
   const today = sheet(bait, 0, [['Blue marlin', '186', maamoun, 'marlin3.jpg']]);
   today.append('noWeighmaster', 'absent');
   today.append('noWeighmasterNote', 'Steve was out fishing');
