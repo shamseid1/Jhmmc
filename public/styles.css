@@ -367,8 +367,8 @@ label[hidden] { display: none; }
 button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
 .brand .mark { width: 40px; height: 40px; fill: currentColor; flex: none; object-fit: contain; }
-/* The logo: white art on its navy tile, the same on both themes. */
-.brand img.mark { border-radius: 22%; }
+/* The logo (marlin over Africa) is navy line art: white on the dark theme. */
+:root:not([data-theme="light"]) .brand img.mark { filter: brightness(0) invert(1); }
 
 .brand span { font-size: 17px; letter-spacing: .01em; }
 /* Narrow phones: the name and the JHMMC badge still fit on one line. */
