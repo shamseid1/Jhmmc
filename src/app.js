@@ -231,10 +231,33 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const throughJhmmc = (clubId) => !clubId || !db.prepare('SELECT 1 FROM clubs WHERE id = ? AND self_run = 1').get(clubId);
   const captainsJhmmcBoat = (u) => !!u && !!db.prepare(`SELECT 1 FROM teams t LEFT JOIN clubs c ON c.id = t.club_id
     WHERE t.captain_id = ? AND COALESCE(c.self_run, 0) = 0`).get(u.id);
-  const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u);
+  // The rules want every fish weighed by the station's weighmaster: captains the secretary
+  // appoints, one station each. A captain weighs his own boat's fish only when there's no
+  // weighmaster, and says why.
+  const weighmasterAt = (u) => (u ? db.prepare('SELECT weigh_station AS s FROM users WHERE id = ?').get(u.id)?.s || null : null);
+  const canWeigh = (u) => canReview(u) || captainsJhmmcBoat(u) || !!weighmasterAt(u);
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
-  const requireWeigh = requireOfficial(canWeigh, "a boat's captain or the JHMMC secretary");
+  const requireWeigh = requireOfficial(canWeigh, "a weighmaster, a boat's captain or the JHMMC secretary");
+  const NO_WEIGHMASTER = { absent: 'No weighmaster at the station', closed: 'The weigh station was closed' };
+  // Who is weighing this boat's fish, and as what.
+  function weighRole(user, teamId, b) {
+    const team = db.prepare('SELECT captain_id, club_id FROM teams WHERE id = ?').get(teamId);
+    const own = team?.captain_id === user.id;
+    if (!own && weighmasterAt(user)) return { role: 'weighmaster' };
+    if (!own && canReview(user)) return { role: 'officer' };
+    if (!own) return { role: null };
+    // Boats outside JHMMC weigh at their home port, where there are no JHMMC weighmasters.
+    if (team.club_id !== homeClubId()) return { role: 'captain' };
+    const note = str(b.noWeighmasterNote, 200);
+    if (b.noWeighmaster === 'other') return note ? { role: 'captain', reason: note } : { error: 'Say why there was no weighmaster.' };
+    const why = NO_WEIGHMASTER[b.noWeighmaster];
+    if (!why) return { error: 'The rules want a weighmaster to weigh. Say why there was none.' };
+    return { role: 'captain', reason: note ? `${why}: ${note}` : why };
+  }
+  const markWeighed = (ids, { role, reason }) => {
+    for (const id of ids) db.prepare('UPDATE catches SET weigh_role = ?, weigh_reason = ? WHERE id = ?').run(role ?? null, reason ?? null, id);
+  };
   const requireReview = requireOfficial(canReview, 'the JHMMC secretary');
   const requireMoney = requireOfficial(canHandleMoney, 'the JHMMC treasurer or secretary');
   const requireApprove = requireOfficial(canApprove, 'the JHMMC secretary');
@@ -401,7 +424,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const { photo, units, notify, ...rest } = me;
     return {
       ...rest, photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, notify: notifyPrefs(notify), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
-      isAdmin: isAdminUser(me), canWeigh: canWeigh(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
+      isAdmin: isAdminUser(me), canWeigh: canWeigh(me), weighmasterAt: weighmasterAt(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }
 
@@ -440,6 +463,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     ['PUT', /^\/club-members\/named\/(\d+)$/, (m, b) => `Membership: changed ${nameOf('club_people', m[1])}${'paid' in b ? `, ${b.paid ? 'paid' : 'not paid'}` : ''}`],
     ['DELETE', /^\/club-members\/named\/(\d+)$/, (m, b, before) => `Membership: removed ${before}`, (m) => nameOf('club_people', m[1])],
     ['PATCH', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Member ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('users', m[1])],
+    ['PUT', /^\/weighmasters\/(\d+)$/, (m, b) => (b.station ? `Made ${nameOf('users', m[1])} weighmaster at ${b.station}` : `Took ${nameOf('users', m[1])} off as weighmaster`)],
     ['DELETE', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Deleted the account of ${before}`, (m) => nameOf('users', m[1])],
     ['POST', /^\/admin\/users\/(\d+)\/reset-link$/, (m, b, before) => `Made a password reset link for ${before}`, (m) => nameOf('users', m[1])],
     ['PATCH', /^\/admin\/teams\/(\d+)$/, (m, b, before) => `Boat ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('teams', m[1])],
@@ -648,6 +672,24 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       throw err;
     }
     res.json({ catch: getCatch(id, req.user) });
+  });
+
+  // Weighmasters: captains of JHMMC boats the secretary appoints, one weigh station each.
+  api.get('/weighmasters', requireApprove, (_req, res) => {
+    const captains = db.prepare(`SELECT u.id, ${SHOWN} AS name, t.name AS boat, t.weigh_station AS boatStation, u.weigh_station AS station
+      FROM users u JOIN teams t ON t.captain_id = u.id WHERE t.club_id = ? ORDER BY name COLLATE NOCASE`).all(homeClubId());
+    res.json({ captains, stations: WEIGH_STATIONS });
+  });
+  api.put('/weighmasters/:userId', requireApprove, (req, res) => {
+    const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(intId(req.params.userId) ?? 0);
+    if (!user) return res.status(404).json({ error: 'Member not found.' });
+    const station = req.body?.station || null;
+    if (station && !WEIGH_STATIONS.includes(station)) return res.status(400).json({ error: 'Unknown weigh station.' });
+    if (station && !db.prepare('SELECT 1 FROM teams WHERE captain_id = ? AND club_id = ?').get(user.id, homeClubId())) {
+      return res.status(400).json({ error: `${user.name} isn't the captain of a JHMMC boat. Weighmasters are captains.` });
+    }
+    db.prepare('UPDATE users SET weigh_station = ? WHERE id = ?').run(station, user.id);
+    res.json({ ok: true, station });
   });
 
   // Backups of the database (the admin only): the list, one now, and downloads.
@@ -1126,6 +1168,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       k.notes, k.photo, k.video, k.scale_video AS scaleVideo, k.created_at AS createdAt, k.logged_by AS loggedBy,
       k.lat, k.lng, k.spot_public AS spotPublic, k.no_angler AS noAngler,
       k.status, k.weigh_station AS weighStation, k.scale_photo AS scalePhoto, k.points, k.points_note AS pointsNote,
+      k.weigh_role AS weighRole, k.weigh_reason AS weighReason, (SELECT ${SHOWN} FROM users u WHERE u.id = k.weighed_by) AS weighedByName,
       t.division,
       s.id AS speciesId, s.name AS species, s.category,
       u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler,
@@ -1199,6 +1242,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       ownPhoto: official && !!row.photo,
       canAddPhoto: canAddFeedPhoto(row, viewer),
       scaleVideoUrl: video ? photoUrl(row.scaleVideo) : null,
+      weighReason: seesEvidence(row, viewer) ? row.weighReason : null,
       canDelete: canDelete(row, viewer),
       worldRecordKg: igfa.igfaRecord(row.species)?.kg ?? null,
     };
@@ -1260,7 +1304,10 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team) return { error: 'Choose the boat.' };
     const jhmmcBoat = team.club_id === homeClubId();
     if (official && !throughJhmmc(team.club_id)) return { error: "This boat's club weighs its own fish." };
-    if (official && !canReview(user) && team.captain_id !== user.id) return { error: "Captains register their own boat's fish only." };
+    const asWeighmaster = official && !canReview(user) && team.captain_id !== user.id && jhmmcBoat && weighmasterAt(user);
+    if (official && !canReview(user) && team.captain_id !== user.id && !asWeighmaster) {
+      return { error: "Captains register their own boat's fish only; the weighmaster weighs any JHMMC boat's." };
+    }
     // A feed post can be any photo; a registration is always a fish.
     const speciesId = intId(b.speciesId);
     if (speciesId ? !db.prepare('SELECT 1 FROM species WHERE id = ?').get(speciesId) : official) {
@@ -1304,7 +1351,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (official) {
       // JHMMC boats weigh at a JHMMC weigh station; boats elsewhere at their own (their home port).
       if (jhmmcBoat) {
-        const s = stationFor(user, str(b.weighStation, 40), team.weigh_station);
+        // A weighmaster weighs at his own station.
+        const s = asWeighmaster ? { station: asWeighmaster } : stationFor(user, str(b.weighStation, 40), team.weigh_station);
         if (s.error) return s;
         station = s.station;
       } else {
@@ -1404,9 +1452,15 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       discardUploads(req);
       return res.status(400).json({ error: checked.error });
     }
+    const weigher = opts.official ? weighRole(req.user, opts.teamId, req.body) : null;
+    if (weigher?.error) {
+      discardUploads(req);
+      return res.status(400).json({ error: weigher.error });
+    }
     const id = insertCatchRow(checked.values);
     if (checked.noAngler) db.prepare('UPDATE catches SET no_angler = 1 WHERE id = ?').run(id);
     if (opts.official) {
+      markWeighed([id], weigher);
       linkRegistrationToLog(id);
       scoreRegistration(id);
       logRegistration(id, 'registered', req.user, { where: deviceSpot(req.body) });
@@ -1624,9 +1678,12 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       if (checked.error) return fail(`Fish ${i + 1}: ${checked.error}`);
       rows.push(checked.values);
     }
+    const weigher = weighRole(req.user, teamId, req.body);
+    if (weigher.error) return fail(weigher.error);
     db.exec('BEGIN');
     try {
       const ids = rows.map(insertCatchRow);
+      markWeighed(ids, weigher);
       const where = deviceSpot(req.body);
       for (const id of ids) {
         linkRegistrationToLog(id);

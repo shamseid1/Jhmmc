@@ -108,6 +108,10 @@ A second service, for showing the club, runs the same code with a made-up season
 2. Add the environment variable `DEMO=1` (and `NODE_ENV=production`). No disk and no email.
 3. Deploy. The season fills itself in on first start (dates are relative to that day); on the Free type the disk is wiped when the service restarts, which starts a fresh season. Share its address with the club.
 
+### Weighmasters
+
+The rules want every fish weighed by the weigh station's weighmaster. The secretary appoints them under **More → Weighmasters**: captains of JHMMC boats, one station each. A weighmaster's weigh-in screen lets him pick any JHMMC boat; his weigh-ins are at his station and marked "Weighmaster: name". When there's no weighmaster, a captain still weighs his own boat's fish but has to say why (no weighmaster at the station, the station was closed, or another reason); those are marked "Captain's weigh-in" with the reason on the secretary's review screen. Once approved they count the same. A weighmaster weighing his own boat counts as a captain's weigh-in.
+
 ### Privacy and deleting an account
 
 The privacy policy is at **/privacy** (linked from More → Info and the sign-up page, and the address to give the App Store and Play Store); its contact is `ADMIN_EMAIL`. Members delete their own account under **More → Edit profile → Delete my account**, with their password: the account, profile photo, posts, comments, likes and notification phones go at once; fish already weighed in stay for their boat as "Former member", so nobody's points change, and the boat's logged trips stay. The admin's own account and the demo's shared accounts can't be deleted this way.

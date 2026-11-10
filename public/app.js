@@ -116,6 +116,10 @@ const fmtDate = (d) => parseTime(d).toLocaleDateString(undefined, { day: 'numeri
 // A stored time ("2026-10-28 14:05:00", UTC) as local day and time.
 const fmtWhen = (d) => parseTime(d).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const today = () => new Date().toISOString().slice(0, 10);
+// Who weighed a registered fish: the weighmaster (as the rules want) or, without one, the captain.
+const weigherBadge = (c) => (c.weighRole === 'weighmaster' ? `<span class="badge new">Weighmaster${c.weighedByName ? `: ${esc(c.weighedByName)}` : ''}</span>`
+  : c.weighRole === 'captain' ? `<span class="badge guest">Captain's weigh-in</span>${c.weighReason ? ` <span class="small">${esc(c.weighReason)}</span>` : ''}`
+    : c.weighRole === 'officer' ? `<span class="badge">Entered by ${c.weighedByName ? esc(c.weighedByName) : 'an officer'}</span>` : '');
 const plural = (n, word) => `${n} ${word}${n === 1 || word.endsWith('fish') ? '' : word.endsWith('ch') ? 'es' : 's'}`;
 
 function options(items, selected, placeholder) {
@@ -783,6 +787,7 @@ function catchCard(c, { full = false } = {}) {
       ${full ? raw(spotMap(c)) : ''}
       ${full && (c.weighStation || c.pointsNote || (c.scaleVideoUrl && !c.released)) ? raw(html`<div class="official">
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
+        ${c.weighRole ? raw(`<p class="weigher small">${weigherBadge(c)}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
         ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video (only the secretary, the crew and JHMMC captains see it)</p>`) : ''}
         ${c.scaleVideoUrl && !c.released ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
@@ -1372,6 +1377,34 @@ const pagesFor = (view) => ({
     });
   },
 
+  // The secretary appoints weighmasters: captains of JHMMC boats, one weigh station each.
+  async weighmasters() {
+    if (!state.me?.canApprove) return needLogin(view, 'appoint weighmasters (the secretary)');
+    const { captains, stations } = await api('/weighmasters');
+    const at = (st) => captains.filter((c) => c.station === st).map((c) => c.name);
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Weighmasters</h1>
+      ${raw(recordedNote('A weighmaster weighs any JHMMC boat at his station.'))}
+      <p class="muted">The rules want each fish weighed by the station's weighmaster. A weighmaster is a captain: he weighs any JHMMC boat's fish
+        at his station, and his weigh-ins are marked as his. Without one, a captain weighs his own boat's fish and says why.</p>
+      <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
+      <h2>Captains</h2>
+      <div class="card"><ul class="list">${captains.length ? captains.map((c) => raw(html`<li class="wm-row">
+        <div><b>${c.name}</b><div class="small muted">${c.boat}${c.boatStation ? ` · ${c.boatStation}` : ''}</div></div>
+        <label class="small">Weighmaster at <select data-user="${c.id}">${raw(options(stations, c.station, 'Not a weighmaster'))}</select></label>
+      </li>`)) : raw('<li class="muted">No JHMMC boat has a captain yet.</li>')}</ul></div>`;
+    view.addEventListener('change', async (e) => {
+      const sel = e.target.closest('select[data-user]');
+      if (!sel) return;
+      try {
+        await api(`/weighmasters/${sel.dataset.user}`, { method: 'PUT', body: { station: sel.value || null } });
+        toast(sel.value ? `Weighmaster at ${sel.value}.` : 'No longer a weighmaster.');
+        route();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  },
+
   async crew() {
     if (!state.me) return needLogin(view, 'join or register a boat');
     if (state.me.teamId) {
@@ -1870,7 +1903,10 @@ const pagesFor = (view) => ({
     // Every boat weighed in through JHMMC (for now all of them): JHMMC boats at a
     // JHMMC weigh station, the rest at their home port.
     const jhmmcBoats = teams.filter((t) => t.throughJhmmc);
-    const own = official ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
+    // A weighmaster weighs any JHMMC boat at his station; a captain only his own boat.
+    const wm = !official && state.me.weighmasterAt;
+    const own = official || wm ? null : jhmmcBoats.find((t) => t.id === state.me.teamId);
+    const myBoat = jhmmcBoats.find((t) => t.id === state.me.teamId && state.me.isCaptain && isJhmmc(t.clubId));
     const atHomePort = (t) => t && !isJhmmc(t.clubId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
@@ -1887,10 +1923,17 @@ const pagesFor = (view) => ({
             ? raw(html`<label>Date <input name="caughtOn" type="date" required value="${today()}" max="${today()}"></label>`)
             : raw(html`<p class="station-fixed">Date: <b>${fmtDay(today())}</b> (today)<input type="hidden" name="caughtOn" value="${today()}"></p>`)}
         </div>
-        ${atHomePort(own) ? raw(html`<p class="station-fixed">Weigh station: <b>${own.homePort || (own.country ? `${own.country} weigh station` : 'your boat\'s weigh station')}</b></p>`)
+        ${wm ? raw(html`<p class="station-fixed">Weigh station: <b>${wm}</b> (you're its weighmaster)</p>`)
+          : atHomePort(own) ? raw(html`<p class="station-fixed">Weigh station: <b>${own.homePort || (own.country ? `${own.country} weigh station` : 'your boat\'s weigh station')}</b></p>`)
           : own?.weighStation ? raw(html`<p class="station-fixed">Weigh station: <b>${own.weighStation}</b></p>`)
           : raw(html`<label id="station-pick">Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
             <p class="station-fixed" id="home-port" hidden></p>`)}
+        <fieldset class="card pad no-weighmaster" hidden>
+          <legend><b>No weighmaster?</b></legend>
+          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, say why there was none; the secretary sees it.</p>
+          <label>Why <select name="noWeighmaster">${raw(options([['absent', 'No weighmaster at the station'], ['closed', 'The weigh station was closed'], ['other', 'Other (say why)']], null, 'Choose…'))}</select></label>
+          <label>Note <input name="noWeighmasterNote" maxlength="200" placeholder="e.g. weighmaster away this weekend"></label>
+        </fieldset>
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
         <div class="sheet-totals" id="sheet-total">
@@ -1912,6 +1955,15 @@ const pagesFor = (view) => ({
 
     const sheet = view.querySelector('#sheet');
     const list = view.querySelector('#fish-list');
+    // Weighing your own boat (no weighmaster): the reason is asked for.
+    const syncReason = () => {
+      const box = view.querySelector('.no-weighmaster');
+      const ownBoat = !!myBoat && String(sheet.teamId.value) === String(myBoat.id);
+      box.hidden = !ownBoat;
+      sheet.noWeighmaster.required = ownBoat;
+      sheet.noWeighmasterNote.required = ownBoat && sheet.noWeighmaster.value === 'other';
+    };
+    sheet.addEventListener('change', syncReason);
     const anglerOptions = (selected) => options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], selected, crew.length ? 'Choose…' : 'Choose the boat first');
     const fishRow = () => html`<fieldset class="fish card pad">
       <legend><b class="fish-no"></b> <button type="button" class="link danger" data-act="remove-fish">Remove</button></legend>
@@ -1985,6 +2037,7 @@ const pagesFor = (view) => ({
       updatePoints();
     };
     addFish();
+    syncReason();
     view.querySelector('#add-fish').addEventListener('click', () => {
       addFish();
       list.lastElementChild.querySelector('[name=speciesId]').focus();
@@ -2097,6 +2150,10 @@ const pagesFor = (view) => ({
       fd.set('caughtOn', sheet.caughtOn.value);
       if (sheet.weighStation) fd.set('weighStation', sheet.weighStation.value);
       if (sheet.declared?.checked) fd.set('declared', 'yes');
+      if (!view.querySelector('.no-weighmaster').hidden) {
+        fd.set('noWeighmaster', sheet.noWeighmaster.value);
+        fd.set('noWeighmasterNote', sheet.noWeighmasterNote.value);
+      }
       // Where the phone is: required from everyone.
       const btn = view.querySelector('#submit-sheet');
       const label = btn.textContent;
@@ -2170,6 +2227,7 @@ const pagesFor = (view) => ({
           <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
             <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
           <p class="meta">${c.angler}${c.lineClass ? ` · ${c.lineClass} line` : ''}</p>
+          ${c.weighRole ? raw(`<p class="weigher">${weigherBadge(c)}</p>`) : ''}
           <div class="thumbs">
             ${c.scalePhotoUrl ? raw(html`<a href="${c.scalePhotoUrl}" target="_blank" rel="noopener"><img src="${c.scalePhotoUrl}" alt="On the scale"></a>`) : ''}
             ${c.scaleVideoUrl ? raw(html`<video src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
@@ -3020,7 +3078,7 @@ const pagesFor = (view) => ({
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
       ${me.canWeigh && !me.canReview ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
-        ${item('#/weigh', 'weight', 'Weigh-in', `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
+        ${item('#/weigh', 'weight', 'Weigh-in', me.weighmasterAt ? `You're the weighmaster at ${me.weighmasterAt}: any JHMMC boat` : `Today's fish for ${me.teamName}${me.weighStation ? ` at ${me.weighStation}` : ''}`)}
         ${item('#/pending', 'eye', 'Pending registrations', 'Fish waiting for the secretary; dispute within 24 hours')}
       </div>` : ''}`) : ''}
       ${me?.canReview || me?.canHandleMoney ? raw(`<h2>JHMMC</h2><div class="card menu">
@@ -3033,6 +3091,7 @@ const pagesFor = (view) => ({
         ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/members', 'key', 'Members', 'Everyone on the app: tick who is in JHMMC') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/admin-boats', 'boat', 'JHMMC boats', 'Weigh stations, Ocean or River') : ''}
+        ${me.canApprove ? item('#/weighmasters', 'weight', 'Weighmasters', 'The captain who weighs at each weigh station') : ''}
         ${me.canReview ? item('#/calendar', 'calendar', 'Season calendar', 'Season dates and tournaments') : ''}
         ${me.canReview ? item('#/scoring', 'calculator', 'Scoring table', 'Points per kg for each species') : ''}
       </div>`) : ''}
@@ -4186,7 +4245,7 @@ function renderNav(active = state.navActive) {
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
-    records: 'leaderboard', points: 'leaderboard', join: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
+    records: 'leaderboard', points: 'leaderboard', join: 'more', weighmasters: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',

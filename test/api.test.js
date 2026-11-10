@@ -518,7 +518,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // For now every boat is weighed in through JHMMC: another club's boat
     // registers too, at its home port (no weigh station to choose).
     r = await other('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: TODAY, weightKg: '30', declared: 'yes', deviceLat: '5.6', deviceLng: '-0.2' }));
+      caughtOn: TODAY, weightKg: '30', declared: 'yes', noWeighmaster: 'absent', deviceLat: '5.6', deviceLng: '-0.2' }));
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(r.body.catch.status, 'pending_review');
     assert.match(r.body.catch.weighStation, /weigh station/i);
@@ -530,12 +530,12 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.match((await sec('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
       caughtOn: TODAY, weightKg: '30', weighStation: 'Extreme', deviceLat: '5.6', deviceLng: '-0.2' }))).body.error, /weighs its own/);
     assert.equal((await other('POST', '/weigh', weighed({ teamId: visitor.id, anglerId: 'other', anglerName: 'X', speciesId: sp('Wahoo').id,
-      caughtOn: TODAY, weightKg: '30', declared: 'yes', deviceLat: '5.6', deviceLng: '-0.2' }))).status, 403, "its captains register with their own club");
+      caughtOn: TODAY, weightKg: '30', declared: 'yes', noWeighmaster: 'absent', deviceLat: '5.6', deviceLng: '-0.2' }))).status, 403, "its captains register with their own club");
     await boss('PATCH', `/admin/clubs/${theirClub}`, { selfRun: false });
 
     // The captain registers a wahoo and a released marlin for Sea Hunter.
     const capId = (await cap('GET', '/me')).body.user.id;
-    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY, declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' };
+    const reg = { teamId: ocean.id, anglerId: capId, caughtOn: TODAY, declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' };
     r = await cap('POST', '/weigh', weighed({ ...reg, caughtOn: day(-1), speciesId: sp('Wahoo').id, weightKg: '21' }));
     assert.match(r.body.error ?? '', /today/, 'only today can be registered');
     r = await sec('POST', '/weigh', weighed({ ...reg, caughtOn: day(-3), speciesId: sp('Wahoo').id, weightKg: '10', weighStation: 'Beerville' }));
@@ -645,7 +645,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const snapper = r.body.catch;
     // Every day scores now: a barracuda the secretary will reject.
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Barracuda').id,
-      caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville', declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' }));
+      caughtOn: TODAY, weightKg: '8', weighStation: 'Beerville', declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' }));
     const extra = r.body.catch;
 
     const queue = (await sec('GET', '/officials/queue')).body;
@@ -656,7 +656,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal(sug(extra.id), 24, 'every day scores');
     // A whole boat's sheet in one go: all or nothing.
     const sheet = (fish, photos, videos = []) => {
-      const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish), declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' });
+      const fd = form({ teamId: ocean.id, caughtOn: TODAY, fish: JSON.stringify(fish), declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' });
       for (const i of photos) fd.set(`scale_${i}`, new Blob([PNG], { type: 'image/png' }), `s${i}.png`);
       for (const i of videos) fd.set(`scalevideo_${i}`, new Blob([Buffer.from('00000018667479706d703432', 'hex')], { type: 'video/mp4' }), `v${i}.mp4`);
       return fd;
@@ -700,7 +700,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${visitor.id}`, { entered: true })).status, 400);
     assert.equal((await sec('PUT', `/tournaments/${cup.id}/entries/${ocean.id}`, { entered: true })).status, 200);
     r = await cap('POST', '/weigh', weighed({ teamId: ocean.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Yellowfin tuna').id,
-      caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club', declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' }));
+      caughtOn: TODAY, weightKg: '40', weighStation: 'Barracuda Club', declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
 
     const oceanTable = (await as()('GET', '/points?division=ocean')).body;

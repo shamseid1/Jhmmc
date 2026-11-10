@@ -52,7 +52,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
     const boat = (await cap('POST', '/teams', { name: 'Liberian Girl', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
     const sp = Object.fromEntries((await cap('GET', '/meta')).body.species.map((s) => [s.name, s.id]));
-    const registration = (fields) => form({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8', caughtOn: today, ...fields });
+    const registration = (fields) => form({ teamId: boat.id, anglerId: 'other', anglerName: 'Guest', declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8', caughtOn: today, ...fields });
 
     // Videos: on a post, and of a fish on the scale (the photo stays required).
     const post = form({ speciesId: sp.Wahoo, weightKg: '15' });

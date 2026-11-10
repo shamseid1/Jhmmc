@@ -66,7 +66,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.equal((await capA('POST', `/outings/fish/${trip.landings[0].id}/photo`, pf)).status, 200);
     // ...then weighed with a scale photo and a video.
     const fd = new FormData();
-    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: today, declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
+    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: today, declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
     fd.set('fish', JSON.stringify([{ speciesId: sp('Blue marlin'), anglerId: 'other', anglerName: 'Guest', weightKg: '210' },
       { speciesId: sp('Sailfish'), anglerId: 'other', anglerName: 'Guest', released: true }]));
     fd.set('scalevideo_1', new Blob([Buffer.from('fake')], { type: 'video/mp4' }), 'release.mp4');

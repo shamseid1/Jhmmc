@@ -61,7 +61,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 45;
+const SCHEMA_VERSION = 46;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -103,6 +103,11 @@ const catchesTable = (name) => `CREATE TABLE IF NOT EXISTS ${name} (
   reviewed_at TEXT,
   points REAL,
   points_note TEXT,
+  -- Who weighed it: 'weighmaster' (the station's weighmaster, as the rules want),
+  -- 'captain' (the boat's own captain, when there was none: weigh_reason says why)
+  -- or 'officer' (the secretary entering a paper form).
+  weigh_role TEXT,
+  weigh_reason TEXT,
   CHECK (user_id IS NOT NULL OR angler_name IS NOT NULL)
 );`;
 
@@ -143,6 +148,7 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT,
   photo TEXT,
   role TEXT,
+  -- A captain the secretary appointed weighmaster at this JHMMC weigh station.
   weigh_station TEXT,
   -- Belongs to JHMMC (set by the admin); only members can hold a club role.
   jhmmc INTEGER NOT NULL DEFAULT 0,
@@ -636,6 +642,11 @@ function openDb(file) {
     } else {
       console.warn('Clean start skipped: no boat called Seamonkey.');
     }
+  }
+  if (hasTables) {
+    const kc = db.prepare('PRAGMA table_info(catches)').all();
+    if (!kc.some((c) => c.name === 'weigh_role')) db.exec('ALTER TABLE catches ADD COLUMN weigh_role TEXT');
+    if (!kc.some((c) => c.name === 'weigh_reason')) db.exec('ALTER TABLE catches ADD COLUMN weigh_reason TEXT');
   }
   if (hasTables && !db.prepare('PRAGMA table_info(clubs)').all().some((c) => c.name === 'pending')) {
     db.exec('ALTER TABLE clubs ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');

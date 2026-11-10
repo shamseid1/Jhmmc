@@ -60,7 +60,7 @@ test('the secretary corrects species, angler or photo, waiting or approved; poin
 
     const today = new Date().toISOString().slice(0, 10);
     const fd = new FormData();
-    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: today, declared: 'yes', deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
+    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: today, declared: 'yes', noWeighmaster: 'absent', deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
     fd.set('fish', JSON.stringify([{ speciesId: sp('Yellowfin tuna'), anglerId: 'other', anglerName: 'Guest', weightKg: '60' }]));
     fd.set('scale_0', new Blob([PNG], { type: 'image/png' }), 'scale.png');
     const [fish] = (await capA('POST', '/weigh/sheet', fd)).body.catches;

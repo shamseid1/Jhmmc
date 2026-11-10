@@ -977,3 +977,7 @@ a.tournament-call { color: var(--text); text-decoration: none; }
 }
 .demo-bar a { color: inherit; }
 .demo-accounts button { width: 100%; }
+
+/* Weighmasters: a captain per row, his station on the right. */
+.wm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.weigher { margin: 6px 0; }

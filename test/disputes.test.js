@@ -60,7 +60,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
 
     // Captain A sends two fish, from the dock (the phone's position comes along).
     const fd = new FormData();
-    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: new Date().toISOString().slice(0, 10), declared: 'yes',
+    for (const [k, v] of Object.entries({ teamId: seaHunter.id, caughtOn: new Date().toISOString().slice(0, 10), declared: 'yes', noWeighmaster: 'absent',
       deviceLat: '6.3', deviceLng: '-10.8' })) fd.set(k, v);
     fd.set('fish', JSON.stringify([
       { speciesId: sp('Wahoo'), anglerId: 'other', anglerName: 'Guest', weightKg: '20' },
