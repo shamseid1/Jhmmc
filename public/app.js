@@ -1945,8 +1945,8 @@ const pagesFor = (view) => ({
             <p class="station-fixed" id="home-port" hidden></p>`)}
         <fieldset class="card pad no-weighmaster" hidden>
           <legend><b>No weighmaster?</b></legend>
-          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, pick why there was none; the secretary sees it.</p>
-          <label>Why <select name="noWeighmaster">${raw(options([['absent', 'No weighmaster at the station'], ['closed', 'The weigh station was closed'], ['other', 'Other reason']], null, 'Choose…'))}</select></label>
+          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, confirm there was none; the secretary sees it.</p>
+          <label class="check"><input type="checkbox" name="noWeighmaster" value="absent"> There was no weighmaster at the station</label>
         </fieldset>
         <div id="fish-list" class="stack"></div>
         <div><button type="button" id="add-fish">+ Add a fish</button></div>
@@ -2185,7 +2185,7 @@ const pagesFor = (view) => ({
       if (sheet.weighStation) fd.set('weighStation', sheet.weighStation.value);
       if (sheet.declared?.checked) fd.set('declared', 'yes');
       if (!view.querySelector('.no-weighmaster').hidden) {
-        fd.set('noWeighmaster', sheet.noWeighmaster.value);
+        if (sheet.noWeighmaster.checked) fd.set('noWeighmaster', 'absent');
       }
       // Where the phone is: required from everyone.
       const btn = view.querySelector('#submit-sheet');

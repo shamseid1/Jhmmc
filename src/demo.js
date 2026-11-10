@@ -147,10 +147,9 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   // Weighmasters: Faris (Sea Monkey's captain) at Beerville, Steve (Aquaholic's) at Extreme.
   await sec.call('PUT', `/weighmasters/${faris.id}`, { station: 'Beerville' });
   await sec.call('PUT', `/weighmasters/${steve.id}`, { station: 'Extreme' });
-  // Today nobody else was at Extreme, so Bait Master's captain weighed his own marlin and said why.
+  // Today Steve wasn't at Extreme, so Bait Master's captain weighed his own marlin.
   const today = sheet(bait, 0, [['Blue marlin', '186', maamoun, 'marlin3.jpg']]);
   today.append('noWeighmaster', 'absent');
-  today.append('noWeighmasterNote', 'Steve was out fishing');
   const waiting = (await jack.call('POST', '/weigh/sheet', today)).catches[0];
   // ...and another captain questions it.
   await faris.call('POST', `/catches/${waiting.id}/disputes`, { reason: 'The scale reading isn\u2019t clear in the photo.' });

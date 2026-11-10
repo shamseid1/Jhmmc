@@ -47,11 +47,10 @@ test('weighmasters: appointed members weigh their station\'s boats; a captain on
     assert.deepEqual([r.status, r.body.catches?.[0].weighRole, r.body.catches?.[0].weighReason], [201, 'weighmaster', null]);
     // A captain who isn't a weighmaster weighs his own boat and picks why there was none.
     assert.match((await jack('POST', '/weigh/sheet', sheet(boat('Bait Master')))).body.error, /weighmaster/);
-    r = await jack('POST', '/weigh/sheet', sheet(boat('Bait Master'), { noWeighmaster: 'closed' }));
+    assert.equal((await jack('POST', '/weigh/sheet', sheet(boat('Bait Master'), { noWeighmaster: 'closed' }))).status, 400, 'one reason only');
+    r = await jack('POST', '/weigh/sheet', sheet(boat('Bait Master'), { noWeighmaster: 'absent' }));
     assert.equal(r.status, 201);
-    assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighReason], ['captain', 'The weigh station was closed']);
-    const other = await jack('POST', '/weigh/sheet', sheet(boat('Bait Master'), { noWeighmaster: 'other' }));
-    assert.equal(other.body.catches[0].weighReason, 'Other reason');
+    assert.deepEqual([r.body.catches[0].weighRole, r.body.catches[0].weighReason], ['captain', 'No weighmaster at the station']);
     // A captain who isn't a weighmaster weighs only his own boat.
     assert.equal((await jack('GET', '/me')).body.user.weighmasterAt, null);
     assert.match((await jack('POST', '/weigh/sheet', sheet(boat('Aquaholic')))).body.error, /own boat/);
@@ -59,7 +58,7 @@ test('weighmasters: appointed members weigh their station\'s boats; a captain on
     assert.match((await steve('POST', '/weigh/sheet', sheet(boat('Liberian Girl')))).body.error, /boats registered at Extreme/);
     // The reason is for the officers and the crew; anyone else sees who weighed, not why.
     const id = r.body.catches[0].id;
-    assert.equal((await sec('GET', `/catches/${id}`)).body.catch.weighReason, 'The weigh station was closed');
+    assert.equal((await sec('GET', `/catches/${id}`)).body.catch.weighReason, 'No weighmaster at the station');
     const outsider = await (await fetch(`${base}/api/catches/${id}`)).json();
     assert.deepEqual([outsider.catch.weighRole, outsider.catch.weighReason], ['captain', null]);
 

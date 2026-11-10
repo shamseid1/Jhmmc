@@ -240,7 +240,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const requireOfficial = (check, who) => (req, res, next) =>
     check(req.user) ? next() : res.status(403).json({ error: `Only ${who} can do that.` });
   const requireWeigh = requireOfficial(canWeigh, "a weighmaster, a boat's captain or the JHMMC secretary");
-  const NO_WEIGHMASTER = { absent: 'No weighmaster at the station', closed: 'The weigh station was closed', other: 'Other reason' };
+  const NO_WEIGHMASTER = { absent: 'No weighmaster at the station' };
   // Who is weighing this boat's fish, and as what. Weighing a boat you're on, unless you're the
   // weighmaster at its station, is that boat's own weigh-in, with the reason there was no weighmaster.
   function weighRole(user, teamId, b) {
@@ -256,9 +256,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     // Boats outside JHMMC weigh at their home port, where there are no JHMMC weighmasters.
     if (team.club_id !== homeClubId()) return { role: 'captain' };
     const why = NO_WEIGHMASTER[b.noWeighmaster];
-    if (!why) return { error: 'The rules want a weighmaster to weigh. Choose why there was none.' };
-    const note = str(b.noWeighmasterNote, 200);
-    return { role: captain ? 'captain' : 'own', reason: note ? `${why}: ${note}` : why };
+    if (!why) return { error: 'The rules want a weighmaster to weigh. Tick that there was no weighmaster at the station.' };
+    return { role: captain ? 'captain' : 'own', reason: why };
   }
   const markWeighed = (ids, { role, reason }) => {
     for (const id of ids) db.prepare('UPDATE catches SET weigh_role = ?, weigh_reason = ? WHERE id = ?').run(role ?? null, reason ?? null, id);
