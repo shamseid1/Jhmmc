@@ -256,7 +256,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     // Boats outside JHMMC weigh at their home port, where there are no JHMMC weighmasters.
     if (team.club_id !== homeClubId()) return { role: 'captain' };
     const why = NO_WEIGHMASTER[b.noWeighmaster];
-    if (!why) return { error: 'The rules want a weighmaster to weigh. Tick that there was no weighmaster at the station.' };
+    if (!why) return { error: 'Under the club rules the weighmaster weighs. Tick that there was no weighmaster at the station.' };
     return { role: captain ? 'captain' : 'own', reason: why };
   }
   const markWeighed = (ids, { role, reason }) => {

@@ -1385,7 +1385,7 @@ const pagesFor = (view) => ({
     const who = (m) => [m.role ? Object.fromEntries(ROLE_OPTIONS)[m.role] || m.role : '', m.boat ? `${m.captain ? 'Captain of ' : ''}${m.boat}` : ''].filter(Boolean).join(' · ');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Weighmasters</h1>
       ${raw(recordedNote('A weighmaster weighs the boats registered at his station.'))}
-      <p class="muted">The rules want each fish weighed by the station's weighmaster. Choose any JHMMC member: a captain, the treasurer...
+      <p class="muted">Under the club rules, every fish is weighed by the station's weighmaster. Choose any JHMMC member: a captain, the treasurer...
         A weighmaster weighs the boats registered at his station. Other captains weigh only their own boat's fish, and pick from a list why there was no weighmaster.</p>
       <div class="card pad"><ul>${stations.map((st) => raw(html`<li><b>${st}</b>: ${at(st).join(', ') || 'no weighmaster yet'}</li>`))}</ul></div>
       <h2>JHMMC members</h2>
@@ -1945,7 +1945,7 @@ const pagesFor = (view) => ({
             <p class="station-fixed" id="home-port" hidden></p>`)}
         <fieldset class="card pad no-weighmaster" hidden>
           <legend><b>No weighmaster?</b></legend>
-          <p class="small muted">The rules want the station's weighmaster to weigh every fish. Weighing your own boat's fish, confirm there was none; the secretary sees it.</p>
+          <p class="small muted">Under the club rules, every fish is weighed by the station's weighmaster. If there isn't one at the station, you may weigh your own boat's fish: tick below so the secretary knows.</p>
           <label class="check"><input type="checkbox" name="noWeighmaster" value="absent"> There was no weighmaster at the station</label>
         </fieldset>
         <div id="fish-list" class="stack"></div>
