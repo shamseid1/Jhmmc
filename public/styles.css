@@ -622,11 +622,10 @@ button.link[hidden] { display: none; }
 .club-logo { display: block; width: 120px; height: auto; margin: 4px 0 8px; }
 
 /* On the JHMMC side: a small JHMMC tag in the header, on every page. */
-.club-chip { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%;
-  background: #ffffff; border: 1px solid var(--line); text-decoration: none; flex: none; }
+.club-chip { display: inline-grid; place-items: center; padding: 0; background: none; border: 0; text-decoration: none; flex: none; }
 .club-chip span { display: none; }
 .club-chip[hidden] { display: none; }
-.club-chip img { width: 24px; height: auto; }
+.club-chip img { width: 40px; height: auto; filter: drop-shadow(0 1px 2px rgba(0, 10, 30, .25)); }
 .section-note { margin: -4px 4px 8px; }
 
 /* Photo and video previews on posts and the weigh sheet. */
@@ -1084,3 +1083,5 @@ main > div:empty::after { height: 300px; }
 #photo-viewer .pv-close { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; padding: 0; border: 0;
   border-radius: 50%; background: rgba(255, 255, 255, .18); color: #fff; font-size: 28px; line-height: 1; min-height: 0; }
 img.catch-photo:not(a img) { cursor: zoom-in; }
+/* Dark: a faint light halo keeps the crest's navy edges visible on the navy page. */
+:root:not([data-theme="light"]) .club-chip img { filter: drop-shadow(0 0 2px rgba(255, 255, 255, .55)) drop-shadow(0 0 6px rgba(255, 255, 255, .2)); }
