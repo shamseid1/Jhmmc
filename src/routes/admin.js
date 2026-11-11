@@ -5,7 +5,7 @@
 module.exports = (ctx) => {
   const {
     ROLES, WEIGH_STATIONS, adminEmail, api, auth, backups, baseUrl, bool, db, discardUploads, getMe,
-    homeClubId, intId, isAdminUser, pushWhere, removeUpload, requireApprove, str, upload, withVideo
+    homeClubId, intId, isAdminUser, mailer, pushWhere, removeUpload, requireApprove, str, upload, withVideo
   } = ctx;
   // From a later part, reached when it's called.
   const getCatch = (...args) => ctx.getCatch(...args);
@@ -139,7 +139,8 @@ module.exports = (ctx) => {
   // Everyone with an account: the admin, and the secretary (he says who is in JHMMC).
   api.get('/admin/users', requireApprove, (_req, res) => {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.nickname, u.email, u.role, u.jhmmc, u.created_at AS joinedAt, t.name AS teamName
+      SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, u.email, u.role, u.jhmmc,
+        u.created_at AS joinedAt, u.team_id AS teamId, t.name AS teamName
       FROM users u LEFT JOIN teams t ON t.id = u.team_id ORDER BY u.name COLLATE NOCASE
     `).all().map((u) => ({ ...u, jhmmc: !!u.jhmmc || isAdminUser(u), isAdmin: isAdminUser(u) }));
     res.json({ users });
@@ -159,6 +160,67 @@ module.exports = (ctx) => {
     }
     db.prepare('UPDATE users SET role = ?, jhmmc = ? WHERE id = ?').run(role, jhmmc ? 1 : 0, id);
     res.json({ ok: true, role, jhmmc });
+  });
+
+  // The admin fixes a member's account: first and last name, email, boat. Only these:
+  // a password is never the admin's to know or set (that's the reset link), and the
+  // nickname, bio, photo and choices are the member's own. The change is in the
+  // activity log; the member is told on their phone, and at the old address if the
+  // email changed, so nothing happens behind their back.
+  api.patch('/admin/users/:id/account', requireAdmin, (req, res) => {
+    const id = intId(req.params.id);
+    const cur = id && db.prepare(`SELECT u.id, u.name, u.first_name AS first, u.last_name AS last, u.email, u.team_id AS teamId, t.name AS teamName
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?`).get(id);
+    if (!cur) return res.status(404).json({ error: 'Member not found.' });
+    const b = req.body;
+    const first = 'firstName' in b ? str(b.firstName, 40) : cur.first;
+    const last = 'lastName' in b ? str(b.lastName, 40) : cur.last;
+    const email = 'email' in b ? str(b.email, 120)?.toLowerCase() : cur.email;
+    const teamId = 'teamId' in b ? (b.teamId === '' || b.teamId === null ? null : intId(b.teamId)) : cur.teamId;
+    if (!first || !last) return res.status(400).json({ error: 'Write their first name and their last name.' });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Write a valid email.' });
+    if (email !== cur.email && isAdminUser(cur)) return res.status(400).json({ error: "The admin's email is set on the server (ADMIN_EMAIL); it can't be changed here." });
+    if (email !== cur.email && db.prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?').get(email, id)) {
+      return res.status(409).json({ error: 'Another account already uses that email.' });
+    }
+    if ('teamId' in b && b.teamId !== '' && b.teamId !== null && !teamId) return res.status(400).json({ error: 'Choose a boat from the list.' });
+    const team = teamId && db.prepare('SELECT id, name FROM teams WHERE id = ?').get(teamId);
+    if (teamId && !team) return res.status(400).json({ error: 'Choose a boat from the list.' });
+
+    const changes = [];
+    const name = `${first} ${last}`;
+    if (name !== cur.name || first !== cur.first || last !== cur.last) changes.push(`name from ${cur.name} to ${name}`);
+    if (email !== cur.email) changes.push(`email from ${cur.email} to ${email}`);
+    if ((teamId ?? null) !== (cur.teamId ?? null)) changes.push(`boat from ${cur.teamName || 'none'} to ${team?.name || 'none'}`);
+    if (!changes.length) return res.json({ ok: true, changes });
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, email = ?, team_id = ? WHERE id = ?').run(name, first, last, email, teamId ?? null, id);
+      // Moved off a boat they captained: the longest-serving crew member takes over (or nobody, if none is left).
+      if (cur.teamId && cur.teamId !== teamId) {
+        const old = db.prepare('SELECT captain_id FROM teams WHERE id = ?').get(cur.teamId);
+        if (old?.captain_id === id) {
+          const next = db.prepare('SELECT id FROM users WHERE team_id = ? ORDER BY id LIMIT 1').get(cur.teamId);
+          db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(next?.id ?? null, cur.teamId);
+        }
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    const said = changes.map((c) => c[0].toUpperCase() + c.slice(1)).join('. ');
+    pushWhere('review', { title: 'Your account was updated', body: `The club admin changed your ${changes.map((c) => c.split(' from ')[0]).join(', ')}.`, url: '/#/profile' },
+      req.user, (p) => p.id === id, true);
+    if (email !== cur.email) {
+      mailer.send({
+        to: cur.email,
+        subject: 'Your Africa Sportfishing email was changed',
+        text: `Hello ${cur.name},\n\nThe club admin changed the email of your Africa Sportfishing account to ${email}. ` +
+          `From now on, sign in and reset your password with that address.\n\nIf you didn't ask for this, reply to this email or tell your club.\n`,
+      }).catch((err) => console.error('Email-changed email failed:', err.message));
+    }
+    res.json({ ok: true, changes: said });
   });
 
   // When a country's club is ready to run its own weigh-ins, the admin switches

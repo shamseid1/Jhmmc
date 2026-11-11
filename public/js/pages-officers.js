@@ -574,14 +574,16 @@ PAGE_GROUPS.push((view) => ({
     // The secretary ticks who is in JHMMC; reset links and deleting accounts stay the admin's.
     const admin = !!state.me.isAdmin;
     const { users } = await api('/admin/users');
+    let boats = null; // fetched when the admin first edits someone
     const inClub = users.filter((u) => u.jhmmc).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Members (${users.length})${raw(info(html`<p>Tick who belongs to JHMMC; the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Weighmasters are appointed on the Weighmasters page. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>`))}</h1>
       ${admin ? '' : raw(recordedNote('Adding someone to JHMMC or taking them out is visible to the officers.'))}
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
-        <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
-        ${admin ? raw('<button data-act="reset-link">Create reset link</button>') : ''}
+        <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small" data-line>${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
+        ${admin ? raw('<div class="actions member-actions"><button data-act="edit-user">Edit</button><button data-act="reset-link">Create reset link</button></div>') : ''}
+        <form class="stack edit-user" hidden></form>
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
           ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${roleLabel(u.role)}</span>`) : ''}
@@ -619,6 +621,42 @@ PAGE_GROUPS.push((view) => ({
       if (!btn) return;
       const row = btn.closest('.member-row');
       if (btn.dataset.act === 'copy-link') return copyText(row.dataset.link, 'Link copied');
+      // The admin fixes a name, an email or a boat (never a password: that's the reset link).
+      if (btn.dataset.act === 'edit-user') {
+        const form = row.querySelector('.edit-user');
+        if (!form.hidden) { form.hidden = true; return; }
+        const u = users.find((x) => String(x.id) === row.dataset.id);
+        boats ??= (await api('/teams')).teams.sort((a, b) => a.name.localeCompare(b.name));
+        form.innerHTML = html`<div class="row">
+            <label>First name <input name="firstName" required maxlength="40" value="${u.firstName || ''}"></label>
+            <label>Last name <input name="lastName" required maxlength="40" value="${u.lastName || ''}"></label>
+          </div>
+          <label>Email <input name="email" type="email" required maxlength="120" value="${u.email}" ${u.isAdmin ? raw('disabled') : ''}></label>
+          <label>Boat <select name="teamId">${raw(options(boats.map((t) => [t.id, t.name]), u.teamId ? String(u.teamId) : '', 'No boat'))}</select></label>
+          <p class="small muted">They're told on their phone${u.isAdmin ? '' : ', and at their old email if it changes'}. It's in the Activity log.</p>
+          <p class="error"></p>
+          <div class="actions"><button type="submit" class="primary">Save</button><button type="button" data-act="edit-user">Cancel</button></div>`;
+        form.hidden = false;
+        // Bound once: opening the form again doesn't save twice.
+        if (!form.dataset.bound) form.dataset.bound = '1';
+        else { form.querySelector('input').focus(); return; }
+        bindForm(form, async () => {
+          const fd = formData(form);
+          const u = users.find((x) => String(x.id) === row.dataset.id);
+          const body = { firstName: fd.firstName, lastName: fd.lastName, teamId: fd.teamId || '', ...(u.isAdmin ? {} : { email: fd.email }) };
+          const r = await api(`/admin/users/${u.id}/account`, { method: 'PATCH', body });
+          const team = boats.find((t) => String(t.id) === String(body.teamId));
+          Object.assign(u, { firstName: body.firstName, lastName: body.lastName, name: `${body.firstName} ${body.lastName}`,
+            email: body.email ? body.email.toLowerCase() : u.email, teamId: team?.id ?? null, teamName: team?.name ?? null });
+          row.querySelector('b').textContent = u.name;
+          row.querySelector('[data-line]').textContent = `${u.email}${u.teamName ? ` · ${u.teamName}` : ''}`;
+          row.dataset.find = `${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase();
+          form.hidden = true;
+          toast(Array.isArray(r.changes) ? 'Nothing to change' : `${u.name}: saved`);
+        });
+        form.querySelector('input').focus();
+        return;
+      }
       if (btn.dataset.act === 'delete-user') {
         const name = row.querySelector('b').textContent;
         if (!confirm(`Delete ${name}'s account? This can't be undone.\n\nTheir catches stay on the app under their name.`)) return;

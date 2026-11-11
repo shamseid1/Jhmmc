@@ -34,6 +34,19 @@ module.exports = (ctx) => {
     ['POST', /^\/club-members\/named$/, (m, b) => `Membership: added ${b.name}`],
     ['PUT', /^\/club-members\/named\/(\d+)$/, (m, b) => `Membership: changed ${nameOf('club_people', m[1])}${'paid' in b ? `, ${b.paid ? 'paid' : 'not paid'}` : ''}`],
     ['DELETE', /^\/club-members\/named\/(\d+)$/, (m, b, before) => `Membership: removed ${before}`, (m) => nameOf('club_people', m[1])],
+    // Only what actually changed; saving with nothing changed isn't recorded.
+    ['PATCH', /^\/admin\/users\/(\d+)\/account$/, (m, b, before) => {
+      const name = [String(b.firstName ?? before.first).trim(), String(b.lastName ?? before.last).trim()].join(' ');
+      const email = 'email' in b ? String(b.email).trim().toLowerCase() : before.email;
+      const changed = [
+        name !== before.name ? `name ${before.name} → ${name}` : '',
+        email !== before.email ? `email ${before.email} → ${email}` : '',
+        'teamId' in b && String(b.teamId ?? '') !== String(before.teamId ?? '') ? `boat ${before.boat || 'none'} → ${b.teamId ? nameOf('teams', b.teamId) : 'none'}` : '',
+      ].filter(Boolean);
+      return changed.length ? `Account of ${before.name}: ${changed.join(', ')}` : null;
+    },
+    (m) => db.prepare(`SELECT u.name, u.first_name AS first, u.last_name AS last, u.email, u.team_id AS teamId, t.name AS boat
+      FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?`).get(intId(m[1]) ?? 0) ?? {}],
     ['PATCH', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Member ${before}: ${Object.entries(b).map(([k, v]) => `${k} ${v}`).join(', ')}`, (m) => nameOf('users', m[1])],
     ['PUT', /^\/weighmasters\/(\d+)$/, (m, b) => (b.station ? `Made ${nameOf('users', m[1])} weighmaster at ${b.station}` : `Took ${nameOf('users', m[1])} off as weighmaster`)],
     ['DELETE', /^\/admin\/users\/(\d+)$/, (m, b, before) => `Deleted the account of ${before}`, (m) => nameOf('users', m[1])],
@@ -60,7 +73,8 @@ module.exports = (ctx) => {
     res.on('finish', () => {
       if (res.statusCode >= 300) return;
       try {
-        logActivity(user, rule[2](m, req.body || {}, before));
+        const said = rule[2](m, req.body || {}, before);
+        if (said) logActivity(user, said);
       } catch (err) {
         logActivity(user, `${req.method} ${req.path}`, err.message);
       }

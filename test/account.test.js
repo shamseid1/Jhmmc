@@ -89,3 +89,50 @@ test('help page and the Android app link file', async () => {
     s.srv.close();
   }
 });
+
+test("the admin fixes a member's name, email and boat; never the admin's own email; it's all on record", async () => {
+  const s = await start();
+  try {
+    await seedDemo(s.base, { adminEmail: 'boss@example.com' });
+    const raw = new DatabaseSync(s.dbFile);
+    const { hashPassword } = require('../src/auth');
+    raw.prepare("UPDATE users SET password_hash = ? WHERE email = 'boss@example.com'").run(hashPassword('password1'));
+    const boss = await s.login('boss@example.com', 'password1');
+    const sec = await s.login('secretary@example.com');
+    const id = (email) => raw.prepare('SELECT id FROM users WHERE email = ?').get(email).id;
+    const boat = (name) => raw.prepare('SELECT id, captain_id AS captain FROM teams WHERE name = ?').get(name);
+    const shams = id('shams@example.com');
+    const edit = (who, body) => who('PATCH', `/admin/users/${shams}/account`, body);
+
+    assert.equal((await edit(sec, { firstName: 'Sam' })).status, 403, 'the admin only, not the secretary');
+    assert.equal((await edit(boss, { email: 'not an email' })).status, 400);
+    assert.equal((await edit(boss, { email: 'jack@example.com' })).status, 409, "another member's email");
+    assert.equal((await edit(boss, { lastName: '' })).status, 400, 'a last name is needed');
+    assert.equal((await boss('PATCH', `/admin/users/${id('boss@example.com')}/account`, { email: 'me@example.com' })).status, 400, "the admin's email stays");
+
+    // Shams captains Liberian Girl: moved to Bait Master, the next crew member there takes over.
+    const girl = boat('Liberian Girl');
+    assert.equal(girl.captain, shams);
+    const r = await edit(boss, { firstName: 'Shams', lastName: 'Eid-Haddad', email: 'Shams.Eid@Example.com', teamId: boat('Bait Master').id });
+    assert.equal(r.status, 200);
+    const now = { ...raw.prepare('SELECT name, first_name AS f, last_name AS l, email, team_id AS t FROM users WHERE id = ?').get(shams) };
+    assert.deepEqual(now, { name: 'Shams Eid-Haddad', f: 'Shams', l: 'Eid-Haddad', email: 'shams.eid@example.com', t: boat('Bait Master').id });
+    const newCaptain = boat('Liberian Girl').captain;
+    assert.ok(newCaptain && newCaptain !== shams, 'Liberian Girl has a new captain from its crew');
+    assert.equal(raw.prepare('SELECT team_id AS t FROM users WHERE id = ?').get(newCaptain).t, girl.id);
+    assert.equal((await s.login('shams.eid@example.com')).length, 3, 'signs in with the new email');
+
+    // Taken off any boat; on record with what it was before.
+    assert.equal((await edit(boss, { teamId: '' })).status, 200);
+    assert.equal(raw.prepare('SELECT team_id AS t FROM users WHERE id = ?').get(shams).t, null);
+    const log = raw.prepare("SELECT action FROM activity_log WHERE action LIKE 'Account of %' ORDER BY id").all().map((x) => x.action);
+    assert.equal(log.length, 2);
+    assert.match(log[0], /name Shams Eid → Shams Eid-Haddad/);
+    assert.match(log[0], /email shams@example\.com → shams\.eid@example\.com/);
+    assert.match(log[0], /boat Liberian Girl → Bait Master/);
+    assert.match(log[1], /boat Bait Master → none/);
+    raw.close();
+  } finally {
+    s.srv.close();
+  }
+});

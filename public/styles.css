@@ -1129,3 +1129,7 @@ body { overscroll-behavior-y: contain; }
 .big-angler { color: var(--accent); font-weight: 700; }
 .big-wt { display: grid; justify-items: end; gap: 2px; }
 .big-wt .small { font: 600 12.5px/1 "Montserrat", sans-serif; }
+
+/* Members: the admin's Edit and reset-link buttons, and the edit form under a member. */
+.member-actions { margin: 6px 0 0; }
+.edit-user { grid-column: 1 / -1; margin-top: 10px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
