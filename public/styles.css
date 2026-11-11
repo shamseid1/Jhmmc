@@ -1149,3 +1149,5 @@ body { overscroll-behavior-y: contain; }
 .feed-row-text { grid-area: text; font-size: 16.5px; font-weight: 700; line-height: 1.3; min-width: 0; }
 .feed-row-time { grid-area: time; font-size: 13px; }
 .feed-row .pill { grid-area: pill; margin: 0; font-size: 13px; padding: 4px 10px; }
+.pdf-row { margin: 14px 0 6px; }
+.pdf-btn .icon { width: 18px; height: 18px; }

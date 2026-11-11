@@ -295,6 +295,77 @@ function loadLeaflet() {
   return leaflet;
 }
 
+// PDFs for the club (leaderboard, members, tournament sheets): jsPDF 2.5.2 and
+// jspdf-autotable 3.8.4, kept in public/vendor, loaded the first time one is made.
+let pdfLib = null;
+function loadPdf() {
+  const script = (src) => new Promise((resolve, reject) => {
+    const js = document.createElement('script');
+    js.src = src; js.onload = resolve; js.onerror = reject;
+    document.head.append(js);
+  });
+  pdfLib ??= script('/vendor/jspdf/jspdf.umd.min.js').then(() => script('/vendor/jspdf/jspdf.plugin.autotable.min.js'))
+    .then(() => window.jspdf.jsPDF)
+    .catch(() => { pdfLib = null; throw new Error("The PDF maker couldn't load. Check your connection and try again."); });
+  return pdfLib;
+}
+const imageData = (url) => fetch(url).then((r) => r.blob()).then((b) => new Promise((done) => {
+  const fr = new FileReader(); fr.onload = () => done(fr.result); fr.readAsDataURL(b);
+}));
+// One A4 PDF: the logos and title on top, then a table per section, page numbers at the foot.
+// sections: [{ heading, head: [...], body: [[...]], widths?: {col: pt} }]
+async function savePdf({ title, subtitle = '', sections, file }) {
+  const JsPdf = await loadPdf();
+  const [logo, crest] = await Promise.all([imageData('/logo-mark.png'), imageData('/jhmmc-logo.png')]).catch(() => []);
+  const doc = new JsPdf({ unit: 'pt', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const NAVY = [0, 26, 67];
+  if (logo) doc.addImage(logo, 'PNG', 40, 28, 44, 44, 'logo', 'FAST');
+  if (crest) doc.addImage(crest, 'PNG', W - 92, 32, 52, 44, 'crest', 'FAST');
+  doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text('AFRICA SPORTFISHING', 92, 47);
+  doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(90, 100, 120).text('JHMMC · Jim Holder Memorial Marine Club', 92, 62);
+  doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...NAVY).text(title, 40, 112, { maxWidth: W - 80 });
+  let y = 112 + (doc.splitTextToSize(title, W - 80).length - 1) * 22;
+  if (subtitle) {
+    doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(90, 100, 120).text(subtitle, 40, y + 18, { maxWidth: W - 80 });
+    y += 18 + (doc.splitTextToSize(subtitle, W - 80).length - 1) * 14;
+  }
+  y += 22;
+  for (const s of sections) {
+    if (s.heading) { doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text(s.heading, 40, y + 4); y += 12; }
+    doc.autoTable({
+      startY: y, head: [s.head], body: s.body.length ? s.body : [[{ content: s.none || 'None.', colSpan: s.head.length }]],
+      margin: { left: 40, right: 40, bottom: 50 }, theme: 'striped',
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 5, textColor: [20, 30, 50] },
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [242, 245, 250] },
+      columnStyles: s.widths || {},
+      // Number columns: the heading lines up with the numbers.
+      didParseCell: (d) => { if (d.section === 'head' && s.widths?.[d.column.index]?.halign) d.cell.styles.halign = s.widths[d.column.index].halign; },
+    });
+    y = doc.lastAutoTable.finalY + 30;
+  }
+  const pages = doc.getNumberOfPages();
+  const made = new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(130, 140, 155);
+    doc.text(`Made ${made} · africasportfishing.com`, 40, doc.internal.pageSize.getHeight() - 24);
+    doc.text(`Page ${i} of ${pages}`, W - 40, doc.internal.pageSize.getHeight() - 24, { align: 'right' });
+  }
+  doc.save(file);
+}
+const fileName = (s) => `${s.replace(/[^\w\s-]+/g, '').trim().replace(/\s+/g, '-')}.pdf`;
+// A "Download PDF" button: shows it's working, says what went wrong.
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-pdf]');
+  if (!btn || !btn.pdf) return;
+  const was = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Making the PDF…';
+  try { await savePdf(await btn.pdf()); } catch (err) { toast(err.message); } finally { btn.disabled = false; btn.innerHTML = was; }
+});
+const pdfButton = (label = 'Download PDF') => `<button type="button" class="btn pdf-btn" data-pdf>${icon('download')} ${esc(label)}</button>`;
+
 // The maps: satellite imagery (Esri World Imagery) with borders and place
 // names (country, city, town) on top.
 function addSatellite(L, map) {
@@ -1854,7 +1925,20 @@ const pagesFor = (view) => ({
         <span class="rk">${i + 1}</span>
         <span class="nm"><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><span class="muted small">${a.teamName}</span></span>
         <a class="drill fish" href="${drill({ angler: a.anglerKey })}">${plural(a.catches, 'fish')}</a>
-        <a class="drill pts" href="${drill({ angler: a.anglerKey })}">${a.points}</a></li>`))}</ol>`) : raw(emptyState('user', 'No anglers on the board yet.'))}`;
+        <a class="drill pts" href="${drill({ angler: a.anglerKey })}">${a.points}</a></li>`))}</ol>`) : raw(emptyState('user', 'No anglers on the board yet.'))}
+      <p class="pdf-row">${raw(pdfButton())}</p>`;
+    const table = scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa';
+    view.querySelector('[data-pdf]').pdf = () => ({
+      title: `Leaderboard: ${table}, ${division === 'river' ? 'River' : 'Ocean'}`,
+      subtitle: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Approved fish only${pending ? `; ${plural(pending, 'registration')} waiting for the secretary` : ''}.`,
+      file: fileName(`Leaderboard ${table} ${division} ${today()}`),
+      sections: [
+        { heading: 'Boats', head: ['#', 'Boat', 'Fish', 'Points'], body: boats.map((b, i) => [i + 1, b.teamName, b.catches, b.points]),
+          widths: { 0: { cellWidth: 30 }, 2: { halign: 'right', cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 } } },
+        { heading: 'Anglers', head: ['#', 'Angler', 'Boat', 'Fish', 'Points'], body: anglers.map((a, i) => [i + 1, a.angler, a.teamName, a.catches, a.points]),
+          widths: { 0: { cellWidth: 30 }, 3: { halign: 'right', cellWidth: 60 }, 4: { halign: 'right', cellWidth: 70 } } },
+      ],
+    });
   },
 
   async tournament(id) {
@@ -1877,7 +1961,21 @@ const pagesFor = (view) => ({
         ? raw(html`<p><a class="btn primary" href="#/enter/${id}">${raw(icon('trophy'))} Enter your boat</a></p>`) : ''}
       ${state.me?.canHandleMoney ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
       ${raw(html`<div class="card"><ul class="list">${entries.length ? entries.map((e) => raw(html`<li><a href="#/boat/${e.teamId}">${e.teamName}</a></li>`))
-          : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}`;
+          : raw(html`<li class="muted">No ${side} boats entered yet.</li>`)}</ul></div>`)}
+      <p class="pdf-row">${raw(pdfButton())}</p>`;
+    view.querySelector('[data-pdf]').pdf = () => ({
+      title: `${tournament.name}: ${side} results`, subtitle: fmtDays(tournament),
+      file: fileName(`${tournament.name} ${side} results`),
+      sections: [
+        { heading: 'Results by boat', head: ['#', 'Boat', 'Fish', 'Points'], none: 'No approved results yet.',
+          body: results.map((b, i) => [i + 1, b.teamName, b.catches.length, b.points]),
+          widths: { 0: { cellWidth: 30 }, 2: { halign: 'right', cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 } } },
+        { heading: 'Fish', head: ['Boat', 'Species', 'Weight', 'Angler', 'Points'], none: 'No approved fish yet.',
+          body: results.flatMap((b) => b.catches.map((c) => [b.teamName, c.species, c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'released' : '', c.angler, c.points])),
+          widths: { 4: { halign: 'right', cellWidth: 60 } } },
+        { heading: `${side} boats entered (${entries.length})`, head: ['Boat'], none: 'No boats entered yet.', body: entries.map((e) => [e.teamName]) },
+      ],
+    });
   },
 
   // Points per kg for each species; the secretary can edit it.
@@ -3519,6 +3617,25 @@ const pagesFor = (view) => ({
         <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
         ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>
       ${manage ? raw('<p class="small muted">The captain is notified.</p>') : ''}`;
+    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the sheet (PDF)')}</p>`);
+    view.querySelector('[data-pdf]').pdf = () => {
+      let k = 0;
+      return {
+        title: `${tournament.name}: registration sheet`,
+        subtitle: `${fmtDays(tournament)}. ${plural(inBoats.length, 'boat')} in, ${plural(all.length, 'angler')} (${all.length - guests.length} members, ${guests.length} non-members). Temporary membership USD ${fee}: ${unpaid.length ? `${unpaid.length} still to pay, USD ${unpaid.length * fee}` : guests.length ? 'all paid' : 'none due'}.`,
+        file: fileName(`${tournament.name} registration sheet`),
+        sections: [
+          { heading: `Boats in (${inBoats.length})`, head: ['Boat', 'Division', 'Weigh station', 'Anglers'], none: 'No boats in yet.',
+            body: inBoats.map((b) => [b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '', b.anglers.length]),
+            widths: { 3: { halign: 'right', cellWidth: 60 } } },
+          { heading: 'Anglers', head: ['#', 'Angler', 'Boat', 'Member', 'Paid'], none: 'No anglers listed yet.',
+            body: inBoats.flatMap((b) => b.anglers.map((a) => [++k, a.name, b.teamName, a.member ? 'Member' : 'Non-member', a.member ? '' : a.paid ? 'Paid' : 'Not paid'])),
+            widths: { 0: { cellWidth: 30 } } },
+          { heading: `Not in (${outBoats.length})`, head: ['Boat', 'Division', 'Weigh station'], none: 'Every JHMMC boat is in.',
+            body: outBoats.map((b) => [b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '']) },
+        ],
+      };
+    };
     const put = (teamId, body) => api(`/tournaments/${id}/entries/${teamId}`, { method: 'PUT', body });
     view.addEventListener('change', async (e) => {
       const box = e.target.closest('input[data-act]');
@@ -3623,6 +3740,21 @@ const pagesFor = (view) => ({
         <label class="check"><input type="checkbox" name="paid" checked> Paid ${label}</label>
         <p class="error"></p><div><button type="submit" class="primary">Add member</button></div>
       </form>`;
+    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the list (PDF)')}</p>`);
+    // Fetched again when the PDF is made, so payments ticked since are in it.
+    view.querySelector('[data-pdf]').pdf = async () => {
+      const now = await api('/club-members');
+      const rows = [...now.people.map((p) => [p.name, p.teamName || '', 'Yes', p.paid ? 'Paid' : 'Not paid']),
+        ...now.named.map((p) => [p.name, p.teamName || '', 'No', p.paid ? 'Paid' : 'Not paid'])]
+        .sort((a, b) => a[0].localeCompare(b[0]));
+      const paidN = rows.filter((r) => r[3] === 'Paid').length;
+      return {
+        title: `JHMMC members ${label}`,
+        subtitle: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. ${plural(rows.length, 'member')}: ${paidN} paid, ${rows.length - paidN} not paid.`,
+        file: fileName(`JHMMC members ${label} ${today()}`),
+        sections: [{ head: ['Name', 'Boat', 'On the app', `Membership ${label}`], body: rows.map((r, i) => r) }],
+      };
+    };
     let show = 'all';
     const filter = () => {
       const term = view.querySelector('.search input').value.trim().toLowerCase();
