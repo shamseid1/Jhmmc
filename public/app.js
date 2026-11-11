@@ -3059,7 +3059,7 @@ const pagesFor = (view) => ({
     const steps = iphone
       ? ['Tap the <b>Share</b> button: the square with an arrow (at the bottom in Safari, at the top right in Chrome).',
         'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.',
-        'Open <b>Sportfish</b> from your home screen (notifications only work there).']
+        'Open <b>Sportfishing</b> from your home screen (notifications only work there).']
       : samsung
         ? ['Tap the <b>menu</b> (☰) at the bottom right.', 'Tap <b>Add page to</b>, then <b>Home screen</b>.', 'Tap <b>Add</b>.']
         : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
