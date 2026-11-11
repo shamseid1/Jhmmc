@@ -710,6 +710,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       try {
         emailed = await backups.email(b);
       } catch (err) {
+        console.error('Backup email failed:', err.message);
         return res.status(502).json({ error: `Backup made, but the email failed: ${err.message}`, backup: b });
       }
     }

@@ -3240,14 +3240,21 @@ const pagesFor = (view) => ({
       location.href = `/api/admin/backups/${backup.name}`;
       setTimeout(route, 1500);
     });
-    view.querySelector('#b-mail')?.addEventListener('click', async () => {
+    view.querySelector('#b-mail')?.addEventListener('click', async (e) => {
+      // Sending can take a few seconds: say so, and say plainly if it fails.
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
       try {
-        const { emailed } = await api('/admin/backups', { method: 'POST', body: { email: true } });
-        toast(emailed ? `Emailed to ${adminEmail}.` : 'Backed up.');
+        const { emailed } = await api('/admin/backups', { method: 'POST', body: { email: true }, once: true });
+        toast(emailed ? `Emailed to ${adminEmail}. Check your inbox (and Spam).` : 'Backed up.');
+        route();
       } catch (err) {
-        toast(err.message);
+        btn.disabled = false;
+        btn.textContent = 'Back up now and email it';
+        view.querySelector('#b-mail-error')?.remove();
+        btn.closest('p').insertAdjacentHTML('afterend', html`<p class="card pad warn-card" id="b-mail-error"><b>The email wasn't sent.</b> ${err.message}</p>`);
       }
-      route();
     });
   },
 

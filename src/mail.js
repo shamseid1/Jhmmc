@@ -19,6 +19,10 @@ function createMailer(env = process.env) {
     port,
     secure: port === 465,
     auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+    // Give up in seconds, not minutes, so a wrong setting shows as an error straight away.
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 60000,
   });
   const from = env.MAIL_FROM || env.SMTP_USER;
   return {
