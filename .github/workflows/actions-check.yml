@@ -1,9 +1,0 @@
-# A one-line build to check that GitHub Actions can run on this repository at all.
-name: Actions check
-on:
-  workflow_dispatch:
-jobs:
-  hello:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "GitHub Actions works here."
