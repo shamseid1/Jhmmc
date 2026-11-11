@@ -12,8 +12,9 @@ test('one grouper and one grunter: duplicates are merged, their fish moved', () 
   const add = (name) => Number(db.prepare("INSERT INTO species (name, category, points_per_kg) VALUES (?, 'Bottom', 5)").run(name).lastInsertRowid);
   const dusky = add('Dusky grouper');
   const spotted = add('Spotted grunter');
+  const hammer = add('Hammerhead');
   const outing = Number(db.prepare("INSERT INTO outings (boat, date) VALUES ('Test boat', '2026-11-01')").run().lastInsertRowid);
-  for (const sp of [dusky, spotted]) {
+  for (const sp of [dusky, spotted, hammer]) {
     db.prepare("INSERT INTO outing_landings (outing_id, species_id, fate, landed_at) VALUES (?, ?, 'kept', '2026-11-01T10:00:00Z')").run(outing, sp);
   }
   db.close();
@@ -23,6 +24,8 @@ test('one grouper and one grunter: duplicates are merged, their fish moved', () 
   assert.equal(names.filter((n) => /grouper/i.test(n)).join(), 'Grouper');
   assert.equal(names.filter((n) => /grunter/i.test(n)).join(), 'Grunter');
   const fish = db.prepare('SELECT s.name FROM outing_landings l JOIN species s ON s.id = l.species_id ORDER BY s.name').all().map((x) => x.name);
-  assert.deepEqual(fish, ['Grouper', 'Grunter']);
+  assert.deepEqual(fish, ['Grouper', 'Grunter', 'Mako shark']);
+  for (const gone of ['Cubera snapper', 'Almaco jack', 'Bigeye trevally', 'Little tunny', 'Hammerhead']) assert.ok(!names.includes(gone), gone);
+  assert.equal(names.length, 31);
   db.close();
 });

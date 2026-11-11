@@ -147,7 +147,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.equal(blue.igfa.kg, 636);
   assert.equal(blue.best, null, 'posts never set records: only weighed, approved fish');
   assert.equal(r.body.species.find((x) => x.name === 'Tarpon').igfa.african, true);
-  assert.equal(r.body.species.find((x) => x.name === 'Little tunny').igfa, null, 'unconfirmed records are left out');
+  assert.equal(r.body.species.find((x) => x.name === 'Butter nose').igfa, null, 'no IGFA record, none shown');
   assert.deepEqual(r.body.lineRecords, []);
   assert.equal(c.worldRecordKg, 636);
   r = await ibra('GET', `/records?club=${clubId}`);
@@ -746,7 +746,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const cap2 = as();
     await cap2('POST', '/auth/register', { name: 'Reel Captain', email: 'reel@example.com', password: 'password1' });
     const reel = (await cap2('POST', '/teams', { name: 'Reel Deal', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
-    r = await sec('POST', '/weigh', weighed({ teamId: reel.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Little tunny').id,
+    r = await sec('POST', '/weigh', weighed({ teamId: reel.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Bonito').id,
       caughtOn: TODAY, weightKg: '5', weighStation: 'Extreme', deviceLat: '6.3', deviceLng: '-10.8' }));
     await sec('POST', `/catches/${r.body.catch.id}/review`, { decision: 'approve' });
     assert.ok((await as()('GET', '/points?division=ocean')).body.boats.some((b) => b.teamName === 'Reel Deal'), 'counts overall');

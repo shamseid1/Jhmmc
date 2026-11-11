@@ -19,7 +19,6 @@ const SPECIES = [
   ['Yellowfin tuna', 'Thunnus albacares', 'Tuna', 3],
   ['Bigeye tuna', 'Thunnus obesus', 'Tuna', 3],
   ['Skipjack tuna', 'Katsuwonus pelamis', 'Tuna', 3],
-  ['Little tunny', 'Euthynnus alletteratus', 'Tuna', 3],
   ['Wahoo', 'Acanthocybium solandri', 'Pelagic', 5],
   ['Dorado', 'Coryphaena hippurus', 'Pelagic', 3],
   ['Spanish mackerel', 'Scomberomorus tritor', 'Pelagic', 3],
@@ -27,7 +26,6 @@ const SPECIES = [
   ['Amberjack', 'Seriola dumerili', 'Reef & jacks', 3],
   ['Crevalle', 'Caranx hippos', 'Reef & jacks', 5],
   ['Pompano', 'Alectis ciliaris', 'Reef & jacks', 3],
-  ['Cubera snapper', 'Lutjanus cyanopterus', 'Reef & jacks', 5],
   ['Snapper', 'Lutjanus spp.', 'Bottom', 5],
   ['Threadfin', 'Polydactylus quadrifilis', 'Inshore', 3],
   ['Tarpon', 'Megalops atlanticus', 'Inshore', 5],
@@ -35,14 +33,11 @@ const SPECIES = [
   ['Leerfish', 'Lichia amia', 'Inshore', 3],
   ['Grouper', 'Epinephelus marginatus', 'Bottom', 5],
   ['Mako shark', 'Isurus oxyrinchus', 'Shark', 5],
-  ['Hammerhead', 'Sphyrna spp.', 'Shark', 5],
   // Species in the JHMMC record book (as at May 2026) the list didn't have.
   ['Striped marlin', 'Kajikia audax', 'Billfish', 3],
   ['Bonito', 'Sarda sarda', 'Tuna', 3],
   ['Cobia', 'Rachycentron canadum', 'Pelagic', 3],
   ['Rainbow runner', 'Elagatis bipinnulata', 'Pelagic', 3],
-  ['Bigeye trevally', 'Caranx sexfasciatus', 'Reef & jacks', 3],
-  ['Almaco jack', 'Seriola rivoliana', 'Reef & jacks', 3],
   ['Tripletail', 'Lobotes surinamensis', 'Inshore', 3],
   ['Yellow tail', null, 'Inshore', 3],
   ['Grunter', null, 'Inshore', 3],
@@ -716,13 +711,20 @@ function openDb(file) {
   return db;
 }
 
-// One of each fish: a second grouper or grunter (an old name, a "spotted" one)
-// is merged into Grouper or Grunter, with its catches, posts and logged fish.
+// A short list, one of each fish: look-alikes and second names are merged into one
+// species, with their catches, posts and logged fish (the record book keeps its own).
+const MERGED_SPECIES = {
+  'Cubera snapper': 'Snapper',
+  'Almaco jack': 'Amberjack',
+  'Bigeye trevally': 'Crevalle',
+  'Little tunny': 'Bonito',
+  Hammerhead: 'Mako shark',
+};
 function mergeDuplicateSpecies(db) {
   const all = db.prepare('SELECT id, name FROM species').all();
   const keep = (name) => all.find((x) => x.name === name);
-  const into = (name) => (/grouper/i.test(name) && name !== 'Grouper' ? 'Grouper'
-    : /grunter/i.test(name) && name !== 'Grunter' ? 'Grunter' : null);
+  const into = (name) => (MERGED_SPECIES[name] ?? (/grouper/i.test(name) && name !== 'Grouper' ? 'Grouper'
+    : /grunter/i.test(name) && name !== 'Grunter' ? 'Grunter' : null));
   for (const sp of all) {
     const target = into(sp.name) && keep(into(sp.name));
     if (!target) continue;

@@ -103,7 +103,7 @@ const BOOK = [
     ['Dont Play with Me', 'Farouk Eid', '30 lb', 24.0, ''],
     ['Stratos', 'Rasmi Eid', '30 lb', 8.8, '2014-01-25'],
   ]],
-  ['Bigeye Trevally', 'Bigeye trevally', [
+  ['Bigeye Trevally', 'Crevalle', [
     ['Shams', 'Ayman Al-Ashkar', '50 lb', 1.2, '2011-12-11'],
     ['Sea Star', 'Robert Khoueiry', '80 lb', 1.2, '2011-10-16'],
   ]],
@@ -112,7 +112,7 @@ const BOOK = [
     ['Reel Magic', 'Mario Ali', '50 lb', 1.6, '2012-05-12'],
     ['Bottom Line', 'Robert Baines', '50 lb', 1.5, '2016-11-13'],
   ]],
-  ['Almaco Jack', 'Almaco jack', [
+  ['Almaco Jack', 'Amberjack', [
     ['Reel Magic', 'Fadi Eid', '50 lb', 1.6, '2012-05-12'],
     ['Bait Master', 'Jack Asmar', '50 lb', 1.5, '2014-11-30'],
     ['Reel Magic', 'Roy Elia', '50 lb', 1.4, '2012-05-12'],
@@ -148,14 +148,19 @@ const BOOK = [
   ['Amberjack', 'Amberjack', [['Challenger', 'Jan Suck', '30 lb', 22.8, '2025-11-09']]],
 ];
 
-const GROUPS = BOOK.map(([title, species, rows]) => ({
-  title,
-  species,
-  records: rows.map(([boat, angler, lineClass, weightKg, date]) => ({
+// The app keeps a short species list, so a few of the book's fish are one species
+// there (Bigeye Trevally with Crevalle, Almaco Jack with Amberjack): their records
+// are listed together under both titles, none dropped.
+const GROUPS = [];
+for (const [title, species, rows] of BOOK) {
+  const records = rows.map(([boat, angler, lineClass, weightKg, date]) => ({
     boat, angler, lineClass, weightKg,
     caughtOn: date.length === 10 ? date : null,
     year: date.length === 4 ? date : null,
-  })),
-}));
+  }));
+  const same = GROUPS.find((g) => g.species === species);
+  if (same) { same.records.push(...records); same.title = species === 'Amberjack' ? `Amberjack / ${same.title}` : `${same.title} / ${title}`; }
+  else GROUPS.push({ title, species, records });
+}
 
 module.exports = { AS_AT, PDF, GROUPS };
