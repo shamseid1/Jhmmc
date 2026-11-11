@@ -128,7 +128,13 @@ const parseTime = (d) => new Date(d.length === 10 ? `${d}T12:00:00` : `${d.repla
 const fmtDate = (d) => parseTime(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 // A stored time ("2026-10-28 14:05:00", UTC) as local day and time.
 const fmtWhen = (d) => parseTime(d).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-const today = () => new Date().toISOString().slice(0, 10);
+// "Today" on the boat's clock (its country's; the server says which), Monrovia's if
+// signed out. West African clocks never change, so this is the same all year.
+const myZone = () => state.me?.timeZone || 'Africa/Monrovia';
+const dateIn = (zone, at = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' })
+  .format(at instanceof Date ? at : new Date(at));
+const hourIn = (zone, at = new Date()) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(at));
+const today = () => dateIn(myZone());
 // Who weighed a registered fish: the weighmaster (as the rules want) or, without one, the captain.
 const weigherBadge = (c) => (c.weighRole === 'weighmaster' ? `<span class="badge new">Weighmaster${c.weighedByName ? `: ${esc(c.weighedByName)}` : ''}</span>`
   : c.weighRole === 'captain' || c.weighRole === 'own' ? `<span class="badge guest">${c.weighRole === 'captain' ? "Captain's weigh-in" : "Own boat's weigh-in"}${c.weighedByName ? `: ${esc(c.weighedByName)}` : ''}</span>${c.weighReason ? ` <span class="small">${esc(c.weighReason)}</span>` : ''}`
@@ -2690,8 +2696,8 @@ const pagesFor = (view) => ({
     const asked = new URLSearchParams(location.hash.split('?')[1] || '').get('date');
     let day = asked || today();
     const live = !asked || asked === today();
-    if (!asked && new Date().getUTCHours() < 5) {
-      const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    if (!asked && hourIn(myZone()) < 5) {
+      const yesterday = dateIn(myZone(), Date.now() - 864e5);
       try {
         const { trip: last } = await api(`/outings/trip?date=${yesterday}`);
         if (last?.landings?.some((l) => l.landedAt && Date.now() - Date.parse(l.landedAt) < 8 * 36e5)) day = yesterday;

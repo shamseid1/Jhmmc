@@ -11,6 +11,7 @@ const jhmmcBook = require('./jhmmc-records');
 const { createMailer } = require('./mail');
 const { createBackups } = require('./backup');
 const { createPusher } = require('./push');
+const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const VIDEO_TYPES = { 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'video/3gpp': '.3gp' };
@@ -479,13 +480,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   function getMe(id) {
     const me = db.prepare(`
       SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
-        t.id AS teamId, t.name AS teamName, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
+        t.id AS teamId, t.name AS teamName, t.country AS teamCountry, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
         t.weigh_station AS weighStation, t.division AS division, u.units, u.notify
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
-    const { photo, units, notify, ...rest } = me;
+    const { photo, units, notify, teamCountry, ...rest } = me;
     return {
-      ...rest, photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, notify: notifyPrefs(notify), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
+      // "Today" for this member: the boat's clock (its country), else their own country's.
+      ...rest, timeZone: zoneOf(teamCountry || me.country), photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, notify: notifyPrefs(notify), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
       isAdmin: isAdminUser(me), canWeigh: canWeigh(me), weighmasterAt: weighmasterAt(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }
@@ -1402,15 +1404,16 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const lengthCm = num(b.lengthCm);
     if (Number.isNaN(weightKg) || Number.isNaN(lengthCm)) return { error: 'Weight and length must be positive numbers.' };
     if (weightKg !== null && weightKg > 1500) return { error: 'Weight looks too large — enter it in kilograms.' };
-    // A post's date is optional: today unless said otherwise.
-    const caughtOn = str(b.caughtOn, 10) || (official ? null : new Date().toISOString().slice(0, 10));
+    // A post's date is optional: today unless said otherwise (the boat's own day).
+    const boatToday = dateIn(zoneOf(team.country));
+    const caughtOn = str(b.caughtOn, 10) || (official ? null : boatToday);
     if (!caughtOn || !/^\d{4}-\d{2}-\d{2}$/.test(caughtOn) || Number.isNaN(Date.parse(caughtOn))) {
       return { error: 'Enter the date of the catch.' };
     }
     if (Date.parse(caughtOn) > Date.now() + 864e5) return { error: 'Catch date cannot be in the future.' };
-    // Captains register at the weigh station on the day: today only (Monrovia time is UTC).
+    // Weigh-ins are on the day, on the boat's clock: today only.
     // The secretary may enter an earlier day's paper form.
-    if (official && !canApprove(user) && caughtOn !== new Date().toISOString().slice(0, 10)) {
+    if (official && !canApprove(user) && caughtOn !== boatToday) {
       return { error: "Registrations are for today's fish only." };
     }
     const lineClass = str(b.lineClass, 20);
@@ -2266,7 +2269,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   const listAnglers = (eventId, teamId) => anglersOf.all(eventId, teamId)
     .map((a) => ({ ...a, member: memberNow(a), paid: !!a.paid }));
   const memberNow = (a) => (a.userId ? isPaidMember(a.userId) : a.personId ? isPaidPerson(a.personId) : !!a.member);
-  const todayUtc = () => new Date().toISOString().slice(0, 10);
+  const clubToday = () => dateIn(CLUB_ZONE);
 
   // The season's tournaments, open to everyone; officials also get the
   // anglers and money owed, captains whether their boat is in.
@@ -2286,7 +2289,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     res.json({
       fee: TEMP_MEMBERSHIP_USD,
       tournaments: rows.map(({ anglers, guests, unpaid, ...t }) => ({
-        ...t, open: t.endDate >= todayUtc(), mine: myTeam ? isEntered(t.id, myTeam) : false,
+        ...t, open: t.endDate >= clubToday(), mine: myTeam ? isEntered(t.id, myTeam) : false,
         ...(official && { anglers, guests, unpaid }),
       })),
     });
@@ -2308,7 +2311,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         LEFT JOIN teams t ON t.id = u.team_id WHERE d.catch_id = ? ORDER BY d.id DESC LIMIT 1`).get(w.id),
     }));
     const old = waiting.filter((w) => !w.disputes && w.createdAt < dayAgo);
-    const today = todayUtc();
+    const today = clubToday();
     const weighedToday = db.prepare("SELECT COUNT(*) AS n FROM catches WHERE status <> 'unofficial' AND date(created_at) = ?").get(today).n;
     const next = db.prepare(`SELECT e.id, e.name, e.date, (SELECT COUNT(*) FROM tournament_entries te WHERE te.event_id = e.id) AS boats
       FROM events e WHERE e.kind = 'tournament' AND COALESCE(e.end_date, e.date) >= ? ORDER BY e.date LIMIT 1`).get(today) ?? null;
@@ -2337,7 +2340,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const crew = crewWithMembership(team.id);
     const named = peopleOfBoat(team.id);
     res.json({ tournament: event, named, fee: TEMP_MEMBERSHIP_USD, team, crew, entered: isEntered(event.id, team.id),
-      anglers: listAnglers(event.id, team.id), open: event.endDate >= todayUtc() });
+      anglers: listAnglers(event.id, team.id), open: event.endDate >= clubToday() });
   });
 
   // Enter a boat (with its anglers) or take it out: its captain, until the
@@ -2350,7 +2353,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (team.clubId !== homeClubId()) return res.status(400).json({ error: 'Only JHMMC boats can enter club tournaments.' });
     const official = canReview(req.user);
     if (!official && team.captainId !== req.user.id) return res.status(403).json({ error: "Only the boat's captain or the secretary can do that." });
-    if (!official && event.endDate < todayUtc()) return res.status(400).json({ error: 'This tournament is over; ask the secretary for changes.' });
+    if (!official && event.endDate < clubToday()) return res.status(400).json({ error: 'This tournament is over; ask the secretary for changes.' });
     if (!req.body.entered) {
       db.prepare('DELETE FROM tournament_entries WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
       db.prepare('DELETE FROM tournament_anglers WHERE event_id = ? AND team_id = ?').run(event.id, team.id);
@@ -2803,8 +2806,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const at = Date.parse(b.landedAt);
     if (b.landedAt && (Number.isNaN(at) || at > Date.now() + 864e5)) return res.status(400).json({ error: "The time it was landed isn't valid." });
     const landedAt = b.landedAt ? new Date(at).toISOString() : new Date().toISOString();
-    // The day is the phone's own day, so a fish at 23:30 doesn't land on tomorrow's line.
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date ?? '') ? b.date : landedAt.slice(0, 10);
+    // The day is the boat's own day (its country's clock), so a fish at 23:30 doesn't land on tomorrow's line.
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date ?? '') ? b.date : dateIn(zoneOf(team.country), landedAt);
     if (Date.parse(date) > Date.now() + 864e5) return res.status(400).json({ error: "The day can't be in the future." });
     db.exec('BEGIN');
     try {
@@ -2821,8 +2824,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       linkLogToRegistration(Number(db.prepare('SELECT last_insert_rowid() AS id').get().id));
       db.exec('COMMIT');
       // Fish on! For those who asked: boat, species and what happened, never the spot.
-      // Only for today's fish, not ones added afterwards for an earlier trip.
-      if (date === new Date().toISOString().slice(0, 10)) {
+      // Only for this trip's fish (today's, or last night's carrying on), not ones added afterwards.
+      if (Date.now() - Date.parse(landedAt) < 12 * 36e5) {
         const sp = db.prepare('SELECT name FROM species WHERE id = ?').get(speciesId).name.toLowerCase();
         const article = /^[aeiou]/.test(sp) ? 'an' : 'a';
         pushWhere('logged', {
@@ -2840,7 +2843,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // Your boat's trip for a day (the phone's today by default), with each fish and its spot.
   api.get('/outings/trip', auth.requireUser, (req, res) => {
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? '') ? req.query.date : new Date().toISOString().slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? '') ? req.query.date : dateIn(zoneOf(db.prepare('SELECT country FROM teams WHERE id = ?').get(req.user.teamId ?? 0)?.country || req.user.country));
     const o = req.user.teamId && db.prepare('SELECT id FROM outings WHERE team_id = ? AND date = ? ORDER BY id LIMIT 1').get(req.user.teamId, date);
     res.json({ trip: o ? tripFor(o.id, req.user) : null });
   });
