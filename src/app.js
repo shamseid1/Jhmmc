@@ -140,7 +140,8 @@ function createApp({
     const title = demo ? 'Africa Sportfishing (demo)' : 'Africa Sportfishing';
     const text = 'Log fish, weigh-ins, points, tournaments and catch maps for JHMMC and West Africa.';
     const og = [['og:type', 'website'], ['og:title', title], ['og:description', text], ['og:url', `${origin}/`],
-      ['og:image', `${origin}/og.jpg`], ['og:image:width', '1200'], ['og:image:height', '630']]
+      // The preview picture is just the logo.
+      ['og:image', `${origin}/og-logo.jpg`], ['og:image:type', 'image/jpeg'], ['og:image:width', '600'], ['og:image:height', '600']]
       .map(([k, v]) => `<meta property="${k}" content="${v.replace(/"/g, '&quot;')}">`).join('\n  ');
     res.set('Cache-Control', 'no-cache').type('html').send(indexHtml.replace('<!--og-->', og));
   };
