@@ -195,7 +195,7 @@ function createApp({
   const testHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'test.html'), 'utf8');
   app.get(['/test', '/testers', '/test.html'], (req, res) => {
     const pkg = (process.env.ANDROID_PACKAGE || 'com.africasportfishing.app').trim();
-    const group = (process.env.TESTERS_GROUP || 'https://groups.google.com/g/jhmmc-app-testers').trim();
+    const group = (process.env.TESTERS_GROUP || 'https://groups.google.com/g/africa-sportfishing-app-testers').trim();
     const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
     const fill = (v) => String(v).replace(/[<>"&]/g, '');
     res.set('Cache-Control', 'no-cache').type('html').send(testHtml
