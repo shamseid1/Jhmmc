@@ -1555,7 +1555,7 @@ const pagesFor = (view) => ({
         ${actions && team.canManage && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
       </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>`;
     if (!manage) {
-      view.innerHTML = html`<div class="hero ${team.photoUrl ? '' : 'no-photo'}">
+      view.innerHTML = html`<div class="boat-hero ${team.photoUrl ? '' : 'no-photo'}">
           ${team.photoUrl ? raw(html`<img src="${team.photoUrl}" alt="${team.name}">`) : raw(`<svg class="hero-mark" viewBox="0 0 24 24" aria-hidden="true">${ICONS.boat}</svg>`)}
           <div class="hero-text"><h1>${team.name}</h1>
           <p>${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p></div>
@@ -1891,7 +1891,7 @@ const pagesFor = (view) => ({
         <ul>
           <li><b>Season points:</b> every fishing day scores. A captain can only weigh in fish <b>on the day they are brought in</b>, with a photo of each fish on the scale taken there and then.</li>
           <li><b>Tournament points:</b> each tournament has its own results from its days only, with its own winner. Those fish count for the season too.</li>
-          <li>Only fish <b>registered by the boat's captain</b> at the weigh station count, once the secretary approves them. Posts on the feed never count.</li>
+          <li>Only fish <b>registered at the weigh station</b> (by its weighmaster) count, once the secretary approves them. Posts on the feed never count.</li>
           <li>A kept fish scores its <b>weight in kg × the points for its species</b>.</li>
           <li>A <b>released marlin scores 500</b>. A marlin under 100 kg that is kept scores <b>minus 500</b>, whatever it weighs.</li>
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
@@ -4316,7 +4316,7 @@ async function route() {
 
 // Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
 // setting (light if it has none) and is where everyone starts.
-const THEME_COLORS = { dark: '#000f29', light: '#f4f6fa' };
+const THEME_COLORS = { dark: '#0f1115', light: '#f4f6fa' };
 // A new key: choices saved before Auto existed (under 'theme') no longer count.
 const THEME_KEY = 'appearance';
 try {

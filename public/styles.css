@@ -1,24 +1,24 @@
 :root {
-  /* Dark: the logo's navy (#001a43) all the way through, a soft sky blue for actions. */
+  /* Dark: neutral charcoal greys, so it isn't blue on blue; a soft sky blue only for actions. */
   color-scheme: dark;
   --navy: #001a43;
-  --bg: #000f29;
-  --surface: #06214d;
-  --surface-2: #0d2d60;
-  --text: #f2f5fa;
-  --muted: #9fb0c8;
-  --line: #143670;
-  --brand: #06214d;
+  --bg: #0f1115;
+  --surface: #191c22;
+  --surface-2: #23272f;
+  --text: #f2f4f7;
+  --muted: #a3abb8;
+  --line: #2c313a;
+  --brand: #191c22;
   --accent: #8cb8f2;
-  --accent-ink: #001a43;
-  --accent-soft: #10306a;
+  --accent-ink: #0b1a33;
+  --accent-soft: #1f2a3b;
   --sun: #f5a524;
   --good: #3fcf8e;
   --danger: #ff6b6b;
   --radius: 22px;
   --shadow: none;
-  --nav-bg: rgba(6, 33, 77, .94);
-  --field: #031838;
+  --nav-bg: rgba(25, 28, 34, .95);
+  --field: #12151a;
 }
 
 /* Light theme, for reading in bright sun: white cards, near-black text, deeper blue. */
@@ -103,7 +103,7 @@ img { max-width: 100%; display: block; }
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px; }
 
 h1 { font: 600 1.85rem/1.15 "Oswald", "Montserrat", system-ui, sans-serif; text-transform: uppercase; letter-spacing: .02em; margin: 8px 0 16px; }
-.hero h1, .catch-title { text-transform: none; }
+.hero h1, .boat-hero h1, .catch-title { text-transform: none; }
 h2 { font-size: 1.15rem; margin: 24px 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
@@ -493,7 +493,7 @@ button.link[hidden] { display: none; }
 .nav-icon { position: relative; display: inline-flex; }
 .count-badge {
   display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
-  border-radius: 10px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+  border-radius: 10px; background: #d42a2a; color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .nav-icon .count-badge { position: absolute; top: -7px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; box-shadow: 0 0 0 2px var(--brand); }
@@ -962,7 +962,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 .desk-kpis a { padding: 12px 8px; text-align: center; text-decoration: none; color: var(--text); }
 .desk-kpis b { display: block; font-size: 26px; }
 .desk-kpis span { font-size: 12px; color: var(--muted); }
-.desk-kpis .hot b { color: #dc2626; }
+.desk-kpis .hot b { color: var(--danger); }
 .desk-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); color: var(--text); text-decoration: none; }
 .desk-row:first-child { border-top: 0; }
 .desk-row > span:first-child { display: flex; flex-direction: column; gap: 2px; }
@@ -1028,17 +1028,17 @@ img.logo-ph { object-fit: contain; filter: brightness(0) invert(1); opacity: .9;
 #info-sheet > button.primary { width: 100%; justify-content: center; text-align: center; }
 
 /* Boat page: the boat's photo across the top, its name over it. */
-.hero { position: relative; margin: 0 -16px 16px; min-height: 180px; display: flex; align-items: flex-end; overflow: hidden; color: #fff;
+.boat-hero { position: relative; margin: 0 -16px 16px; min-height: 180px; display: flex; align-items: flex-end; overflow: hidden; color: #fff;
   background: linear-gradient(150deg, #0b2d63, var(--navy)); }
-.hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 35%, rgba(0, 10, 30, .82)); }
-.hero.no-photo::after { display: none; }
-.hero .hero-mark { position: absolute; right: -10px; top: 6px; width: 190px; height: 190px; color: rgba(255, 255, 255, .1); fill: currentColor; }
+.boat-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.boat-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 35%, rgba(0, 10, 30, .82)); }
+.boat-hero.no-photo::after { display: none; }
+.boat-hero .hero-mark { position: absolute; right: -10px; top: 6px; width: 190px; height: 190px; color: rgba(255, 255, 255, .1); fill: currentColor; }
 .hero-text { position: relative; z-index: 1; padding: 60px 16px 16px; }
-.hero h1 { font-size: 2.3rem; margin: 0 0 4px; color: #fff; }
-.hero p { margin: 0; color: rgba(255, 255, 255, .85); font-size: 14px; }
-.hero a { color: #fff; }
-@media (min-width: 700px) { .hero { margin: 0 0 18px; border-radius: var(--radius); min-height: 240px; } }
+.boat-hero h1 { font-size: 2.3rem; margin: 0 0 4px; color: #fff; }
+.boat-hero p { margin: 0; color: rgba(255, 255, 255, .85); font-size: 14px; }
+.boat-hero a { color: #fff; }
+@media (min-width: 700px) { .boat-hero { margin: 0 0 18px; border-radius: var(--radius); min-height: 240px; } }
 
 /* Pages fade in; while one loads, grey shapes stand in for it. */
 main > div { animation: view-in .22s ease-out; }
@@ -1065,3 +1065,7 @@ main > div:empty::after { height: 300px; }
 @keyframes pop-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes tick { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { main > div, .celebrate, .celebrate-tick svg, #info-sheet[open] { animation: none; } .celebrate-tick svg { stroke-dashoffset: 0; } }
+
+/* Dark: placeholders in neutral greys, not blue on blue. */
+:root:not([data-theme="light"]) .pcard .ph, :root:not([data-theme="light"]) .catch-photo.placeholder {
+  background: linear-gradient(160deg, #2b3039, #1a1d23); }
