@@ -1914,7 +1914,7 @@ const pagesFor = (view) => ({
     // Two trophies: overall points (every day) and tournament points only.
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const board = q.get('board') === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
-    const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
+    const { boats, biggest, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
     view.innerHTML = html`${raw(top)}
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Which table">${raw(options([
@@ -1944,12 +1944,12 @@ const pagesFor = (view) => ({
         <a href="#/tournament/${t.id}?division=${division}"><b>${t.name}</b></a>
         <div class="muted small">${fmtDays(t)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
       </li>`)) : raw('<li class="muted">No tournaments on the calendar yet.</li>')}</ul></div>
-      <h2>Anglers</h2>
-      ${anglers.length ? raw(html`<ol class="card rank-list">${anglers.map((a, i) => raw(html`<li>
+      <h2>Biggest catches</h2>
+      ${biggest.length ? raw(html`<ol class="card rank-list big-list">${biggest.map((c, i) => raw(html`<li>
         <span class="rk">${i + 1}</span>
-        <span class="nm"><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><span class="muted small">${a.teamName}</span></span>
-        <a class="drill fish" href="${drill({ angler: a.anglerKey })}">${plural(a.catches, 'fish')}</a>
-        <a class="drill pts" href="${drill({ angler: a.anglerKey })}">${a.points}</a></li>`))}</ol>`) : raw(emptyState('user', 'No anglers on the board yet.'))}
+        <a class="nm" href="#/catch/${c.id}">${c.species}<span class="muted small">${c.angler || 'the crew'} · ${c.teamName}</span></a>
+        <span class="fish">${fmtPoints(c.points)}</span>
+        <a class="pts" href="#/catch/${c.id}">${fmtWeight(c.weightKg)}</a></li>`))}</ol>`) : raw(emptyState('fish', 'No fish weighed in yet this season.'))}
       <p class="pdf-row">${raw(pdfButton())}</p>`;
     // The club's PDF: the JHMMC table (Season, or Tournaments if that's on screen), Ocean and River both.
     view.querySelector('[data-pdf]').pdf = async () => {
@@ -1960,9 +1960,9 @@ const pagesFor = (view) => ({
         { heading: `${side}: boats`, head: ['#', 'Boat', 'Fish', 'Points'], none: `No approved ${side.toLowerCase()} fish yet.`,
           body: r.boats.map((b, i) => [i + 1, b.teamName, b.catches, b.points]),
           widths: { 0: { cellWidth: 30 }, 2: { halign: 'right', cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 } } },
-        { heading: `${side}: anglers`, head: ['#', 'Angler', 'Boat', 'Fish', 'Points'], none: `No ${side.toLowerCase()} anglers on the board yet.`,
-          body: r.anglers.map((a, i) => [i + 1, a.angler, a.teamName, a.catches, a.points]),
-          widths: { 0: { cellWidth: 30 }, 3: { halign: 'right', cellWidth: 60 }, 4: { halign: 'right', cellWidth: 70 } } },
+        { heading: `${side}: biggest catches`, head: ['#', 'Species', 'Weight', 'Angler', 'Boat', 'Points'], none: `No ${side.toLowerCase()} fish weighed in yet.`,
+          body: r.biggest.map((c, i) => [i + 1, c.species, fmtWeight(c.weightKg), c.angler || '', c.teamName, c.points]),
+          widths: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 60 }, 5: { halign: 'right', cellWidth: 50 } } },
       ];
       const waiting = ocean.pending + river.pending;
       return {

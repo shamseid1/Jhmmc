@@ -2035,6 +2035,14 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
       GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
     `).all(params).map(({ first, ...a }) => a);
+    // The biggest fish weighed in, heaviest first (released fish have no weight).
+    const biggest = db.prepare(`
+      SELECT k.id, sp.name AS species, k.weight_kg AS weightKg, k.points, t.id AS teamId, t.name AS teamName,
+        u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler
+      ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id JOIN species sp ON sp.id = k.species_id LEFT JOIN users u ON u.id = k.user_id')}
+        AND k.weight_kg > 0
+      ORDER BY k.weight_kg DESC, k.id LIMIT 20
+    `).all(params);
     const tournaments = db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, name FROM events
       WHERE kind = 'tournament' AND COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date DESC`)
       .all(start, end)
@@ -2049,7 +2057,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
-    res.json({ division, scope, board, season: { start, end }, boats, anglers, tournaments, pending });
+    res.json({ division, scope, board, season: { start, end }, boats, anglers, biggest, tournaments, pending });
   });
 
   // A boat's, an angler's or a guest angler's page (a name typed at the weigh-in,

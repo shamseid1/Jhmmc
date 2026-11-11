@@ -1151,3 +1151,4 @@ body { overscroll-behavior-y: contain; }
 .feed-row .pill { grid-area: pill; margin: 0; font-size: 13px; padding: 4px 10px; }
 .pdf-row { margin: 14px 0 6px; }
 .pdf-btn .icon { width: 18px; height: 18px; }
+.big-list .nm { display: grid; }
