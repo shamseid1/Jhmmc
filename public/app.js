@@ -3143,6 +3143,7 @@ const pagesFor = (view) => ({
         ${raw(me?.canReview ? '' : item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}
         ${raw(me?.isAdmin ? '' : item('#/clubs', 'clubs', 'Clubs', 'Every club, or ask to open one'))}
         ${raw(me ? '' : item('#/log', 'history', 'Regional log', "Every boat's trips"))}
+        ${raw(item('/support', 'rules', 'Help', 'Getting started, your account, contact us'))}
         ${raw(item('/privacy', 'key', 'Privacy policy', 'What the app keeps, who sees it, deleting your account'))}
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;

@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v90';
+const CACHE = 'app-v91';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/boat.svg', '/logo-mark.png', '/fish-mark.png', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
@@ -33,7 +33,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   // Standalone pages (the privacy policy) aren't the app: straight through, never kept as it.
-  if (url.pathname.startsWith('/privacy')) return;
+  if (url.pathname.startsWith('/privacy') || url.pathname.startsWith('/support') || url.pathname.startsWith('/help') || url.pathname.startsWith('/.well-known')) return;
   const page = req.mode === 'navigate';
   if (!page && !APP_FILES.includes(url.pathname) && !KEEP_API.includes(url.pathname)) return;
   const key = page ? '/index.html' : url.pathname;

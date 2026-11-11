@@ -151,6 +151,21 @@ function createApp({
     const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
     res.set('Cache-Control', 'no-cache').type('html').send(privacyHtml.replaceAll('{{contact}}', contact));
   });
+  // The help page (the app stores' "support" link).
+  const supportHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'support.html'), 'utf8');
+  app.get(['/support', '/support.html', '/help'], (_req, res) => {
+    const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
+    res.set('Cache-Control', 'no-cache').type('html').send(supportHtml.replaceAll('{{contact}}', contact));
+  });
+  // The Android app (Google Play) opens this site full screen once the site vouches for it:
+  // ANDROID_PACKAGE and ANDROID_SHA256 (its signing certificate's fingerprint, several
+  // separated by commas) come from the Play Console.
+  app.get('/.well-known/assetlinks.json', (_req, res) => {
+    const pkg = (process.env.ANDROID_PACKAGE || 'com.africasportfishing.app').trim();
+    const prints = (process.env.ANDROID_SHA256 || '').split(',').map((x) => x.trim()).filter(Boolean);
+    res.json(prints.length ? [{ relation: ['delegate_permission/common.handle_all_urls'],
+      target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: prints } }] : []);
+  });
   app.use(express.static(path.join(__dirname, '..', 'public'), { ...fresh, index: false }));
   app.get('/scoring.js', (_req, res) => res.sendFile(path.join(__dirname, 'scoring.js'), { headers: { 'Cache-Control': 'no-cache' } }));
 

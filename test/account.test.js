@@ -79,3 +79,15 @@ test('privacy policy: a plain page with the contact email', async () => {
     s.srv.close();
   }
 });
+
+test('help page and the Android app link file', async () => {
+  const s = await start();
+  try {
+    const help = await (await fetch(`${s.base}/support`)).text();
+    assert.match(help, /Help/);
+    assert.match(help, /info@africasportfishing\.com/);
+    assert.deepEqual(await (await fetch(`${s.base}/.well-known/assetlinks.json`)).json(), [], 'empty until the Play fingerprint is set');
+  } finally {
+    s.srv.close();
+  }
+});
