@@ -84,7 +84,10 @@ test('help page and the Android app link file', async () => {
     const help = await (await fetch(`${s.base}/support`)).text();
     assert.match(help, /Help/);
     assert.match(help, /info@africasportfishing\.com/);
-    assert.deepEqual(await (await fetch(`${s.base}/.well-known/assetlinks.json`)).json(), [], 'empty until the Play fingerprint is set');
+    const links = await (await fetch(`${s.base}/.well-known/assetlinks.json`)).json();
+    assert.equal(links[0].target.package_name, 'com.africasportfishing.app');
+    assert.ok(links[0].target.sha256_cert_fingerprints.includes('4E:04:0F:8C:11:FE:C2:04:09:1F:FC:F9:20:B1:A3:AF:6D:1C:5F:CB:F7:47:64:F5:B7:F4:3D:60:33:92:6A:FA'));
+    assert.deepEqual(links[0].relation, ['delegate_permission/common.handle_all_urls']);
   } finally {
     s.srv.close();
   }

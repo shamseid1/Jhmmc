@@ -190,12 +190,17 @@ function createApp({
     const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
     res.set('Cache-Control', 'no-cache').type('html').send(supportHtml.replaceAll('{{contact}}', contact));
   });
-  // The Android app (Google Play) opens this site full screen once the site vouches for it:
-  // ANDROID_PACKAGE and ANDROID_SHA256 (its signing certificate's fingerprint, several
-  // separated by commas) come from the Play Console.
+  // The Android app (Google Play) opens this site full screen once the site vouches for it,
+  // by the fingerprints of the certificates it's signed with (public, not secrets).
+  // ANDROID_SHA256 adds more (separated by commas), ANDROID_PACKAGE changes the package.
+  const ANDROID_PRINTS = [
+    // Our upload key (PWABuilder package, 11 Nov 2026).
+    '4E:04:0F:8C:11:FE:C2:04:09:1F:FC:F9:20:B1:A3:AF:6D:1C:5F:CB:F7:47:64:F5:B7:F4:3D:60:33:92:6A:FA',
+  ];
   app.get('/.well-known/assetlinks.json', (_req, res) => {
     const pkg = (process.env.ANDROID_PACKAGE || 'com.africasportfishing.app').trim();
-    const prints = (process.env.ANDROID_SHA256 || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const prints = [...new Set([...ANDROID_PRINTS, ...(process.env.ANDROID_SHA256 || '').split(',')]
+      .map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x)))];
     res.json(prints.length ? [{ relation: ['delegate_permission/common.handle_all_urls'],
       target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: prints } }] : []);
   });
