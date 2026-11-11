@@ -100,6 +100,17 @@ function pushKey(base64) {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
+// Asks the phone (its Allow / Don't allow) and, if allowed, registers it with the server.
+async function enablePush() {
+  if ((await Notification.requestPermission()) !== 'granted') return false;
+  const { reg } = await pushSubscription();
+  const { publicKey } = await api('/push/key');
+  const sub = (await reg.pushManager.getSubscription())
+    || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKey(publicKey) });
+  await api('/push/subscribe', { method: 'POST', body: sub.toJSON() });
+  return true;
+}
+
 async function pushSubscription() {
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
@@ -120,10 +131,12 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
     return;
   }
   if (Notification.permission === 'denied') {
-    el.innerHTML = '<p class="small muted">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>';
+    el.innerHTML = isInstalled()
+      ? '<p class="small muted">Notifications are blocked on this phone. Turn them on in Settings → Apps → Africa Sportfishing → Notifications, then come back here.</p>'
+      : '<p class="small muted">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>';
     return;
   }
-  const { reg, sub } = await pushSubscription();
+  const { sub } = await pushSubscription();
   if (sub && hideWhenOn) {
     el.innerHTML = '';
     el.className = '';
@@ -145,14 +158,7 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
     btn.disabled = true;
     try {
       if (btn.dataset.act === 'push-on') {
-        if ((await Notification.requestPermission()) !== 'granted') {
-          toast('Notifications were not allowed.');
-        } else {
-          const { publicKey } = await api('/push/key');
-          const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKey(publicKey) });
-          await api('/push/subscribe', { method: 'POST', body: fresh.toJSON() });
-          toast('Notifications are on');
-        }
+        toast(await enablePush() ? 'Notifications are on' : 'Notifications were not allowed.');
       } else {
         await api('/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } });
         await sub.unsubscribe();
@@ -208,6 +214,7 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     await pages[page](arg);
+    firstOpenSetup().catch(() => {});
   } catch (ex) {
     view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;
   }
@@ -317,6 +324,52 @@ window.addEventListener('appinstalled', () => {
   toast('Installed. Open Africa Sportfishing from your home screen.');
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+// The first time the installed app opens (signed in), a sheet asks for what it needs:
+// notifications and the phone's location. A page can only ask when someone taps, so
+// each is a button; Android then shows its own Allow / Don't allow. Where the phone
+// already said no, the sheet says where to switch it back on. Once per phone.
+const SETUP_KEY = 'setup-asked';
+async function firstOpenSetup() {
+  try { if (localStorage.getItem(SETUP_KEY)) return; } catch { return; }
+  if (!isInstalled() || !state.me || document.getElementById('setup-sheet')) return;
+  const state0 = async (name) => { try { return (await navigator.permissions.query({ name })).state; } catch { return 'prompt'; } };
+  const notifyOn = pushSupported() && Notification.permission === 'granted' && !!(await pushSubscription().catch(() => ({}))).sub;
+  const where = 'Settings → Apps → Africa Sportfishing';
+  const dlg = document.createElement('dialog');
+  dlg.id = 'setup-sheet';
+  const row = (key, title, sub, done, blocked) => html`<div class="setup-row" data-row="${key}">
+    <span><b>${title}</b><span class="small muted">${sub}</span></span>
+    ${done ? raw(`<span class="setup-done">${icon('check')}</span>`)
+    : blocked ? raw(html`<span class="small setup-blocked">Blocked: ${blocked}</span>`)
+      : raw(html`<button type="button" class="primary" data-ask="${key}">Allow</button>`)}</div>`;
+  const draw = async () => {
+    const loc = await state0('geolocation');
+    dlg.innerHTML = html`<h2>Set up the app</h2>
+      <p class="small muted">Two quick permissions so it works at sea and tells you what's happening.</p>
+      ${raw(pushSupported() ? row('notify', 'Notifications', 'Weigh-ins, fish logged and club announcements',
+        notifyOn || (Notification.permission === 'granted' && dlg.dataset.notify === 'on'),
+        Notification.permission === 'denied' ? `${where} → Notifications → Allow` : '') : '')}
+      ${raw(row('location', 'Location', 'The spot of each fish you log, for your crew only',
+        loc === 'granted', loc === 'denied' ? `${where} → Permissions → Location → Allow` : ''))}
+      <button type="button" class="setup-close">Done</button>`;
+  };
+  await draw();
+  dlg.addEventListener('click', async (e) => {
+    if (e.target.closest('.setup-close') || e.target === dlg) { dlg.close(); return; }
+    const btn = e.target.closest('[data-ask]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      if (btn.dataset.ask === 'notify') { if (await enablePush()) dlg.dataset.notify = 'on'; }
+      else await new Promise((done) => navigator.geolocation.getCurrentPosition(done, done, { timeout: 15000 }));
+    } catch { /* the row says what to do */ }
+    await draw();
+  });
+  dlg.addEventListener('close', () => { try { localStorage.setItem(SETUP_KEY, '1'); } catch { /* asked again next time */ } dlg.remove(); });
+  document.body.append(dlg);
+  dlg.showModal();
+}
 
 // "Sign in" links inside a page come back to that page afterwards.
 document.addEventListener('click', (e) => {

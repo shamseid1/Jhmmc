@@ -1133,3 +1133,15 @@ body { overscroll-behavior-y: contain; }
 /* Members: the admin's edit form under a member; reset link and delete small, at the bottom. */
 .member-row .delete-user { display: flex; justify-content: flex-end; gap: 18px; }
 .edit-user { grid-column: 1 / -1; margin-top: 10px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+
+/* The installed app's first-open sheet: notifications and location, one tap each. */
+#setup-sheet { border: 0; padding: 22px 20px calc(18px + env(safe-area-inset-bottom)); margin: auto auto 0; width: 100%; max-width: 560px;
+  border-radius: 22px 22px 0 0; background: var(--bg); color: var(--text); box-shadow: 0 -10px 40px rgba(0,0,0,.25); }
+#setup-sheet::backdrop { background: rgba(5, 15, 30, .45); }
+#setup-sheet h2 { margin: 0 0 4px; }
+.setup-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.setup-row > span:first-child { display: grid; gap: 2px; }
+.setup-done { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #1baf7a; color: #fff; flex: none; }
+.setup-done .icon { width: 20px; height: 20px; }
+.setup-blocked { color: var(--danger); max-width: 48%; text-align: right; }
+.setup-close { width: 100%; margin-top: 12px; }
