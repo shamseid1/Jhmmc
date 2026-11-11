@@ -233,5 +233,5 @@ Reading (GET) is open to everyone. Every other request needs a signed-in angler.
 
 ## Credits
 
-- Icons: [Lucide](https://lucide.dev) (ISC licence), copied into `public/app.js`.
+- Icons: [Lucide](https://lucide.dev) (ISC licence), copied into `public/js/main.js` (the `ICONS` set).
 - Marlin logo: traced from artwork supplied by the club (`public/marlin.svg`, `public/logo.svg`).
