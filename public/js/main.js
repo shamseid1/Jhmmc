@@ -325,16 +325,19 @@ window.addEventListener('appinstalled', () => {
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-// The first time the installed app opens (signed in), a sheet asks for what it needs:
-// notifications and the phone's location. A page can only ask when someone taps, so
-// each is a button; Android then shows its own Allow / Don't allow. Where the phone
-// already said no, the sheet says where to switch it back on. Once per phone.
-const SETUP_KEY = 'setup-asked';
+// In the installed app (signed in), a sheet asks for what it needs: notifications and
+// the phone's location. A page can only ask when someone taps, so each is a button;
+// Android then shows its own Allow / Don't allow. Where the phone already said no, the
+// sheet says where to switch it back on. It comes back once a day until both are
+// allowed, then never again (the app's data survives reinstalling, so "once" wasn't enough).
+const SETUP_KEY = 'setup-shown-at';
 async function firstOpenSetup() {
-  try { if (localStorage.getItem(SETUP_KEY)) return; } catch { return; }
   if (!isInstalled() || !state.me || document.getElementById('setup-sheet')) return;
+  try { if (Date.now() - Number(localStorage.getItem(SETUP_KEY) || 0) < 864e5) return; } catch { return; }
   const state0 = async (name) => { try { return (await navigator.permissions.query({ name })).state; } catch { return 'prompt'; } };
   const notifyOn = pushSupported() && Notification.permission === 'granted' && !!(await pushSubscription().catch(() => ({}))).sub;
+  // Nothing missing: no sheet.
+  if ((notifyOn || !pushSupported()) && (await state0('geolocation')) === 'granted') return;
   const where = 'Settings → Apps → Africa Sportfishing';
   const dlg = document.createElement('dialog');
   dlg.id = 'setup-sheet';
@@ -366,7 +369,7 @@ async function firstOpenSetup() {
     } catch { /* the row says what to do */ }
     await draw();
   });
-  dlg.addEventListener('close', () => { try { localStorage.setItem(SETUP_KEY, '1'); } catch { /* asked again next time */ } dlg.remove(); });
+  dlg.addEventListener('close', () => { try { localStorage.setItem(SETUP_KEY, String(Date.now())); } catch { /* asked again next time */ } dlg.remove(); });
   document.body.append(dlg);
   dlg.showModal();
 }
