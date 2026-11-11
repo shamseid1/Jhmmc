@@ -71,7 +71,8 @@ test('privacy policy: a plain page with the contact email', async () => {
     assert.equal(r.status, 200);
     const page = await r.text();
     assert.match(page, /Privacy policy/);
-    assert.match(page, /boss@example\.com/);
+    assert.match(page, /info@africasportfishing\.com/, "the club's address");
+    assert.doesNotMatch(page, /boss@example\.com/, "never the admin's own");
     assert.doesNotMatch(page, /\{\{contact\}\}/);
     assert.match(page, /Delete my account/);
   } finally {

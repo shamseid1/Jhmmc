@@ -60,6 +60,8 @@ function createApp({
   appUrl = process.env.APP_URL,
   // The person members contact for help; their account is the app's admin.
   adminEmail = process.env.ADMIN_EMAIL,
+  // The address shown to members (privacy policy, password help); by default the one in MAIL_FROM.
+  contactEmail,
   // Sends phone notifications; made from the database's keys unless given (tests).
   pusher,
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
@@ -75,8 +77,12 @@ function createApp({
   demo = false,
 } = {}) {
   adminEmail = adminEmail?.trim().toLowerCase() || null;
+  // The address people are shown and can write to: the one the app sends from (MAIL_FROM,
+  // e.g. info@africasportfishing.com), never the admin's own. The admin's email only says
+  // which account is the admin and where the nightly backups go.
+  contactEmail = (contactEmail ?? (/<([^>]+)>/.exec(process.env.MAIL_FROM || '')?.[1] || (process.env.MAIL_FROM || '').trim()))?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
-  pusher ??= createPusher(db, { contact: adminEmail });
+  pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
   if (nightlyBackups) backups.start();
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -142,7 +148,7 @@ function createApp({
   // The privacy policy, at a plain address the app stores can link to.
   const privacyHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'privacy.html'), 'utf8');
   app.get(['/privacy', '/privacy.html'], (_req, res) => {
-    const contact = (adminEmail || 'shamseid4@gmail.com').replace(/[<>"&]/g, '');
+    const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
     res.set('Cache-Control', 'no-cache').type('html').send(privacyHtml.replaceAll('{{contact}}', contact));
   });
   app.use(express.static(path.join(__dirname, '..', 'public'), { ...fresh, index: false }));
@@ -274,7 +280,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     `).all();
     res.json({
       countries: COUNTRIES, species, lineClasses: LINE_CLASSES, homeClub: HOME_CLUB.name,
-      emailEnabled: mailer.configured, adminEmail, weighStations: WEIGH_STATIONS, homeClubId: homeClubId(),
+      emailEnabled: mailer.configured, contactEmail, weighStations: WEIGH_STATIONS, homeClubId: homeClubId(),
       season: { start: setting('season_start'), end: setting('season_end') }, demo,
     });
   });
@@ -375,8 +381,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const reply = { ok: true, message: 'If an account uses that email, a reset link is on its way. Check your inbox and spam folder.' };
     if (!mailer.configured) {
       return res.status(503).json({
-        error: adminEmail
-          ? `Password reset by email isn't available yet. Email ${adminEmail} from the address you signed up with and the admin will send you a reset link.`
+        error: contactEmail
+          ? `Password reset by email isn't available yet. Email ${contactEmail} from the address you signed up with and the admin will send you a reset link.`
           : "Password reset by email isn't available yet. Ask your club for help.",
       });
     }
@@ -701,7 +707,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   // Backups of the database (the admin only): the list, one now, and downloads.
   api.get('/admin/backups', requireAdmin, (_req, res) => {
-    res.json({ backups: backups.list(), emailOn: backups.emailOn, adminEmail });
+    res.json({ backups: backups.list(), emailOn: backups.emailOn });
   });
   api.post('/admin/backups', requireAdmin, async (req, res) => {
     const b = backups.make();

@@ -81,7 +81,7 @@ Environment variables:
 | `DB_FILE`     | `data/fishing.db`  | SQLite database file                      |
 | `UPLOAD_DIR`  | `uploads`          | Where catch photos are stored             |
 | `NODE_ENV`    | —                  | `production` marks the session cookie as secure (needs HTTPS) |
-| `ADMIN_EMAIL` | `shamseid4@gmail.com` | Club admin's email. Members who forget their password are told to write to it, and the account with this email gets the admin Members page |
+| `ADMIN_EMAIL` | `shamseid4@gmail.com` | The admin's email: the account with it is the app's admin, and the nightly backups are sent to it. It's never shown to members; they see the address in `MAIL_FROM` (e.g. info@africasportfishing.com) in the privacy policy and password help |
 | `APP_URL`     | the request's address | Public address used in emailed links, e.g. `https://west-africa-big-game.onrender.com` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | — | Email server for password resets. Without `SMTP_HOST`, emails are printed to the server log |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | made on first start | Keys for phone notifications (Web Push). Without them the app makes a pair and keeps it in the database |

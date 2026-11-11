@@ -3221,13 +3221,13 @@ const pagesFor = (view) => ({
   // The admin's backups: nightly copies of the database, emailed, and downloads.
   async backups() {
     if (!state.me?.isAdmin) return needLogin(view, 'see backups');
-    const { backups, emailOn, adminEmail } = await api('/admin/backups');
+    const { backups, emailOn } = await api('/admin/backups');
     const size = (b) => (b.size > 1e6 ? `${(b.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b.size / 1e3))} KB`);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Backups</h1>
       <p>Every night the app copies its database (every fish, account, point and decision) and keeps the last 14 days.</p>
       <div class="card pad ${emailOn ? '' : 'warn-card'}">${emailOn
-        ? raw(html`Each night's copy is also <b>emailed to ${adminEmail}</b>, so it's safe even if the server's disk is lost. Keep those emails.`)
+        ? raw('Each night\'s copy is also <b>emailed to you</b>, so it\'s safe even if the server\'s disk is lost. Keep those emails.')
         : raw('<b>Email isn\'t set up</b>, so the copies stay on the server only. Set up email (SMTP) on Render so each copy is also sent to you, or download one here now and then.')}</div>
       <p class="row-buttons"><button class="primary" id="b-now">Back up now and download</button>
         ${emailOn ? raw('<button id="b-mail">Back up now and email it</button>') : ''}</p>
@@ -3247,7 +3247,7 @@ const pagesFor = (view) => ({
       btn.textContent = 'Sending…';
       try {
         const { emailed } = await api('/admin/backups', { method: 'POST', body: { email: true }, once: true });
-        toast(emailed ? `Emailed to ${adminEmail}. Check your inbox (and Spam).` : 'Backed up.');
+        toast(emailed ? 'Emailed to you. Check your inbox (and Spam).' : 'Backed up.');
         route();
       } catch (err) {
         btn.disabled = false;
@@ -4030,7 +4030,7 @@ const pagesFor = (view) => ({
   async forgot() {
     if (!state.meta.emailEnabled) {
       // No email sending yet: the admin makes reset links by hand.
-      const admin = state.meta.adminEmail;
+      const admin = state.meta.contactEmail;
       const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - Africa Sportfishing')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
       view.innerHTML = html`<h1>Forgot your password?</h1>
         <div class="card pad stack">

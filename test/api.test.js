@@ -387,7 +387,7 @@ test('forgotten and changed passwords', async () => {
 
 test('without email: members contact the admin, who makes reset links', async () => {
   const quiet = { configured: false, send: async () => { throw new Error('should not send'); } };
-  const app = createApp({ openPosts: true, openClubs: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads2'), mailer: quiet, adminEmail: 'Admin@Example.com' });
+  const app = createApp({ openPosts: true, openClubs: true, dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads2'), mailer: quiet, adminEmail: 'Admin@Example.com', contactEmail: 'Info@Example.com' });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;
@@ -402,13 +402,15 @@ test('without email: members contact the admin, who makes reset links', async ()
   };
   try {
     const meta = (await as()('GET', '/meta')).body;
-    assert.deepEqual([meta.emailEnabled, meta.adminEmail], [false, 'admin@example.com']);
+    // Members are shown the club's contact address, never the admin's own.
+    assert.deepEqual([meta.emailEnabled, meta.contactEmail, meta.adminEmail], [false, 'info@example.com', undefined]);
 
     const kojo = as();
     await kojo('POST', '/auth/register', { name: 'Kojo Asante', email: 'kojo@example.com', password: 'forgotten1' });
     let r = await as()('POST', '/auth/forgot', { email: 'kojo@example.com' });
     assert.equal(r.status, 503);
-    assert.match(r.body.error, /admin@example\.com/);
+    assert.match(r.body.error, /info@example\.com/);
+    assert.doesNotMatch(r.body.error, /admin@example\.com/);
 
     assert.equal((await kojo('GET', '/admin/users')).status, 403, 'members are not admins');
     assert.equal((await kojo('GET', '/me')).body.user.isAdmin, false);

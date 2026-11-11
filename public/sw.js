@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v89';
+const CACHE = 'app-v90';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/boat.svg', '/logo-mark.png', '/fish-mark.png', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
