@@ -4353,10 +4353,11 @@ try {
 const phoneDark = matchMedia('(prefers-color-scheme: dark)');
 const themeChoice = () => {
   try {
+    // New phones start in light mode; Auto (follow the phone) only when picked.
     const t = localStorage.getItem(THEME_KEY);
-    return t === 'light' || t === 'dark' ? t : 'auto';
+    return t === 'dark' || t === 'auto' ? t : 'light';
   } catch {
-    return 'auto';
+    return 'light';
   }
 };
 function applyTheme(choice = themeChoice()) {
@@ -4399,8 +4400,7 @@ document.addEventListener('click', (e) => {
   }
   const value = choice.dataset.themeChoice;
   try {
-    if (value === 'auto') localStorage.removeItem(THEME_KEY);
-    else localStorage.setItem(THEME_KEY, value);
+    localStorage.setItem(THEME_KEY, value);
   } catch {
     // Private browsing: the choice lasts until the page closes.
   }
