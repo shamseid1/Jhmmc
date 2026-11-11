@@ -678,7 +678,7 @@ PAGE_GROUPS.push((view) => ({
         out.innerHTML = html`<p class="small muted">New link for ${name}, valid for ${hours} hours. Any older link stops working.</p>
           <input readonly value="${link}" aria-label="Reset link">
           <div class="actions"><button data-act="copy-link">Copy link</button>
-          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the Africa Sportfishing app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
+          <button type="button" data-share-text="${`Hello ${name}, here is your link to set a new password for the Africa Sportfishing app. It works once, within ${hours} hours: ${link}`}">Send the link</button></div>`;
         out.hidden = false;
         out.querySelector('input').select();
       } catch (ex) {

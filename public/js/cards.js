@@ -60,6 +60,26 @@ document.addEventListener('click', (e) => {
 const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/guest?name=${encodeURIComponent(name)}`);
 
 const whatsapp = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
+// Sending a message (an invite, a reset link): the phone's own share menu, so people
+// pick WhatsApp or WhatsApp Business (or Messages, email…); a WhatsApp link always
+// opens just one of them. Where there's no share menu (a computer), WhatsApp.
+async function shareMessage(text) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  window.open(whatsapp(text), '_blank', 'noopener');
+}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-share-text]');
+  if (!btn) return;
+  e.preventDefault();
+  shareMessage(btn.dataset.shareText);
+});
 
 // ---- catch card -----------------------------------------------------------
 

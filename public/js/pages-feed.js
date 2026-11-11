@@ -307,7 +307,7 @@ PAGE_GROUPS.push((view) => ({
         <div><div class="muted small">Invite your crew: they tap the link, sign up and they're aboard</div><div class="code">${team.joinCode}</div>
           <div class="muted small">The code is for anyone who'd rather type it in. Only you see it.</div></div>
         <div class="actions">
-          <a class="btn primary" target="_blank" rel="noopener" href="${whatsapp(inviteMsg)}">Invite on WhatsApp</a>
+          <button type="button" class="primary" data-share-text="${inviteMsg}">Send the invite</button>
           <button data-act="copy-link">Copy invite link</button>
           <button data-act="copy-code">Copy code</button>
           <button data-act="new-code">New code</button>
