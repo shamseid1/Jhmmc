@@ -2500,10 +2500,9 @@ const pagesFor = (view) => ({
     const quick = QUICK[state.me.division === 'river' ? 'river' : 'ocean'].map((n) => byName.get(n)).filter(Boolean);
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Log</a></p>
       <h1>Log fish</h1>
-      <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
-        <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
-      <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
-      <div class="card pad stack fishon">
+      <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span><span class="chip-date">${live ? 'Today' : fmtDate(day)}</span></div>
+      <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost.' : 'An earlier trip. Fish are logged at sea, as they\'re landed, so its spots are right.'}</p>
+      <div class="card pad stack fishon" ${live ? '' : raw('hidden')}>
         <div class="quick-species" role="radiogroup" aria-label="Species" ${quick.length ? '' : 'hidden'}>${quick.map((x) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}"><span>${x.name}</span></label>`))}</div>
         <select id="fo-species" aria-label="Other species">${raw(speciesOptions(null, 'Other species…'))}</select>
         <div class="fates">
@@ -2693,9 +2692,6 @@ const pagesFor = (view) => ({
           toast(err.message);
         }
       }
-    });
-    view.querySelector('#fo-day').addEventListener('change', (e) => {
-      if (e.target.value) location.hash = `#/fishon?date=${e.target.value}`;
     });
     // A blank day goes in the log too: it says as much about the season.
     view.querySelector('#fo-nocatch').addEventListener('click', async () => {
