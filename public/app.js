@@ -2302,12 +2302,18 @@ const pagesFor = (view) => ({
       for (const b of e.target.closest('fieldset').querySelectorAll('.wq')) b.classList.toggle('on', b.dataset.sp === e.target.value);
     });
     const anglerOptions = (selected) => options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], selected, crew.length ? 'Choose…' : 'Choose the boat first');
-    // Big buttons for the fish weighed most, like Log fish; the list has every species.
-    const WEIGH_QUICK = ['Blue marlin', 'Yellowfin tuna', 'Sailfish', 'Dorado', 'Wahoo', 'Barracuda']
-      .map((n) => state.meta.species.find((x) => x.name === n)).filter(Boolean);
+    // Big buttons for the fish weighed most, by the boat's division (Ocean or River),
+    // like Log fish; the list under them has every species.
+    const WEIGH_QUICK = {
+      ocean: ['Blue marlin', 'Sailfish', 'Yellowfin tuna', 'Dorado', 'Wahoo', 'Bonito'],
+      river: ['Barracuda', 'Grouper', 'Butter nose', 'Crevalle', 'Snapper', 'Grunter'],
+    };
+    const boatDivision = () => (teams.find((t) => String(t.id) === String(sheet?.teamId?.value))?.division === 'river' ? 'river' : 'ocean');
+    const quickButtons = () => WEIGH_QUICK[boatDivision()].map((n) => state.meta.species.find((x) => x.name === n)).filter(Boolean)
+      .map((x) => html`<button type="button" class="wq" data-sp="${x.id}">${x.name}</button>`).join('');
     const fishRow = () => html`<fieldset class="fish card pad">
       <legend><b class="fish-no"></b> <button type="button" class="link danger" data-act="remove-fish">Remove</button></legend>
-      <div class="weigh-quick">${WEIGH_QUICK.map((x) => raw(html`<button type="button" class="wq" data-sp="${x.id}">${x.name}</button>`))}</div>
+      <div class="weigh-quick">${raw(quickButtons())}</div>
       <div class="row">
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
         <label>Angler <select name="anglerId" required>${raw(anglerOptions())}</select></label>
@@ -2476,6 +2482,12 @@ const pagesFor = (view) => ({
     });
     // The secretary picks the boat: the angler lists and weigh station follow it.
     sheet.teamId.addEventListener('change', async () => {
+      // An Ocean boat's fish or a River boat's: the big buttons follow.
+      for (const box of sheet.querySelectorAll('.weigh-quick')) {
+        const picked = box.closest('fieldset').querySelector('select[name=speciesId]').value;
+        box.innerHTML = quickButtons();
+        for (const b of box.querySelectorAll('.wq')) b.classList.toggle('on', b.dataset.sp === picked);
+      }
       const boat = jhmmcBoats.find((t) => String(t.id) === sheet.teamId.value);
       if (boat?.weighStation && sheet.weighStation) sheet.weighStation.value = boat.weighStation;
       // A boat outside JHMMC is weighed at its home port: no station to choose.

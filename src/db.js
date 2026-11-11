@@ -46,7 +46,6 @@ const SPECIES = [
   ['Tripletail', 'Lobotes surinamensis', 'Inshore', 3],
   ['Yellow tail', null, 'Inshore', 3],
   ['Grunter', null, 'Inshore', 3],
-  ['Spotted grunter', null, 'Inshore', 3],
   ['Tiger fish', null, 'River', 3],
   ['Stingray', null, 'Ray', 3],
   ['Other', null, 'Other', 3],
@@ -708,12 +707,37 @@ function openDb(file) {
     'INSERT OR IGNORE INTO species (name, scientific_name, category, points_per_kg) VALUES (?, ?, ?, ?)'
   );
   for (const s of SPECIES) insert.run(...s);
+  mergeDuplicateSpecies(db);
   db.prepare('INSERT OR IGNORE INTO clubs (name, country) VALUES (?, ?)').run(HOME_CLUB.name, HOME_CLUB.country);
   // Season dates, changed by the secretary on the Calendar page.
   const setting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   setting.run('season_start', '2026-09-01');
   setting.run('season_end', '2027-08-31');
   return db;
+}
+
+// One of each fish: a second grouper or grunter (an old name, a "spotted" one)
+// is merged into Grouper or Grunter, with its catches, posts and logged fish.
+function mergeDuplicateSpecies(db) {
+  const all = db.prepare('SELECT id, name FROM species').all();
+  const keep = (name) => all.find((x) => x.name === name);
+  const into = (name) => (/grouper/i.test(name) && name !== 'Grouper' ? 'Grouper'
+    : /grunter/i.test(name) && name !== 'Grunter' ? 'Grunter' : null);
+  for (const sp of all) {
+    const target = into(sp.name) && keep(into(sp.name));
+    if (!target) continue;
+    db.exec('BEGIN');
+    try {
+      for (const t of ['catches', 'club_posts', 'outing_fish', 'outing_landings']) {
+        db.prepare(`UPDATE ${t} SET species_id = ? WHERE species_id = ?`).run(target.id, sp.id);
+      }
+      db.prepare('DELETE FROM species WHERE id = ?').run(sp.id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
 }
 
 module.exports = { openDb, COUNTRIES, LINE_CLASSES, HOME_CLUB, WEIGH_STATIONS };

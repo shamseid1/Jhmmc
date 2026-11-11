@@ -141,8 +141,8 @@ const BOOK = [
     ['Wave Runner', 'Dominic Asmar', '30 lb', 3.7, '2023-12-17'],
   ]],
   ['Yellow Tail', 'Yellow tail', [['Shams', 'Rachad Eid', '50 lb', 0.6, '2011-01-22']]],
-  ['Grunter', 'Grunter', [['Scandica', 'Agnetta Nilsson', '50 lb', 0.6, '2012-02-12']]],
-  ['Spotted Grunter', 'Spotted grunter', [['Scandica', 'Agnetta Nilsson', '30 lb', 0.8, '2012-12-30']]],
+  // The book's Grunter and Spotted Grunter, one species in the app.
+  ['Grunter', 'Grunter', [['Scandica', 'Agnetta Nilsson', '30 lb', 0.8, '2012-12-30'], ['Scandica', 'Agnetta Nilsson', '50 lb', 0.6, '2012-02-12']]],
   ['Tiger Fish', 'Tiger fish', [['Scandica', 'Agnetta Nilsson', '50 lb', 2.0, '2012-04-14']]],
   ['Sting Ray', 'Stingray', [['Wave Runner', 'Dominic Asmar', '30 lb', 2.1, '2019-12-01']]],
   ['Amberjack', 'Amberjack', [['Challenger', 'Jan Suck', '30 lb', 22.8, '2025-11-09']]],
