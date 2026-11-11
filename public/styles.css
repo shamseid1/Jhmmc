@@ -1163,3 +1163,4 @@ body { overscroll-behavior-y: contain; }
 .feed-row-text { grid-area: text; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-row-time { grid-area: time; font-size: 12.5px; }
 .feed-row .pill { grid-area: pill; margin: 0; }
+.pop-coords { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; user-select: all; }

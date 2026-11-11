@@ -3053,7 +3053,7 @@ const pagesFor = (view) => ({
       return;
     }
     const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${kg(x)}${x.released ? ' · released' : ''}<br>
-      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
+      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}<br><span class="pop-coords">${fmtCoords(x.lat, x.lng)}</span>${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
     // The charts are screenshots: sharp up to about zoom 11, blurry past it.
     const close = charts.length ? 11 : 12;
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: close - 1 });
