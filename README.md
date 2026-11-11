@@ -71,6 +71,7 @@ npm install
 npm start          # http://localhost:3000
 npm run dev        # restarts on file changes
 npm test
+npm run lint       # names used but never defined, code left unused (server and tests)
 ```
 
 Environment variables:
@@ -154,13 +155,20 @@ On Render, enter these under the service's **Environment** tab, together with `A
 
 ```
 server.js         entry point
-src/app.js        Express app and JSON API (/api/...)
+src/app.js        the Express app: setup, roles, uploads, the pages; then the routes
+src/routes/       the JSON API (/api/...) in parts: account, activity, notifications, admin,
+                  boats, catches, registrations, scoring, tournaments, posts, outings, people.
+                  Each is a function of a shared context: it takes what it uses and returns
+                  the helpers the others use.
 src/auth.js       password hashing (scrypt) and cookie sessions
-src/db.js         SQLite schema, species and country lists
+src/db.js         SQLite schema and one-time updates, species and country lists
+src/zones.js      each country's clock, for a boat's "today"
 src/demo.js       the demo copy's made-up season (DEMO=1)
 demo/             its fish pictures
 public/           single-page front end (vanilla JS, no build step)
-test/             API tests (node:test)
+public/js/        the app in parts, loaded in order by index.html and sharing one scope:
+                  core, exports (PDF, Excel), widgets, cards, pages-* (seven groups), main
+test/             API and file tests (node:test)
 ```
 
 ## API overview

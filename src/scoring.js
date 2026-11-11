@@ -40,4 +40,6 @@
   const api = { scoreCatch, MIN_KG };
   if (typeof module !== 'undefined') module.exports = api;
   else root.scoring = api;
+  // (Shared with the browser, where it hangs on window.)
+  /* global window */
 })(typeof window !== 'undefined' ? window : globalThis);

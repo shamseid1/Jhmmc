@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { openDb } = require('../src/db');
 const { createApp } = require('../src/app');
 
 const PNG = Buffer.from(
@@ -98,7 +97,6 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
     assert.equal(pub.ownPhoto, true);
     assert.equal(pub.scaleVideoUrl, null, 'no video for the public');
     assert.equal((await asSeenBy(crewB)).scaleVideoUrl, null, 'the scale video isn\'t for another boat\'s crew');
-    const secView = await asSeenBy(sec);
     assert.ok((await asSeenBy(capB)).scaleVideoUrl, 'JHMMC captains see the scale video');
     assert.ok((await asSeenBy(sec)).scaleVideoUrl, 'the secretary sees it');
     assert.ok((await asSeenBy(capA)).scaleVideoUrl, 'and the crew');

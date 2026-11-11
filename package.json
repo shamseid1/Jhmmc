@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\""
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
+    "lint": "eslint"
   },
   "engines": {
     "node": ">=22.13"
@@ -18,5 +19,9 @@
     "multer": "^2.5.0",
     "nodemailer": "^10.2.1",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
   }
 }
