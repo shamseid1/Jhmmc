@@ -841,7 +841,11 @@ a.me-card { color: var(--text); text-decoration: none; }
 .photo-cap { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 1px; padding: 40px 16px 12px;
   background: linear-gradient(transparent, rgba(0, 10, 30, .78)); color: #fff; font-size: 14px; font-weight: 600; pointer-events: none; }
 .photo-cap b { font: 600 22px/1.1 "Oswald", "Montserrat", sans-serif; letter-spacing: .02em; text-transform: uppercase; }
-.feed-gallery .catch-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0; }
+/* Any shape: landscape and portrait photos show whole, like Instagram;
+   only very tall ones (beyond 4:5) are trimmed top and bottom. */
+.feed-gallery .catch-photo { display: block; width: 100%; height: auto; aspect-ratio: auto; max-height: min(125vw, 75vh, 680px);
+  object-fit: cover; border-radius: 0; background: var(--surface-2); }
+.feed-gallery .gallery { align-items: center; background: var(--surface-2); }
 /* Log fish: each fish's photo square, on the right of its row. */
 .fo-row { display: flex; align-items: center; gap: 12px; }
 .fo-main { flex: 1; min-width: 0; }
