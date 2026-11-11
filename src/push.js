@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const http2 = require('node:http2');
 const webpush = require('web-push');
 
 // The Android app gets its notifications from Firebase Cloud Messaging (HTTP v1 API).
@@ -82,11 +83,70 @@ function createFcm(env, fetchImpl = globalThis.fetch) {
   };
 }
 
+// The iPhone app gets its notifications straight from Apple (APNs), with the push key made
+// in the Apple Developer account: APNS_KEY (the .p8 file's text, or base64), APNS_KEY_ID,
+// APNS_TEAM_ID; APNS_TOPIC is the app's bundle ID. Without them, iPhones get none.
+function createApns(env, sendImpl) {
+  let key = env.APNS_KEY;
+  if (!key || !env.APNS_KEY_ID || !env.APNS_TEAM_ID) return null;
+  if (!key.includes('BEGIN')) key = Buffer.from(key, 'base64').toString('utf8');
+  // Pasted with its line breaks lost: put them back around the key.
+  key = key.replace(/-----BEGIN PRIVATE KEY-----\s*/, '-----BEGIN PRIVATE KEY-----\n').replace(/\s*-----END PRIVATE KEY-----/, '\n-----END PRIVATE KEY-----');
+  let privateKey;
+  try { privateKey = crypto.createPrivateKey(key); } catch {
+    console.warn('APNS_KEY could not be read: iPhone app notifications are off.');
+    return null;
+  }
+  const topic = env.APNS_TOPIC || 'com.africasportfishing.app';
+  const host = env.APNS_HOST || 'https://api.push.apple.com';
+  let jwt = null;
+  let madeAt = 0;
+  const token = () => {
+    // Apple wants a new one at most every 20 minutes and at least every hour.
+    if (jwt && Date.now() - madeAt < 40 * 60000) return jwt;
+    const b64 = (v) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    const unsigned = `${b64({ alg: 'ES256', kid: env.APNS_KEY_ID })}.${b64({ iss: env.APNS_TEAM_ID, iat: Math.floor(Date.now() / 1000) })}`;
+    jwt = `${unsigned}.${crypto.sign('sha256', Buffer.from(unsigned), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`;
+    madeAt = Date.now();
+    return jwt;
+  };
+  // One HTTP/2 request to Apple: { status, body }.
+  const send = sendImpl || ((path, headers, body) => new Promise((resolve, reject) => {
+    const client = http2.connect(host);
+    client.on('error', reject);
+    const req = client.request({ ':method': 'POST', ':path': path, ...headers });
+    let status = 0;
+    let text = '';
+    req.on('response', (h) => { status = h[':status']; });
+    req.setEncoding('utf8');
+    req.on('data', (c) => { text += c; });
+    req.on('end', () => { client.close(); resolve({ status, body: text }); });
+    req.on('error', (err) => { client.close(); reject(err); });
+    req.end(body);
+  }));
+  console.log('iPhone app notifications on.');
+  return {
+    // Resolves to false when the token is gone for good (the app was deleted).
+    async send(deviceToken, payload) {
+      const res = await send(`/3/device/${deviceToken}`, {
+        authorization: `bearer ${token()}`, 'apns-topic': topic, 'apns-push-type': 'alert', 'apns-priority': '10',
+        'content-type': 'application/json',
+      }, JSON.stringify({
+        aps: { alert: { title: String(payload.title || 'Africa Sportfishing'), body: String(payload.body || '') }, sound: 'default' },
+        url: String(payload.url || '/'),
+      }));
+      if (res.status === 200) return true;
+      if (res.status === 410 || /BadDeviceToken|Unregistered|DeviceTokenNotForTopic/.test(res.body)) return false;
+      throw new Error(`Apple ${res.status}: ${String(res.body).slice(0, 200)}`);
+    },
+  };
+}
+
 // Phone notifications (Web Push), used to tell the secretary there are fish
 // to review. The VAPID keys that identify this server to the browsers' push
 // services come from VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY, or are made on
 // first start and kept in the database so subscriptions survive restarts.
-function createPusher(db, { contact, env = process.env, fetchImpl } = {}) {
+function createPusher(db, { contact, env = process.env, fetchImpl, apnsSend } = {}) {
   const setting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value;
   let publicKey = env.VAPID_PUBLIC_KEY || setting('vapid_public');
   let privateKey = env.VAPID_PRIVATE_KEY || setting('vapid_private');
@@ -98,6 +158,7 @@ function createPusher(db, { contact, env = process.env, fetchImpl } = {}) {
   }
   const vapidDetails = { subject: `mailto:${contact || 'admin@example.com'}`, publicKey, privateKey };
   const fcm = createFcm(env, fetchImpl);
+  const apns = createApns(env, apnsSend);
   return {
     publicKey,
     // Resolves to false when the subscription is gone for good (the person
@@ -105,6 +166,8 @@ function createPusher(db, { contact, env = process.env, fetchImpl } = {}) {
     async send(subscription, payload) {
       // The Android app: an "fcm:" endpoint is a Firebase token.
       if (subscription.endpoint.startsWith('fcm:')) return fcm ? fcm.send(subscription.endpoint.slice(4), payload) : true;
+      // The iPhone app: an "apns:" endpoint is an Apple device token.
+      if (subscription.endpoint.startsWith('apns:')) return apns ? apns.send(subscription.endpoint.slice(5), payload) : true;
       try {
         await webpush.sendNotification(subscription, JSON.stringify(payload), { vapidDetails, TTL: 24 * 60 * 60 });
         return true;

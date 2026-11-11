@@ -1,0 +1,98 @@
+# Builds the iPhone app on GitHub's Mac and uploads it to App Store Connect (TestFlight).
+# Runs by hand: Actions → iPhone app → Run workflow.
+# Needs these repository secrets (Settings → Secrets and variables → Actions), from
+# App Store Connect → Users and Access → Integrations → App Store Connect API (role: Admin):
+#   APPSTORE_API_KEY        the key file (AuthKey_XXXX.p8): its whole text
+#   APPSTORE_API_KEY_ID     the key's ID
+#   APPSTORE_API_ISSUER_ID  the Issuer ID shown above the keys
+# The app must exist in App Store Connect (Apps → New App, bundle ID com.africasportfishing.app).
+name: iPhone app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: android-app
+    env:
+      ASC_KEY: ${{ secrets.APPSTORE_API_KEY }}
+      ASC_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Capacitor and copy its plugins into the iPhone project
+        run: |
+          npm ci
+          npx cap sync ios
+      - name: Get a signing certificate and profile from Apple
+        id: signing
+        run: |
+          openssl req -new -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/dist.key" -out "$RUNNER_TEMP/dist.csr" -subj "/CN=Africa Sportfishing CI/C=US"
+          node scripts/ios-signing.js "$RUNNER_TEMP"
+      - name: Put them on this Mac
+        env:
+          PROFILE_UUID: ${{ steps.signing.outputs.profile_uuid }}
+        run: |
+          cd "$RUNNER_TEMP"
+          openssl x509 -inform DER -in dist.cer -out dist.pem
+          PASS=$(openssl rand -hex 16)
+          openssl pkcs12 -export -legacy -inkey dist.key -in dist.pem -out dist.p12 -passout "pass:$PASS" 2>/dev/null \
+            || openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12 -passout "pass:$PASS"
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$PASS" "$KC"
+          security import dist.p12 -P "$PASS" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$PASS" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          for d in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$d" && cp profile.mobileprovision "$d/$PROFILE_UUID.mobileprovision"
+          done
+      - name: Sign the app with that profile (the app only, not its packages)
+        env:
+          TEAM_ID: ${{ steps.signing.outputs.team_id }}
+          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
+        run: |
+          perl -0pi -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;\n\t\t\t\tDEVELOPMENT_TEAM = $ENV{TEAM_ID};\n\t\t\t\t"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "$ENV{PROFILE_NAME}";/g' ios/App/App.xcodeproj/project.pbxproj
+          grep -c "PROVISIONING_PROFILE_SPECIFIER" ios/App/App.xcodeproj/project.pbxproj
+      - name: Build the app
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} archive | tail -40
+          test -d "$RUNNER_TEMP/App.xcarchive"
+      - name: Upload it to App Store Connect (TestFlight)
+        env:
+          TEAM_ID: ${{ steps.signing.outputs.team_id }}
+          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>com.africasportfishing.app</key><string>$PROFILE_NAME</string></dict>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/export" -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Uploaded build ${{ github.run_number }}. It shows in App Store Connect → TestFlight after Apple processes it (about 10-30 minutes)."
+      - name: Remove the signing files
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP"/dist.* "$RUNNER_TEMP/AuthKey.p8"

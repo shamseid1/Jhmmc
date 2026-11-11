@@ -221,3 +221,33 @@ test('the Android app gets its notifications from Firebase', async () => {
   const off = createPusher(db, { env: {}, fetchImpl: () => assert.fail('no call') });
   assert.equal(await off.send({ endpoint: 'fcm:live-token' }, { title: 'x' }), true);
 });
+
+test('the iPhone app gets its notifications from Apple', async () => {
+  const { createPusher } = require('../src/push');
+  const { DatabaseSync } = require('node:sqlite');
+  const crypto = require('node:crypto');
+  const db = new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)');
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  // Pasted into a dashboard on one line, as phones do.
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).replace(/\n/g, ' ');
+  const calls = [];
+  const apnsSend = async (path, headers, body) => {
+    calls.push({ path, headers, body: JSON.parse(body) });
+    return path.includes('dead') ? { status: 410, body: '{"reason":"Unregistered"}' } : { status: 200, body: '' };
+  };
+  const env = { APNS_KEY: pem, APNS_KEY_ID: 'KEY123', APNS_TEAM_ID: 'TEAM45' };
+  const pusher = createPusher(db, { env, apnsSend });
+  assert.equal(await pusher.send({ endpoint: 'apns:abcd1234' }, { title: 'Weigh-in', body: 'Sailfish', url: '/#/catch/2' }), true);
+  const [c] = calls;
+  assert.equal(c.path, '/3/device/abcd1234');
+  assert.equal(c.headers['apns-topic'], 'com.africasportfishing.app');
+  assert.deepEqual([c.body.aps.alert.title, c.body.url], ['Weigh-in', '/#/catch/2']);
+  // Signed with the push key (ES256), naming the key and the team.
+  const [h, p, sig] = c.headers.authorization.replace('bearer ', '').split('.');
+  assert.ok(crypto.verify('sha256', Buffer.from(`${h}.${p}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')));
+  assert.equal(JSON.parse(Buffer.from(h, 'base64url')).kid, 'KEY123');
+  assert.equal(JSON.parse(Buffer.from(p, 'base64url')).iss, 'TEAM45');
+  // A deleted app's token is gone for good.
+  assert.equal(await pusher.send({ endpoint: 'apns:dead' }, { title: 'x' }), false);
+});

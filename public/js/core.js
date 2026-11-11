@@ -13,6 +13,10 @@ const main = document.getElementById('view');
 // browser's place: it asks with the phone's Allow dialog and, when the phone's location
 // is off, offers to turn it on right there. Notifications come through Firebase (main.js).
 const NATIVE = !!(window.Capacitor?.isNativePlatform?.() && window.Capacitor.nativePromise);
+const IOS_APP = NATIVE && window.Capacitor.getPlatform?.() === 'ios';
+// Where the phone's own switches are, for a permission said no to.
+const appSettings = (what) => (IOS_APP ? `Settings → Africa Sportfishing → ${what}`
+  : `Settings → Apps → Africa Sportfishing → ${what === 'Notifications' ? 'Notifications' : `Permissions → ${what}`}`);
 const native = (plugin, method, options = {}) => window.Capacitor.nativePromise(plugin, method, options);
 const nativeListen = (plugin, eventName, fn) => window.Capacitor.nativeCallback(plugin, 'addListener', { eventName }, fn);
 if (NATIVE && navigator.geolocation) {

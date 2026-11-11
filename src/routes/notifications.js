@@ -15,6 +15,14 @@ module.exports = (ctx) => {
   // A phone or browser that agreed to notifications; one person may have several.
   api.post('/push/subscribe', (req, res) => {
     // The Android app: a Firebase token, kept as an "fcm:" endpoint.
+    const apns = req.body?.apns;
+    if (apns !== undefined) {
+      // The iPhone app: an Apple device token (hex), kept as an "apns:" endpoint.
+      if (typeof apns !== 'string' || !/^[0-9a-fA-F]{64,200}$/.test(apns)) return res.status(400).json({ error: 'That notification token could not be read.' });
+      db.prepare(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, '', '')
+        ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id`).run(req.user.id, `apns:${apns.toLowerCase()}`);
+      return res.status(201).json({ ok: true });
+    }
     const fcm = req.body?.fcm;
     if (fcm !== undefined) {
       if (typeof fcm !== 'string' || !/^[\w:.-]{20,4096}$/.test(fcm)) return res.status(400).json({ error: 'That notification token could not be read.' });

@@ -114,8 +114,8 @@ if (NATIVE) {
     const url = a?.notification?.data?.url;
     if (url && url.startsWith('/')) location.href = url;
   });
-  // In the app already: Android doesn't show it, so a toast does.
-  nativeListen('PushNotifications', 'pushNotificationReceived', (n) => { if (n?.title) toast(n.body ? `${n.title}: ${n.body}` : n.title); });
+  // In the app already: Android doesn't show it, so a toast does (the iPhone shows its banner).
+  if (!IOS_APP) nativeListen('PushNotifications', 'pushNotificationReceived', (n) => { if (n?.title) toast(n.body ? `${n.title}: ${n.body}` : n.title); });
 }
 function fcmToken() {
   return new Promise((resolve, reject) => {
@@ -124,6 +124,8 @@ function fcmToken() {
     setTimeout(() => reject(new Error('Notifications could not be set up. Try again.')), 20000);
   });
 }
+// Android's token is Firebase's; the iPhone's is Apple's.
+const tokenBody = (token) => (IOS_APP ? { apns: token } : { fcm: token });
 const savedFcm = () => { try { return localStorage.getItem(FCM_KEY); } catch { return null; } };
 // Firebase can change a phone's token: each start of the app, the current one goes to the server.
 if (NATIVE && savedFcm()) {
@@ -132,7 +134,7 @@ if (NATIVE && savedFcm()) {
       if ((await notifyPermission()) !== 'granted' || !state.me) return;
       const token = await fcmToken();
       try { localStorage.setItem(FCM_KEY, token); } catch { /* fine */ }
-      await api('/push/subscribe', { method: 'POST', body: { fcm: token } });
+      await api('/push/subscribe', { method: 'POST', body: tokenBody(token) });
     } catch { /* tried again next start */ }
   }, 4000);
 }
@@ -150,7 +152,7 @@ async function enablePush() {
     if (r !== 'granted') return false;
     const token = await fcmToken();
     try { localStorage.setItem(FCM_KEY, token); } catch { /* registered again next time */ }
-    await api('/push/subscribe', { method: 'POST', body: { fcm: token } });
+    await api('/push/subscribe', { method: 'POST', body: tokenBody(token) });
     return true;
   }
   if ((await Notification.requestPermission()) !== 'granted') return false;
@@ -167,8 +169,8 @@ async function pushSubscription() {
     // The same shape as the browser's subscription.
     const token = (await notifyPermission()) === 'granted' ? savedFcm() : null;
     return { sub: token && {
-      endpoint: `fcm:${token}`,
-      toJSON: () => ({ fcm: token }),
+      endpoint: IOS_APP ? `apns:${token.toLowerCase()}` : `fcm:${token}`,
+      toJSON: () => tokenBody(token),
       unsubscribe: async () => { try { localStorage.removeItem(FCM_KEY); } catch { /* fine */ } await native('PushNotifications', 'unregister').catch(() => {}); },
     } };
   }
@@ -193,7 +195,7 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
   }
   if (permission === 'denied') {
     el.innerHTML = isInstalled()
-      ? '<p class="small muted">Notifications are blocked on this phone. Turn them on in Settings → Apps → Africa Sportfishing → Notifications, then come back here.</p>'
+      ? `<p class="small muted">Notifications are blocked on this phone. Turn them on in ${esc(appSettings('Notifications'))}, then come back here.</p>`
       : '<p class="small muted">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>';
     return;
   }
@@ -398,7 +400,6 @@ async function firstOpenSetup() {
   const notifyOn = pushSupported() && (await notifyPermission()) === 'granted' && !!(await pushSubscription().catch(() => ({}))).sub;
   // Nothing missing: no sheet.
   if ((notifyOn || !pushSupported()) && (await locationPermission()) === 'granted') return;
-  const where = 'Settings → Apps → Africa Sportfishing';
   const dlg = document.createElement('dialog');
   dlg.id = 'setup-sheet';
   const row = (key, title, sub, done, blocked) => html`<div class="setup-row" data-row="${key}">
@@ -413,9 +414,9 @@ async function firstOpenSetup() {
       <p class="small muted">Two quick permissions so it works at sea and tells you what's happening.</p>
       ${raw(pushSupported() ? row('notify', 'Notifications', 'Weigh-ins, fish logged and club announcements',
         notifyOn || (notify === 'granted' && dlg.dataset.notify === 'on'),
-        notify === 'denied' ? `${where} → Notifications → Allow` : '') : '')}
+        notify === 'denied' ? `${appSettings('Notifications')} → Allow` : '') : '')}
       ${raw(row('location', 'Location', 'The spot of each fish you log, for your crew only',
-        loc === 'granted', loc === 'denied' ? `${where} → Permissions → Location → Allow` : ''))}
+        loc === 'granted', loc === 'denied' ? `${appSettings('Location')} → ${IOS_APP ? 'While Using the App' : 'Allow'}` : ''))}
       <button type="button" class="setup-close">Done</button>`;
   };
   await draw();
