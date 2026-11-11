@@ -390,6 +390,169 @@ document.addEventListener('click', async (e) => {
 });
 const pdfButton = (label = 'Download PDF') => `<button type="button" class="btn pdf-btn" data-pdf>${icon('download')} ${esc(label)}</button>`;
 
+// Excel workbooks (.xlsx) for the treasurer and the secretary, made on the phone with
+// no library: the sheets as XML, zipped. Each sheet: a title row, a header row (bold,
+// white on navy, kept in view when scrolling), then the rows; numbers stay numbers.
+// sheets: [{ name, title, note?, columns: [{ header, width }], rows: [[...]], totals?: [...] }]
+function makeXlsx(sheets) {
+  const enc = new TextEncoder();
+  const x = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const col = (n) => { let s = ''; for (n += 1; n; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+  // Styles: 0 plain, 1 header, 2 title, 3 note, 4 bold, 5 red bold.
+  const cell = (v, r, c, st = 0) => {
+    const ref = `${col(c)}${r}`;
+    if (v == null || v === '') return st ? `<c r="${ref}" s="${st}"/>` : '';
+    if (typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}" s="${st}"><v>${v}</v></c>`;
+    return `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
+  };
+  const sheetXml = (sh) => {
+    const n = sh.columns.length;
+    const rows = [];
+    let r = 1;
+    rows.push(`<row r="${r}" ht="26" customHeight="1">${cell(sh.title, r, 0, 2)}</row>`); r += 1;
+    if (sh.note) { rows.push(`<row r="${r}">${cell(sh.note, r, 0, 3)}</row>`); r += 1; }
+    r += 1;
+    const headRow = r;
+    rows.push(`<row r="${r}" ht="22" customHeight="1">${sh.columns.map((c, i) => cell(c.header, r, i, 1)).join('')}</row>`); r += 1;
+    for (const row of sh.rows) {
+      rows.push(`<row r="${r}">${row.map((v, i) => cell(v && typeof v === 'object' ? v.v : v, r, i, v && typeof v === 'object' ? v.s : 0)).join('')}</row>`);
+      r += 1;
+    }
+    if (sh.totals) rows.push(`<row r="${r}">${sh.totals.map((v, i) => cell(v, r, i, 4)).join('')}</row>`);
+    const lastRow = Math.max(headRow, r - 1);
+    const last = `${col(n - 1)}${lastRow}`;
+    sh.filterRef = sh.rows.length ? `$A$${headRow}:$${col(n - 1)}$${lastRow}` : null;
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headRow}" topLeftCell="A${headRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<cols>${sh.columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width || 16}" customWidth="1"/>`).join('')}</cols>
+<sheetData>${rows.join('')}</sheetData>
+${sh.rows.length ? `<autoFilter ref="A${headRow}:${last}"/>` : ''}
+<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>
+</worksheet>`;
+  };
+  const names = new Set();
+  const safeName = (s) => {
+    let base = String(s).replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'Sheet';
+    let name = base; let k = 2;
+    while (names.has(name.toLowerCase())) name = `${base.slice(0, 28)} ${k++}`;
+    names.add(name.toLowerCase());
+    return name;
+  };
+  const files = {
+    '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,
+    '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sh, i) => `<sheet name="${x(sh.safe = safeName(sh.name))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>WORKBOOK_NAMES</workbook>`,
+    'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    'xl/styles.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF001A43"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF56647A"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFC62828"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF001A43"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`,
+  };
+  sheets.forEach((sh, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = sheetXml(sh); });
+  // Excel wants each sheet's filter range named too.
+  const named = sheets.map((sh, i) => (sh.filterRef ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${x(sh.safe.replace(/'/g, "''"))}'!${sh.filterRef}</definedName>` : '')).join('');
+  files['xl/workbook.xml'] = files['xl/workbook.xml'].replace('WORKBOOK_NAMES', named ? `<definedNames>${named}</definedNames>` : '');
+  // Bold totals use the plain black bold font, not the header's white one.
+  files['xl/styles.xml'] = files['xl/styles.xml'].replace('<fonts count="5">', '<fonts count="6">')
+    .replace('</fonts>', '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>')
+    .replace('<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>', '<xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/>');
+  // The zip: stored (no compression), which every spreadsheet app reads.
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc32 = (b) => { let c = 0xffffffff; for (const v of b) c = crcTable[(c ^ v) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const parts = []; const central = []; let offset = 0;
+  const u16 = (v) => [v & 255, (v >>> 8) & 255]; const u32 = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  for (const [name, text] of Object.entries(files)) {
+    const data = enc.encode(text); const nm = enc.encode(name); const crc = crc32(data);
+    const head = [...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nm.length), ...u16(0)];
+    parts.push(new Uint8Array(head), nm, data);
+    central.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nm.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nm);
+    offset += head.length + nm.length + data.length;
+  }
+  const size = central.reduce((n, b) => n + b.length, 0);
+  const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(Object.keys(files).length), ...u16(Object.keys(files).length), ...u32(size), ...u32(offset), ...u16(0)]);
+  return new Blob([...parts, ...central, end], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+const saveBlob = (blob, name) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+
+// The officers' workbook: a summary, the members, and a sheet per tournament (or one tournament).
+async function officersWorkbook(onlyTournament = null) {
+  const [club, { events, season }] = await Promise.all([api('/club-members'), api('/events')]);
+  const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
+  const made = new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const tournaments = events.filter((e) => e.kind === 'tournament' && (!onlyTournament || String(e.id) === String(onlyTournament)));
+  const sheetsData = await Promise.all(tournaments.map((t) => api(`/tournaments/${t.id}/sheet`)));
+  const red = (v) => ({ v, s: 5 });
+  const members = [...club.people.map((p) => [p.name, p.teamName || '', p.email || '', 'Yes', p.paid ? 'Paid' : red('Not paid')]),
+    ...club.named.map((p) => [p.name, p.teamName || '', '', 'No', p.paid ? 'Paid' : red('Not paid')])]
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  const paidN = members.filter((m) => m[4] === 'Paid').length;
+  const tSheets = sheetsData.map(({ tournament, boats, fee }) => {
+    const rows = [];
+    let guests = 0; let owed = 0; let paidGuests = 0;
+    for (const b of boats.filter((x) => x.entered)) {
+      const list = [...b.anglers.filter((a) => a.member), ...b.anglers.filter((a) => !a.member)];
+      if (!list.length) rows.push([b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '', '(no anglers listed)', '', '', '']);
+      for (const a of list) {
+        if (!a.member) { guests += 1; if (a.paid) paidGuests += 1; else owed += fee; }
+        rows.push([b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '', a.name, a.member ? 'JHMMC member' : 'Guest',
+          a.member ? 'Paid (season)' : a.paid ? 'Paid' : red('Not paid'), a.member ? 0 : a.paid ? 0 : fee]);
+      }
+    }
+    const notIn = boats.filter((x) => !x.entered).map((b) => b.teamName);
+    return {
+      tournament, fee, guests, paidGuests, owed, boatsIn: boats.filter((x) => x.entered).length,
+      sheet: {
+        name: tournament.name, title: `${tournament.name}: registration`,
+        note: `${fmtDays(tournament)}. Temporary membership USD ${fee}. Not in: ${notIn.join(', ') || 'none'}. Generated ${made}.`,
+        columns: [{ header: 'Boat', width: 20 }, { header: 'Division', width: 10 }, { header: 'Weigh station', width: 16 }, { header: 'Angler', width: 24 },
+          { header: 'Status', width: 16 }, { header: 'Paid', width: 14 }, { header: 'Still to pay (USD)', width: 18 }],
+        rows, totals: ['Total', '', '', `${rows.length} anglers`, `${guests} guests`, `${paidGuests} paid`, owed],
+      },
+    };
+  });
+  const summary = {
+    name: 'Summary', title: `JHMMC ${label}: treasurer and secretary`, note: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Generated ${made}.`,
+    columns: [{ header: 'What', width: 56 }, { header: 'Boats in', width: 10 }, { header: 'Guests', width: 10 }, { header: 'Guests paid', width: 12 },
+      { header: 'Still to pay (USD)', width: 18 }, { header: 'Members paid', width: 14 }, { header: 'Members not paid', width: 18 }],
+    rows: [
+      ...(onlyTournament ? [] : [[`Club membership ${label}`, '', '', '', '', paidN, members.length - paidN]]),
+      ...tSheets.map((t) => [`${t.tournament.name} (${fmtDays(t.tournament)})`, t.boatsIn, t.guests, t.paidGuests, t.owed, '', '']),
+    ],
+  };
+  const sheets = [summary,
+    ...(onlyTournament ? [] : [{ name: 'Members', title: `JHMMC members ${label}`, note: `${members.length} members: ${paidN} paid, ${members.length - paidN} not paid. Generated ${made}.`,
+      columns: [{ header: 'Name', width: 26 }, { header: 'Boat', width: 20 }, { header: 'Email', width: 30 }, { header: 'On the app', width: 12 }, { header: `Membership ${label}`, width: 18 }],
+      rows: members }]),
+    ...tSheets.map((t) => t.sheet)];
+  const file = onlyTournament && tSheets[0] ? fileName(`${tSheets[0].tournament.name} registration`).replace(/\.pdf$/, '.xlsx')
+    : `JHMMC-${label.replace('–', '-')}-treasurer-${today()}.xlsx`;
+  saveBlob(makeXlsx(sheets), file);
+}
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-xlsx]');
+  if (!btn) return;
+  const was = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Making the spreadsheet…';
+  try { await officersWorkbook(btn.dataset.xlsx || null); } catch (err) { toast(err.message); } finally { btn.disabled = false; btn.innerHTML = was; }
+});
+const xlsxButton = (label = 'Download Excel', tournament = '') => `<button type="button" class="btn pdf-btn" data-xlsx="${esc(tournament)}">${icon('download')} ${esc(label)}</button>`;
+
 // The maps: satellite imagery (Esri World Imagery) with borders and place
 // names (country, city, town) on top.
 function addSatellite(L, map) {
@@ -3348,6 +3511,7 @@ const pagesFor = (view) => ({
         ${state.me.canApprove ? raw('<a class="card" href="#/review">Review catches</a><a class="card" href="#/weigh">Weigh-in</a>') : ''}
         <a class="card" href="#/tournaments?sheets=1">Tournament sheets</a><a class="card" href="#/club-members">Club members</a>
       </div>
+      <p class="pdf-row">${raw(xlsxButton('Excel: members and tournaments'))}</p>
       <h2>Your last changes</h2>
       <div class="card">${d.mine.length ? raw(d.mine.map((x) => html`<div class="desk-row"><span>${x.action}<small>${fmtWhen(x.at)}</small></span></div>`).join('')) : raw('<div class="desk-row muted">None yet.</div>')}</div>
       <p><a href="#/activity">Full activity log ›</a></p>`;
@@ -3644,7 +3808,7 @@ const pagesFor = (view) => ({
         <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
         ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>
       ${manage ? raw('<p class="small muted">The captain is notified.</p>') : ''}`;
-    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the sheet (PDF)')}</p>`);
+    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the sheet (PDF)')} ${xlsxButton('Excel', String(id))}</p>`);
     view.querySelector('[data-pdf]').pdf = () => {
       return {
         title: `${tournament.name}: registration sheet`,
@@ -3774,7 +3938,7 @@ const pagesFor = (view) => ({
         <label class="check"><input type="checkbox" name="paid" checked> Paid ${label}</label>
         <p class="error"></p><div><button type="submit" class="primary">Add member</button></div>
       </form>`;
-    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the list (PDF)')}</p>`);
+    view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the list (PDF)')} ${xlsxButton('Excel: members and tournaments')}</p>`);
     // Fetched again when the PDF is made, so payments ticked since are in it.
     view.querySelector('[data-pdf]').pdf = async () => {
       const now = await api('/club-members');
