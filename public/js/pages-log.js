@@ -295,7 +295,12 @@ PAGE_GROUPS.push((view) => ({
               : "your browser's site settings → Location → Allow"}, then come back.</span>`;
           return;
         }
-        gps.textContent = 'Finding GPS… It needs open sky: indoors it can take a while. Check Location is on in the phone\'s quick settings.';
+        // Allowed as far as the page can tell, but nothing comes: the app's location may be off on
+        // the phone, or the phone's Location switch. A tap on the button asks the phone again.
+        gps.innerHTML = html`<b>No GPS yet.</b> If location is off, turn it on. Indoors the GPS can take a while.
+          <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
+          <span class="gps-where" hidden>If nothing asks you: check Location is on in the phone's quick settings, and
+          ${isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app' : "your browser's site settings → Location → Allow"}.</span>`;
         navigator.geolocation.getCurrentPosition((pos) => {
           if (fix) return;
           fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
