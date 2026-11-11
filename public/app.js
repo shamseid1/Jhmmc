@@ -324,16 +324,36 @@ async function savePdf({ title, subtitle = '', sections, file }) {
   if (crest) doc.addImage(crest, 'PNG', W - 92, 32, 52, 44, 'crest', 'FAST');
   doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text('AFRICA SPORTFISHING', 92, 47);
   doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(90, 100, 120).text('JHMMC · Jim Holder Memorial Marine Club', 92, 62);
+  const made = new Date().toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(...NAVY).text(title, 40, 112, { maxWidth: W - 80 });
   let y = 112 + (doc.splitTextToSize(title, W - 80).length - 1) * 22;
   if (subtitle) {
     doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(90, 100, 120).text(subtitle, 40, y + 18, { maxWidth: W - 80 });
     y += 18 + (doc.splitTextToSize(subtitle, W - 80).length - 1) * 14;
   }
+  doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...NAVY).text(`Generated ${made}`, 40, y + 16);
+  y += 16;
   y += 22;
   for (const s of sections) {
     if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
     if (s.heading) { doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text(s.heading, 40, y + 4); y += 12; }
+    // A bar chart: one bar per row, the value at its end (bars grow from zero; a negative one points left).
+    if (s.bars) {
+      const labelW = 130; const x0 = 40 + labelW; const full = W - 40 - x0 - 50;
+      const lo = Math.min(0, ...s.bars.map((b) => b.value)); const hi = Math.max(0, ...s.bars.map((b) => b.value));
+      const at = (v) => x0 + ((v - lo) / (hi - lo || 1)) * full;
+      y += 10;
+      for (const b of s.bars) {
+        doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(20, 30, 50).text(doc.splitTextToSize(b.label, labelW - 10)[0], 40, y + 10);
+        const [a, z] = [Math.min(at(0), at(b.value)), Math.max(at(0), at(b.value))];
+        doc.setFillColor(...(b.value < 0 ? [198, 40, 40] : NAVY)).roundedRect(a, y, Math.max(z - a, 1.5), 13, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold').text(String(b.value), b.value < 0 ? a - 4 : z + 5, y + 10, { align: b.value < 0 ? 'right' : 'left' });
+        y += 21;
+      }
+      doc.setDrawColor(200, 208, 220).line(at(0), y - 21 * s.bars.length - 3, at(0), y - 6);
+      y += 18;
+      continue;
+    }
     doc.autoTable({
       startY: y, head: [s.head], body: s.body.length ? s.body : [[{ content: s.none || 'None.', colSpan: s.head.length }]],
       margin: { left: 40, right: 40, bottom: 50 }, theme: 'striped',
@@ -350,11 +370,10 @@ async function savePdf({ title, subtitle = '', sections, file }) {
     y = doc.lastAutoTable.finalY + 30;
   }
   const pages = doc.getNumberOfPages();
-  const made = new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
     doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(130, 140, 155);
-    doc.text(`Made ${made} · africasportfishing.com`, 40, doc.internal.pageSize.getHeight() - 24);
+    doc.text(`Generated ${made} · africasportfishing.com`, 40, doc.internal.pageSize.getHeight() - 24);
     doc.text(`Page ${i} of ${pages}`, W - 40, doc.internal.pageSize.getHeight() - 24, { align: 'right' });
   }
   doc.save(file);
@@ -1937,6 +1956,7 @@ const pagesFor = (view) => ({
       subtitle: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Approved fish only${pending ? `; ${plural(pending, 'registration')} waiting for the secretary` : ''}.`,
       file: fileName(`Leaderboard ${table} ${division} ${today()}`),
       sections: [
+        ...(boats.length ? [{ heading: 'Points by boat', bars: boats.slice(0, 15).map((b) => ({ label: b.teamName, value: b.points })) }] : []),
         { heading: 'Boats', head: ['#', 'Boat', 'Fish', 'Points'], body: boats.map((b, i) => [i + 1, b.teamName, b.catches, b.points]),
           widths: { 0: { cellWidth: 30 }, 2: { halign: 'right', cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 } } },
         { heading: 'Anglers', head: ['#', 'Angler', 'Boat', 'Fish', 'Points'], body: anglers.map((a, i) => [i + 1, a.angler, a.teamName, a.catches, a.points]),
