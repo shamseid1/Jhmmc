@@ -1310,9 +1310,9 @@ function needLogin(view, what) {
 // The first thing a visitor sees: navy, the logo's marlin, one line, two buttons.
 const HERO = `<section class="hero welcome">
   <img class="welcome-mark" src="/logo-mark.png" alt="">
-  <p class="welcome-eyebrow">JHMMC · Liberia</p>
-  <h1>Every big fish in West Africa, in one place</h1>
-  <p>Weigh-ins, the leaderboard and every boat's fish, live.</p>
+  <p class="welcome-eyebrow">Tight lines</p>
+  <h1>Your season starts here</h1>
+  <p>Log fish at sea, weigh in at the station and climb the leaderboard.</p>
   <div class="welcome-buttons"><a class="btn primary" href="#/register">Create an account</a><a class="btn" href="#/login">Sign in</a></div>
 </section>`;
 
