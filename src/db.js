@@ -33,6 +33,7 @@ const SPECIES = [
   ['Leerfish', 'Lichia amia', 'Inshore', 3],
   ['Grouper', 'Epinephelus marginatus', 'Bottom', 5],
   ['Mako shark', 'Isurus oxyrinchus', 'Shark', 5],
+  ['Hammerhead', 'Sphyrna spp.', 'Shark', 5],
   // Species in the JHMMC record book (as at May 2026) the list didn't have.
   ['Striped marlin', 'Kajikia audax', 'Billfish', 3],
   ['Bonito', 'Sarda sarda', 'Tuna', 3],
@@ -718,7 +719,6 @@ const MERGED_SPECIES = {
   'Almaco jack': 'Amberjack',
   'Bigeye trevally': 'Crevalle',
   'Little tunny': 'Bonito',
-  Hammerhead: 'Mako shark',
 };
 function mergeDuplicateSpecies(db) {
   const all = db.prepare('SELECT id, name FROM species').all();

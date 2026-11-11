@@ -24,8 +24,8 @@ test('one grouper and one grunter: duplicates are merged, their fish moved', () 
   assert.equal(names.filter((n) => /grouper/i.test(n)).join(), 'Grouper');
   assert.equal(names.filter((n) => /grunter/i.test(n)).join(), 'Grunter');
   const fish = db.prepare('SELECT s.name FROM outing_landings l JOIN species s ON s.id = l.species_id ORDER BY s.name').all().map((x) => x.name);
-  assert.deepEqual(fish, ['Grouper', 'Grunter', 'Mako shark']);
-  for (const gone of ['Cubera snapper', 'Almaco jack', 'Bigeye trevally', 'Little tunny', 'Hammerhead']) assert.ok(!names.includes(gone), gone);
-  assert.equal(names.length, 31);
+  assert.deepEqual(fish, ['Grouper', 'Grunter', 'Hammerhead']);
+  for (const gone of ['Cubera snapper', 'Almaco jack', 'Bigeye trevally', 'Little tunny']) assert.ok(!names.includes(gone), gone);
+  assert.equal(names.length, 32);
   db.close();
 });
