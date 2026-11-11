@@ -1036,7 +1036,14 @@ function feedLine(x) {
   const boat = x.boat || 'A boat';
   return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boated ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
 }
-const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-item announcement" data-ann="${x.id}">
+// A fish logged at sea without a photo: one slim row (boat · fish · time), so photo posts stand out.
+const feedRow = (x) => html`<article class="feed-row">
+  <a class="feed-row-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}</a>
+  <span class="feed-row-text"><b>${x.boat || 'A boat'}</b> · ${x.species}</span>
+  <span class="pill ${x.fate}">${x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
+  <span class="small muted feed-row-time">${fmtWhen(x.at)}</span>
+</article>`;
+const feedItem = (x) => (x.kind === 'log' && !x.photoUrl ? feedRow(x) : x.kind === 'announcement' ? html`<article class="feed-item announcement" data-ann="${x.id}">
   <div class="feed-head">
     <span class="feed-boat"><img src="/jhmmc-logo.png" alt="" class="club-mark"><b>JHMMC</b></span>
     <span class="small muted">${fmtWhen(x.at)}</span>

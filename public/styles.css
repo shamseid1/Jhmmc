@@ -171,7 +171,8 @@ button.danger { color: var(--danger); background: rgba(255, 107, 107, .12); }
 button.liked { border-color: var(--danger); color: var(--danger); }
 button:disabled { opacity: .6; cursor: default; }
 
-form.stack { display: grid; gap: 14px; }
+.stack { display: grid; gap: 14px; }
+.fishon { gap: 10px; }
 .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 /* Fields never push a form wider than the screen (fieldsets and selects otherwise
    grow to their longest content). */
@@ -1150,3 +1151,14 @@ body { overscroll-behavior-y: contain; }
 .weigh-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .wq { min-height: 46px; padding: 6px 4px; border-radius: 12px; font-size: 13.5px; font-weight: 600; line-height: 1.2; }
 .wq.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* Feed: a fish logged without a photo is one slim row. */
+.feed-row { display: grid; grid-template-columns: 32px 1fr auto; grid-template-areas: "pic text pill" "pic time pill"; align-items: center; column-gap: 10px;
+  padding: 9px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+.feed-row + .feed-row { margin-top: -8px; }
+.feed-row-boat { grid-area: pic; }
+.feed-row-boat img, .feed-row .feed-ph { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; }
+.feed-row .feed-ph .fish-mark { width: 22px; height: 22px; }
+.feed-row-text { grid-area: text; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-row-time { grid-area: time; font-size: 12.5px; }
+.feed-row .pill { grid-area: pill; margin: 0; }
