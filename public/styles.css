@@ -1155,14 +1155,12 @@ body { overscroll-behavior-y: contain; }
 .wq { min-height: 46px; padding: 6px 4px; border-radius: 12px; font-size: 13.5px; font-weight: 600; line-height: 1.2; }
 .wq.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
-/* Feed: a fish logged without a photo is one slim row. */
-.feed-row { display: grid; grid-template-columns: 32px 1fr auto; grid-template-areas: "pic text pill" "pic time pill"; align-items: center; column-gap: 10px;
-  padding: 9px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
-.feed-row + .feed-row { margin-top: -8px; }
+/* Feed: a fish logged without a photo is a short card: the boat, what it did, when. */
+.feed-row { display: grid; grid-template-columns: 48px 1fr auto; grid-template-areas: "pic text pill" "pic time pill"; align-items: center; column-gap: 12px; row-gap: 2px;
+  padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 18px; box-shadow: var(--shadow); }
 .feed-row-boat { grid-area: pic; }
-.feed-row-boat img, .feed-row .feed-ph { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; }
-.feed-row .feed-ph .fish-mark { width: 22px; height: 22px; }
-.feed-row-text { grid-area: text; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feed-row-time { grid-area: time; font-size: 12.5px; }
-.feed-row .pill { grid-area: pill; margin: 0; }
-.pop-coords { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; user-select: all; }
+.feed-row-boat img, .feed-row .feed-ph { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; }
+.feed-row .feed-ph .fish-mark { width: 30px; height: 30px; }
+.feed-row-text { grid-area: text; font-size: 16.5px; font-weight: 700; line-height: 1.3; min-width: 0; }
+.feed-row-time { grid-area: time; font-size: 13px; }
+.feed-row .pill { grid-area: pill; margin: 0; font-size: 13px; padding: 4px 10px; }

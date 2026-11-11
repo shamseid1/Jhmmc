@@ -1036,10 +1036,10 @@ function feedLine(x) {
   const boat = x.boat || 'A boat';
   return { released: `${boat} released ${withArticle(fish)}.`, kept: `${boat} boated ${withArticle(fish)}.`, lost: `${boat} lost ${withArticle(fish)}.` }[x.fate];
 }
-// A fish logged at sea without a photo: one slim row (boat · fish · time), so photo posts stand out.
+// A fish logged at sea without a photo: a short card (who, what, when), so photo posts stand out.
 const feedRow = (x) => html`<article class="feed-row">
   <a class="feed-row-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">${x.boatPhotoUrl ? raw(html`<img src="${x.boatPhotoUrl}" alt="" loading="lazy">`) : raw(`<span class="feed-ph">${icon('fish')}</span>`)}</a>
-  <span class="feed-row-text"><b>${x.boat || 'A boat'}</b> · ${x.species}</span>
+  <span class="feed-row-text">${feedLine(x)}</span>
   <span class="pill ${x.fate}">${x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
   <span class="small muted feed-row-time">${fmtWhen(x.at)}</span>
 </article>`;
