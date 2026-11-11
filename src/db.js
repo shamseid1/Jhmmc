@@ -56,7 +56,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 46;
+const SCHEMA_VERSION = 47;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -257,12 +257,6 @@ CREATE INDEX IF NOT EXISTS catches_species ON catches(species_id, weight_kg DESC
 CREATE INDEX IF NOT EXISTS catches_club ON catches(club_id);
 CREATE INDEX IF NOT EXISTS catches_team ON catches(team_id);
 
-CREATE TABLE IF NOT EXISTS likes (
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  catch_id INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,
-  PRIMARY KEY (user_id, catch_id)
-);
-
 -- Another JHMMC captain questioning a registration within 24 hours.
 CREATE TABLE IF NOT EXISTS disputes (
   id INTEGER PRIMARY KEY,
@@ -316,19 +310,6 @@ CREATE TABLE IF NOT EXISTS club_posts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS club_posts_created ON club_posts(created_at DESC, id DESC);
-CREATE TABLE IF NOT EXISTS club_post_likes (
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  post_id INTEGER NOT NULL REFERENCES club_posts(id) ON DELETE CASCADE,
-  PRIMARY KEY (user_id, post_id)
-);
-CREATE TABLE IF NOT EXISTS club_post_comments (
-  id INTEGER PRIMARY KEY,
-  post_id INTEGER NOT NULL REFERENCES club_posts(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS club_post_comments_post ON club_post_comments(post_id, id);
 
 -- More photos on a post (the first stays in the post's own photo column):
 -- 'catch' for a West Africa post, 'club' for a JHMMC feed post.
@@ -408,14 +389,6 @@ CREATE TABLE IF NOT EXISTS announcements (
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   body TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS comments (
-  id INTEGER PRIMARY KEY,
-  catch_id INTEGER NOT NULL REFERENCES catches(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  body TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
@@ -677,6 +650,11 @@ function openDb(file) {
       INSERT INTO registration_log SELECT * FROM registration_log_old;
       DROP TABLE registration_log_old;
       COMMIT;`);
+  }
+  if (hasTables && version < 47) {
+    // Likes and comments were taken out of the app (Nov 2026): their tables go, with what's in them.
+    db.exec(`DROP TABLE IF EXISTS likes; DROP TABLE IF EXISTS comments;
+      DROP TABLE IF EXISTS club_post_likes; DROP TABLE IF EXISTS club_post_comments;`);
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

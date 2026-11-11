@@ -35,13 +35,10 @@ test('delete my account: password needed; posts go, weighed fish stay as "Former
     assert.ok(weighed > 0);
     const before = raw.prepare("SELECT points FROM catches WHERE user_id = ? AND status = 'approved'").all(ziad).map((r) => r.points);
     const me = await s.login('ziad@example.com');
-    // A comment from before comments were taken out of the app: it goes with the account.
-    raw.prepare('INSERT INTO comments (catch_id, user_id, body) VALUES (?, ?, ?)').run(raw.prepare('SELECT id FROM catches LIMIT 1').get().id, ziad, 'Nice one');
     assert.equal((await me('DELETE', '/me', { password: 'wrong-pass' })).status, 400);
     assert.equal((await me('DELETE', '/me', { password: 'demo-pass-1' })).status, 200);
     assert.equal((await me('GET', '/me')).body.user, null, 'signed out');
     assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(ziad).n, 0);
-    assert.equal(raw.prepare('SELECT COUNT(*) AS n FROM comments WHERE user_id = ?').get(ziad).n, 0);
     const kept = raw.prepare("SELECT angler_name AS a, points FROM catches WHERE angler_name = 'Former member'").all();
     assert.deepEqual(kept.map((r) => r.points).sort(), before.sort(), "the season's points don't change");
     assert.equal((await s.login('ziad@example.com')).length, 3);
