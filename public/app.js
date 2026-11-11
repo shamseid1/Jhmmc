@@ -681,7 +681,7 @@ function shareText(c) {
   const w = c.weightKg != null ? ` ${+c.weightKg.toFixed(1)} kg` : '';
   const how = c.released ? ' (released)' : '';
   const boat = c.teamName ? ` aboard ${c.teamName}` : '';
-  if (!c.species || c.noAngler) return `${c.species ? `A ${c.species}` : c.angler}${boat} on Africa Sport Fishing`;
+  if (!c.species || c.noAngler) return `${c.species ? `A ${c.species}` : c.angler}${boat} on Africa Sportfishing`;
   return `${c.angler} landed a${w} ${c.species}${how}${boat}${c.location ? ' off ' + c.location : ''}!`;
 }
 
@@ -690,7 +690,7 @@ async function shareCatch(c) {
   const text = shareText(c);
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'Africa Sport Fishing', text, url });
+      await navigator.share({ title: 'Africa Sportfishing', text, url });
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -1349,7 +1349,7 @@ const pagesFor = (view) => ({
     const { team } = body;
     const who = team.captain ? `${team.captain} invites you` : "You're invited";
     const head = html`<h1>Join ${team.name}</h1>
-      <p class="muted">${who} to join the crew of <b>${team.name}</b>${team.clubName ? ` (${team.clubName})` : ''} on Africa Sport Fishing.
+      <p class="muted">${who} to join the crew of <b>${team.name}</b>${team.clubName ? ` (${team.clubName})` : ''} on Africa Sportfishing.
       As crew you log your fish at sea, keep the boat's log and see its catch map.</p>`;
     if (!state.me) {
       state.afterLogin = location.hash;
@@ -1512,7 +1512,7 @@ const pagesFor = (view) => ({
   async boat(id) {
     const [{ team, stats }, clubs] = await Promise.all([api(`/teams/${id}`), loadClubs()]);
     const inviteLink = `${location.origin}/#/join/${team.joinCode}`;
-    const inviteMsg = `Join ${team.name} on the Africa Sport Fishing app. Tap the link, sign up, and you're on the boat:\n${inviteLink}\n\n(Or enter the invite code ${team.joinCode} under More → Get on a boat.)`;
+    const inviteMsg = `Join ${team.name} on the Africa Sportfishing app. Tap the link, sign up, and you're on the boat:\n${inviteLink}\n\n(Or enter the invite code ${team.joinCode} under More → Get on a boat.)`;
     const spec = [team.lengthFt ? `${+team.lengthFt}'` : '', team.make].filter(Boolean).join(' ');
     const division = isJhmmc(team.clubId) ? (team.division === 'river' ? 'River boat' : 'Ocean boat') : '';
     const station = isJhmmc(team.clubId) && team.weighStation ? `Weighs at ${team.weighStation}` : '';
@@ -1766,7 +1766,7 @@ const pagesFor = (view) => ({
 
   // The club leaderboard (West Africa side): choose a club and see its points
   // leaderboard, laid out like JHMMC's. Only JHMMC keeps points in the app so far.
-  // For now JHMMC is Africa Sport Fishing: one points board for every boat
+  // For now JHMMC is Africa Sportfishing: one points board for every boat
   // weighed in through JHMMC, and the JHMMC Season (JHMMC boats only).
   async leaderboard() {
     await this.points(undefined, { base: '#/leaderboard', top: html`<h1>Leaderboard</h1>${raw(boardTabs('board'))}` });
@@ -3065,7 +3065,7 @@ const pagesFor = (view) => ({
         : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="install-head"><img src="/icon-192.png" alt="" width="72" height="72"><div><h1>Install the app</h1>
-        <p class="muted">Africa Sport Fishing on your home screen: it opens full screen like any other app, even without signal (catches and points load when there's a connection).</p></div></div>
+        <p class="muted">Africa Sportfishing on your home screen: it opens full screen like any other app, even without signal (catches and points load when there's a connection).</p></div></div>
       ${isInstalled() ? raw('<div class="card pad"><p style="margin:0">It\'s installed: you\'re using the app now.</p></div>') : raw(html`
       <div class="card pad stack" data-install-ready ${installPrompt ? '' : raw('hidden')}>
         <button type="button" class="primary" id="install-now">${raw(icon('download'))} Install now</button>
@@ -3755,7 +3755,7 @@ const pagesFor = (view) => ({
         out.innerHTML = html`<p class="small muted">New link for ${name}, valid for ${hours} hours. Any older link stops working.</p>
           <input readonly value="${link}" aria-label="Reset link">
           <div class="actions"><button data-act="copy-link">Copy link</button>
-          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the Africa Sport Fishing app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
+          <a class="btn" target="_blank" rel="noopener" href="${whatsapp(`Hello ${name}, here is your link to set a new password for the Africa Sportfishing app. It works once, within ${hours} hours: ${link}`)}">Send on WhatsApp</a></div>`;
         out.hidden = false;
         out.querySelector('input').select();
       } catch (ex) {
@@ -3799,12 +3799,12 @@ const pagesFor = (view) => ({
     const isWa = book === 'wa';
     const got = await api('/records' + (isIgfa || isWa ? '' : `?club=${encodeURIComponent(book)}`));
     const { species, lineRecords, checked, igfaUrl, book: recordBook } = got;
-    const club = isWa ? { id: 'wa', name: 'Africa Sport Fishing' } : got.club;
+    const club = isWa ? { id: 'wa', name: 'Africa Sportfishing' } : got.club;
     const kg = (n) => `${(Math.round(n * 10) / 10).toLocaleString()} kg`;
     const lb = (n) => `${Math.round(n * 2.20462).toLocaleString()} lb`;
     const pct = (s) => Math.round((s.best.weightKg / s.igfa.kg) * 100);
     const picker = html`<label class="club-pick">Records for
-      <select id="club-pick">${raw(options([['wa', 'Africa Sport Fishing'], ...books.map((c) => [c.id, c.name]), ['igfa', 'IGFA world records']], isIgfa ? 'igfa' : club.id))}</select>
+      <select id="club-pick">${raw(options([['wa', 'Africa Sportfishing'], ...books.map((c) => [c.id, c.name]), ['igfa', 'IGFA world records']], isIgfa ? 'igfa' : club.id))}</select>
     </label>`;
 
     let body;
@@ -4024,7 +4024,7 @@ const pagesFor = (view) => ({
     if (!state.meta.emailEnabled) {
       // No email sending yet: the admin makes reset links by hand.
       const admin = state.meta.adminEmail;
-      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - Africa Sport Fishing')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
+      const mail = admin && `mailto:${admin}?subject=${encodeURIComponent('Password reset - Africa Sportfishing')}&body=${encodeURIComponent('Hello, I forgot my password. My account email is: ')}`;
       view.innerHTML = html`<h1>Forgot your password?</h1>
         <div class="card pad stack">
           ${admin ? raw(html`<p style="margin:0">Email the club admin from the address you signed up with, and they'll send you a link to choose a new password.</p>
@@ -4188,7 +4188,7 @@ async function refreshPending() {
   } catch {
     return;
   }
-  document.title = `${state.pending ? `(${state.pending}) ` : ''}Africa Sport Fishing`;
+  document.title = `${state.pending ? `(${state.pending}) ` : ''}Africa Sportfishing`;
   if (state.pending !== before) renderNav();
 }
 setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);
@@ -4415,7 +4415,7 @@ document.addEventListener('click', (e) => {
 window.addEventListener('appinstalled', () => {
   installPrompt = null;
   document.querySelector('.install-card')?.remove();
-  toast('Installed. Open Africa Sport Fishing from your home screen.');
+  toast('Installed. Open Africa Sportfishing from your home screen.');
 });
 const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 

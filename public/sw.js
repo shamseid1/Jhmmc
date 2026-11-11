@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v85';
+const CACHE = 'app-v86';
 const APP_FILES = [
   '/', '/index.html', '/app.js', '/styles.css', '/scoring.js', '/rules.js', '/manifest.webmanifest',
   '/marlin.svg', '/boat.svg', '/logo-mark.png', '/fish-mark.png', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
@@ -55,7 +55,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  event.waitUntil(self.registration.showNotification(data.title || 'Africa Sport Fishing', {
+  event.waitUntil(self.registration.showNotification(data.title || 'Africa Sportfishing', {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',

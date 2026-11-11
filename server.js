@@ -16,7 +16,7 @@ const app = createApp({
 if (!process.env.SMTP_HOST && !demo) console.warn('SMTP_HOST is not set: password reset emails are printed to this log instead of sent.');
 
 app.listen(port, () => {
-  console.log(`Africa Sport Fishing${demo ? ' (demo copy)' : ''} running on http://localhost:${port}`);
+  console.log(`Africa Sportfishing${demo ? ' (demo copy)' : ''} running on http://localhost:${port}`);
   if (demo) {
     const { seedDemo } = require('./src/demo');
     seedDemo(`http://127.0.0.1:${port}`, { adminEmail: process.env.ADMIN_EMAIL || 'admin@example.com' })
