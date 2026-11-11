@@ -84,6 +84,13 @@ test('help page and the Android app link file', async () => {
     const help = await (await fetch(`${s.base}/support`)).text();
     assert.match(help, /Help/);
     assert.match(help, /info@africasportfishing\.com/);
+    // The testers' page: the logo card for WhatsApp, the group and the Play test link, no placeholders left.
+    const tp = await (await fetch(`${s.base}/test`)).text();
+    assert.match(tp, /<meta property="og:image" content="http:\/\/[^"]+\/og-logo\.jpg">/);
+    assert.match(tp, /https:\/\/play\.google\.com\/apps\/testing\/com\.africasportfishing\.app/);
+    assert.match(tp, /groups\.google\.com\/g\//);
+    assert.doesNotMatch(tp, /\{\{|<!--og-->/);
+    assert.doesNotMatch(await (await fetch(`${s.base}/test.html`)).text(), /\{\{/);
     const links = await (await fetch(`${s.base}/.well-known/assetlinks.json`)).json();
     assert.equal(links[0].target.package_name, 'com.africasportfishing.app');
     assert.ok(links[0].target.sha256_cert_fingerprints.includes('4E:04:0F:8C:11:FE:C2:04:09:1F:FC:F9:20:B1:A3:AF:6D:1C:5F:CB:F7:47:64:F5:B7:F4:3D:60:33:92:6A:FA'));

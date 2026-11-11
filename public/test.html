@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test the Android app · Africa Sportfishing</title>
+  <meta name="description" content="Help JHMMC test the Africa Sportfishing app on Android: two taps, then install from Google Play.">
+  <!--og-->
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <style>
+    :root { --text: #0b1a33; --muted: #56647a; --line: #e2e7ef; --navy: #001a43; --bg: #f4f6fa; --card: #ffffff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 560px; margin: 0 auto; padding: 28px 16px 56px; }
+    .top { display: flex; align-items: center; gap: 14px; }
+    .top img { width: 64px; height: 64px; }
+    .top b { font-size: 20px; letter-spacing: .02em; text-transform: uppercase; }
+    h1 { font-size: 28px; line-height: 1.15; margin: 22px 0 6px; }
+    p { color: var(--muted); margin: 0 0 12px; }
+    .step { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-top: 14px; }
+    .step h2 { margin: 0 0 6px; font-size: 18px; display: flex; gap: 10px; align-items: center; }
+    .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 15px; flex: none; }
+    .btn { display: block; text-align: center; margin-top: 12px; padding: 14px; border-radius: 999px; background: var(--navy); color: #fff; font-weight: 700; text-decoration: none; }
+    .small { font-size: 14px; }
+    .note { margin-top: 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><img src="/logo-mark.png" alt=""><b>Africa Sportfishing</b></div>
+  <h1>Test the Android app</h1>
+  <p>Help JHMMC get the app on Google Play: install it, keep it on your phone for 14 days and use it now and then.
+  Use the Gmail account your phone's Play Store uses.</p>
+
+  <section class="step">
+    <h2><span class="n">1</span> Join the testers</h2>
+    <p class="small">Tap Join group. It's only the list of testers, so Google lets you install the test app.</p>
+    <a class="btn" href="{{group}}">Join the testers group</a>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">2</span> Install from Google Play</h2>
+    <p class="small">Tap Become a tester, then Download it on Google Play. If it says it isn't available, wait a few minutes after step 1 and try again.</p>
+    <a class="btn" href="{{play}}">Become a tester</a>
+  </section>
+
+  <p class="small note">On an iPhone? You don't need to test: open <a href="/">africasportfishing.com</a> in Safari, tap Share, then Add to Home Screen.
+  Questions: <a href="mailto:{{contact}}">{{contact}}</a>.</p>
+</main>
+</body>
+</html>

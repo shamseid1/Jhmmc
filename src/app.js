@@ -171,11 +171,14 @@ function createApp({
     const origin = `${req.protocol}://${req.get('host')}`;
     const title = demo ? 'Africa Sportfishing (demo)' : 'Africa Sportfishing';
     const text = 'Log fish, weigh-ins, points, tournaments and catch maps for JHMMC and West Africa.';
-    const og = [['og:type', 'website'], ['og:title', title], ['og:description', text], ['og:url', `${origin}/`],
+    res.set('Cache-Control', 'no-cache').type('html').send(indexHtml.replace('<!--og-->', ogTags(origin, { title, text })));
+  };
+  const ogTags = (origin, { title, text, url = '/' }) => {
+    const og = [['og:type', 'website'], ['og:title', title], ['og:description', text], ['og:url', `${origin}${url}`],
       // The preview picture is just the logo.
       ['og:image', `${origin}/og-logo.jpg`], ['og:image:type', 'image/jpeg'], ['og:image:width', '600'], ['og:image:height', '600']]
       .map(([k, v]) => `<meta property="${k}" content="${v.replace(/"/g, '&quot;')}">`).join('\n  ');
-    res.set('Cache-Control', 'no-cache').type('html').send(indexHtml.replace('<!--og-->', og));
+    return og;
   };
   app.get(['/', '/index.html'], sendIndex);
   // The privacy policy, at a plain address the app stores can link to.
@@ -186,6 +189,19 @@ function createApp({
   });
   // The help page (the app stores' "support" link).
   const supportHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'support.html'), 'utf8');
+  // Testing the Android app (Google Play closed testing): a page with the logo card for
+  // WhatsApp (Google's own test link shows none) and the two steps, join the testers'
+  // group then become a tester. TESTERS_GROUP is the Google Group's address.
+  const testHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'test.html'), 'utf8');
+  app.get(['/test', '/testers', '/test.html'], (req, res) => {
+    const pkg = (process.env.ANDROID_PACKAGE || 'com.africasportfishing.app').trim();
+    const group = (process.env.TESTERS_GROUP || 'https://groups.google.com/g/jhmmc-app-testers').trim();
+    const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
+    const fill = (v) => String(v).replace(/[<>"&]/g, '');
+    res.set('Cache-Control', 'no-cache').type('html').send(testHtml
+      .replace('<!--og-->', ogTags(`${req.protocol}://${req.get('host')}`, { title: 'Test the Africa Sportfishing app', text: 'Help JHMMC get the app on Google Play: join the testers and install it.', url: '/test' }))
+      .replaceAll('{{group}}', fill(group)).replaceAll('{{play}}', fill(`https://play.google.com/apps/testing/${pkg}`)).replaceAll('{{contact}}', contact));
+  });
   app.get(['/support', '/support.html', '/help'], (_req, res) => {
     const contact = (contactEmail || 'info@africasportfishing.com').replace(/[<>"&]/g, '');
     res.set('Cache-Control', 'no-cache').type('html').send(supportHtml.replaceAll('{{contact}}', contact));
