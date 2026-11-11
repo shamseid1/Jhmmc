@@ -31,6 +31,9 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Or send through Brevo's API instead of SMTP (an "xkeysib-" key).
+      - key: BREVO_API_KEY
+        sync: false
     disk:
       name: data
       mountPath: /var/data

@@ -1,10 +1,42 @@
+const fs = require('node:fs');
 const nodemailer = require('nodemailer');
 
 // Sends email through any SMTP provider (Gmail, Zoho, Resend, Mailgun...),
 // configured with SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and MAIL_FROM.
 // Without SMTP_HOST, messages are printed to the server log instead, which is
 // enough for local development.
-function createMailer(env = process.env) {
+// Or through Brevo's web API with BREVO_API_KEY (an "xkeysib-" key) and MAIL_FROM:
+// it works where SMTP logins are refused, and says plainly why when it can't send.
+const parseFrom = (from) => {
+  const m = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from || '');
+  return m ? { name: m[1].replace(/^"|"$/g, '') || undefined, email: m[2] } : { email: (from || '').trim() };
+};
+function brevoApiMailer(env, fetchImpl = globalThis.fetch) {
+  const sender = parseFrom(env.MAIL_FROM);
+  return {
+    configured: true,
+    async send({ to, subject, text, html, attachments }) {
+      const body = {
+        sender, to: [{ email: to }], subject, textContent: text, ...(html && { htmlContent: html }),
+        ...(attachments?.length && {
+          attachment: attachments.map((a) => ({ name: a.filename, content: (a.content ?? fs.readFileSync(a.path)).toString('base64') })),
+        }),
+      };
+      const res = await fetchImpl('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST', headers: { 'api-key': env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Brevo said ${res.status}${err.code ? ` (${err.code})` : ''}: ${err.message || res.statusText}`);
+      }
+      return res.json().catch(() => ({}));
+    },
+  };
+}
+
+function createMailer(env = process.env, { fetchImpl } = {}) {
+  if (env.BREVO_API_KEY) return brevoApiMailer(env, fetchImpl);
   if (!env.SMTP_HOST) {
     return {
       configured: false,

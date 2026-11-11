@@ -146,6 +146,8 @@ Members can reset a forgotten password from the sign-in page (a one-time link, v
 - **Gmail** (quickest): turn on 2-Step Verification for the Google account, create an app password at https://myaccount.google.com/apppasswords, then set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=` the Gmail address, `SMTP_PASS=` the 16-letter app password. Gmail allows about 500 emails a day.
 - **Your own domain** (e.g. `noreply@jhmmc.com`): use the SMTP details from your email host or a sending service such as Resend, Mailgun or Brevo.
 
+- **Brevo's API** (instead of SMTP): set `BREVO_API_KEY` to an API key from Brevo (**SMTP & API → API keys**, it starts with `xkeysib-`) and `MAIL_FROM` to a sender verified in Brevo, e.g. `Africa Sportfishing <info@africasportfishing.com>`. When it's set, the SMTP settings are ignored. If Brevo refuses, the error says why (for example an account not yet activated).
+
 On Render, enter these under the service's **Environment** tab, together with `APP_URL`, then redeploy.
 
 ## Project layout
