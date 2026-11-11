@@ -87,6 +87,7 @@ test('help page and the Android app link file', async () => {
     const links = await (await fetch(`${s.base}/.well-known/assetlinks.json`)).json();
     assert.equal(links[0].target.package_name, 'com.africasportfishing.app');
     assert.ok(links[0].target.sha256_cert_fingerprints.includes('4E:04:0F:8C:11:FE:C2:04:09:1F:FC:F9:20:B1:A3:AF:6D:1C:5F:CB:F7:47:64:F5:B7:F4:3D:60:33:92:6A:FA'));
+    assert.ok(links[0].target.sha256_cert_fingerprints.includes('77:3D:1A:B2:FE:B0:2F:63:EA:EB:86:81:5A:3B:C3:2B:F8:FB:D5:F3:79:DE:74:4B:E0:86:9E:C5:90:8B:D7:DC'), "Google Play's app signing key");
     assert.deepEqual(links[0].relation, ['delegate_permission/common.handle_all_urls']);
   } finally {
     s.srv.close();

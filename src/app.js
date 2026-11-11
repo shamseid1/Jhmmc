@@ -194,6 +194,8 @@ function createApp({
   // by the fingerprints of the certificates it's signed with (public, not secrets).
   // ANDROID_SHA256 adds more (separated by commas), ANDROID_PACKAGE changes the package.
   const ANDROID_PRINTS = [
+    // Google's app signing key: what phones see on the app installed from Google Play.
+    '77:3D:1A:B2:FE:B0:2F:63:EA:EB:86:81:5A:3B:C3:2B:F8:FB:D5:F3:79:DE:74:4B:E0:86:9E:C5:90:8B:D7:DC',
     // Our upload key (PWABuilder package, 11 Nov 2026).
     '4E:04:0F:8C:11:FE:C2:04:09:1F:FC:F9:20:B1:A3:AF:6D:1C:5F:CB:F7:47:64:F5:B7:F4:3D:60:33:92:6A:FA',
   ];
