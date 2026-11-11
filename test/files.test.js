@@ -19,5 +19,7 @@ test("the app's parts: every one loaded by the page and kept for offline use, st
   }
   // Every file the service worker keeps exists (one missing would stop it installing).
   const listed = [...sw.matchAll(/'(\/[^']+\.[a-z]+)'/g)].map((m) => m[1]);
-  for (const f of listed) assert.ok(fs.existsSync(path.join(PUB, f)), `${f} exists`);
+  // (/scoring.js is the server's own scoring rules, src/scoring.js, so both score alike.)
+  const FROM_SERVER = { '/scoring.js': path.join(__dirname, '..', 'src', 'scoring.js') };
+  for (const f of listed) assert.ok(fs.existsSync(FROM_SERVER[f] || path.join(PUB, f)), `${f} exists`);
 });
