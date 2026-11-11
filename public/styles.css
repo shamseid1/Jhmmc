@@ -1130,6 +1130,6 @@ body { overscroll-behavior-y: contain; }
 .big-wt { display: grid; justify-items: end; gap: 2px; }
 .big-wt .small { font: 600 12.5px/1 "Montserrat", sans-serif; }
 
-/* Members: the admin's Edit and reset-link buttons, and the edit form under a member. */
-.member-actions { margin: 6px 0 0; }
+/* Members: the admin's edit form under a member; reset link and delete small, at the bottom. */
+.member-row .delete-user { display: flex; justify-content: flex-end; gap: 18px; }
 .edit-user { grid-column: 1 / -1; margin-top: 10px; padding: 14px; border-radius: 14px; background: var(--surface-2); }

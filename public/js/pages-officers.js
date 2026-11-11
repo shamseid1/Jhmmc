@@ -582,14 +582,15 @@ PAGE_GROUPS.push((view) => ({
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small" data-line>${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
-        ${admin ? raw('<div class="actions member-actions"><button data-act="edit-user">Edit</button><button data-act="reset-link">Create reset link</button></div>') : ''}
+        ${admin ? raw('<button data-act="edit-user">Edit</button>') : ''}
         <form class="stack edit-user" hidden></form>
         <div class="role">
           <label class="check"><input type="checkbox" data-act="jhmmc" ${u.jhmmc ? 'checked' : ''} ${u.isAdmin ? 'disabled' : ''}> JHMMC member</label>
           ${u.isAdmin ? raw('<span class="badge new">Admin</span>') : u.role ? raw(html`<span class="badge">${roleLabel(u.role)}</span>`) : ''}
         </div>
         <div class="reset-out" hidden></div>
-        ${!admin || u.id === state.me.id ? '' : raw('<div class="delete-user"><button data-act="delete-user" class="link danger">Delete account</button></div>')}
+        ${!admin || u.id === state.me.id ? '' : raw(`<div class="delete-user"><button data-act="reset-link" class="link danger">Create reset link</button>
+          <button data-act="delete-user" class="link danger">Delete account</button></div>`)}
       </li>`))}</ul></div>`;
     view.querySelector('.search input').addEventListener('input', (e) => {
       const term = e.target.value.trim().toLowerCase();
