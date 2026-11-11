@@ -25,7 +25,7 @@
     // chosen on this phone, else light. Auto follows the phone's own setting.
     (function () {
       var chosen = null;
-      try { chosen = localStorage.getItem('appearance'); } catch (e) {}
+      try { chosen = localStorage.getItem('look'); } catch (e) {}
       var dark = chosen === 'dark' || (chosen === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
       if (!dark) {
         document.documentElement.dataset.theme = 'light';

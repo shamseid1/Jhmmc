@@ -4342,10 +4342,12 @@ async function route() {
 // Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
 // setting (light if it has none) and is where everyone starts.
 const THEME_COLORS = { dark: '#001a43', light: '#f4f6fa' };
-// A new key: choices saved before Auto existed (under 'theme') no longer count.
-const THEME_KEY = 'appearance';
+// A new key each time everyone is reset: everyone moved to light mode once
+// (choices saved under 'theme' and 'appearance' no longer count).
+const THEME_KEY = 'look';
 try {
   localStorage.removeItem('theme');
+  localStorage.removeItem('appearance');
   localStorage.removeItem('jhmmc-feed'); // the two sides are one now
 } catch {
   // Nothing saved, nothing to clear.
