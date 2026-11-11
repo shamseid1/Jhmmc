@@ -280,6 +280,30 @@ PAGE_GROUPS.push((view) => ({
           <span class="gps-where" hidden>If nothing asks you: ${where}, then come back.</span>`;
       }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 }); };
       startWatch();
+      // Still no spot after a few seconds: either the phone hasn't been asked yet (a button
+      // asks, from a tap) or the GPS has no open sky (indoors); then a rougher position from
+      // the phone's network does, if there is one, and the page says so.
+      setTimeout(async () => {
+        if (fix || !view.isConnected) return;
+        let perm = 'prompt';
+        try { perm = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { /* not every phone says */ }
+        if (fix || perm === 'denied') return;
+        if (perm === 'prompt') {
+          gps.innerHTML = html`<b>Allow location to log fish.</b> Fish are logged with their spot.
+            <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
+            <span class="gps-where" hidden>If nothing asks you: ${isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app'
+              : "your browser's site settings → Location → Allow"}, then come back.</span>`;
+          return;
+        }
+        gps.textContent = 'Finding GPS… It needs open sky: indoors it can take a while. Check Location is on in the phone\'s quick settings.';
+        navigator.geolocation.getCurrentPosition((pos) => {
+          if (fix) return;
+          fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
+          gps.textContent = `Rough position: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m). The GPS will sharpen it outside.`;
+          gps.classList.remove('gps-wait');
+          view.querySelector('.fates')?.classList.remove('waiting');
+        }, () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 });
+      }, 8000);
       gps.addEventListener('click', (e) => {
         if (!e.target.closest('[data-act=gps-on]')) return;
         gps.querySelector('.gps-where').hidden = false;
