@@ -256,7 +256,9 @@ PAGE_GROUPS.push((view) => ({
     if (!live) {
       // An earlier day: no GPS.
     } else if (navigator.geolocation) {
-      watch = navigator.geolocation.watchPosition((pos) => {
+      // Opening Log fish asks for the GPS (the phone's own Allow question). If the phone
+      // says no, a button asks again, and says where to switch it on if it's still no.
+      const startWatch = () => { if (watch != null) navigator.geolocation.clearWatch(watch); watch = navigator.geolocation.watchPosition((pos) => {
         fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
         gps.classList.remove('gps-wait');
@@ -270,10 +272,28 @@ PAGE_GROUPS.push((view) => ({
           view.querySelector('.fates')?.classList.add('waiting');
         }
         if (fix) return;
-        gps.textContent = err.code === 1
-          ? 'Location is blocked: allow it for this site in your phone settings. Fish can only be logged with their spot.'
-          : 'Finding GPS… Fish can be logged as soon as the spot is taken.';
-      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 });
+        if (err.code !== 1) { gps.textContent = 'Finding GPS… Fish can be logged as soon as the spot is taken.'; return; }
+        const where = isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app'
+          : "your browser's site settings → Location → Allow";
+        gps.innerHTML = html`<b>Location is off.</b> Fish are logged with their spot, so it's needed here.
+          <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
+          <span class="gps-where" hidden>If nothing asks you: ${where}, then come back.</span>`;
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 }); };
+      startWatch();
+      gps.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-act=gps-on]')) return;
+        gps.querySelector('.gps-where').hidden = false;
+        gps.querySelector('[data-act=gps-on]').textContent = 'Asking…';
+        // Asked from a tap: the phone shows its question if it still can.
+        navigator.geolocation.getCurrentPosition(() => startWatch(), () => {
+          const b = gps.querySelector('[data-act=gps-on]');
+          if (b) b.textContent = 'Try again';
+        }, { enableHighAccuracy: true, timeout: 20000 });
+      });
+      // Back from the phone's settings: try again straight away.
+      const again = () => { if (document.visibilityState === 'visible' && !fix) startWatch(); };
+      document.addEventListener('visibilitychange', again);
+      window.addEventListener('hashchange', () => document.removeEventListener('visibilitychange', again), { once: true });
     } else {
       gps.textContent = "This phone or browser can't share its location, so fish can't be logged at sea from it.";
     }
