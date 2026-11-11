@@ -1,23 +1,24 @@
 :root {
-  /* One dark theme: navy cards floating on a near-black background, bright blue for actions. */
+  /* Dark: the logo's navy (#001a43) all the way through, a soft sky blue for actions. */
   color-scheme: dark;
-  --bg: #1d1e21;
-  --surface: #18233a;
-  --surface-2: #22334f;
-  --text: #f3f5f9;
-  --muted: #a7b2c3;
-  --line: #2b3d5a;
-  --brand: #18233a;
-  --accent: #5aa2f7;
-  --accent-ink: #ffffff;
-  --accent-soft: #233a5c;
+  --navy: #001a43;
+  --bg: #000f29;
+  --surface: #06214d;
+  --surface-2: #0d2d60;
+  --text: #f2f5fa;
+  --muted: #9fb0c8;
+  --line: #143670;
+  --brand: #06214d;
+  --accent: #8cb8f2;
+  --accent-ink: #001a43;
+  --accent-soft: #10306a;
   --sun: #f5a524;
   --good: #3fcf8e;
   --danger: #ff6b6b;
   --radius: 22px;
   --shadow: none;
-  --nav-bg: rgba(24, 35, 58, .94);
-  --field: #111a2c;
+  --nav-bg: rgba(6, 33, 77, .94);
+  --field: #031838;
 }
 
 /* Light theme, for reading in bright sun: white cards, near-black text, deeper blue. */
@@ -26,16 +27,17 @@
      deep navy text and bright blue icons. */
   /* "only": browsers with their own dark mode (Samsung Internet) mustn't darken it. */
   color-scheme: only light;
-  --bg: #f3f8fc;
-  --surface: rgba(255, 255, 255, .62);
-  --surface-2: rgba(226, 238, 252, .9);
-  --text: #1a242e;
-  --muted: #4e5f73;
-  --line: #e3eaef;
-  --brand: #f3f8fc;
-  --accent: #2f7cf6;
+  --navy: #001a43;
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #edf1f7;
+  --text: #0b1a33;
+  --muted: #56647a;
+  --line: #e2e7ef;
+  --brand: #f4f6fa;
+  --accent: #0b2d63;
   --accent-ink: #ffffff;
-  --accent-soft: #e2eefc;
+  --accent-soft: #e4eaf4;
   --good: #11804f;
   --danger: #c62828;
   --nav-bg: rgba(246, 248, 250, .97);
@@ -43,11 +45,11 @@
   --shadow: 0 1px 2px rgba(30, 70, 110, .04), 0 6px 18px rgba(30, 70, 110, .06);
 }
 :root[data-theme="light"] body {
-  background: linear-gradient(180deg, #f3f8fc 0%, #eaf5f9 45%, #e5f2f8 100%) fixed;
+  background: #f4f6fa;
   font-family: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-:root[data-theme="light"] .mi-icon { color: #4e99ff; }
-:root[data-theme="light"] h1, :root[data-theme="light"] .menu-item b { font-weight: 700; }
+:root[data-theme="light"] .mi-icon { color: var(--accent); }
+:root[data-theme="light"] .menu-item b { font-weight: 700; }
 /* Menus that open over the page stay solid. */
 :root[data-theme="light"] .theme-menu { background: #ffffff; }
 :root[data-theme="light"] .bars { --zero-line: #9fb0c6; }
@@ -92,7 +94,7 @@ img { max-width: 100%; display: block; }
   font-size: 15px;
 }
 #nav a.active, #nav a:hover { background: var(--surface-2); }
-#nav a.cta { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+#nav a.cta, #nav a.cta[aria-current="page"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
 @media (max-width: 640px) {
   #nav a { padding: 6px 8px; font-size: 14px; }
@@ -100,7 +102,8 @@ img { max-width: 100%; display: block; }
 
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px; }
 
-h1 { font-size: 1.6rem; margin: 8px 0 16px; letter-spacing: -.01em; }
+h1 { font: 600 1.85rem/1.15 "Oswald", "Montserrat", system-ui, sans-serif; text-transform: uppercase; letter-spacing: .02em; margin: 8px 0 16px; }
+.hero h1, .catch-title { text-transform: none; }
 h2 { font-size: 1.15rem; margin: 24px 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
@@ -281,7 +284,7 @@ button.more[hidden] { display: none; }
   }
   #nav a { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: 11px; text-align: center; border-radius: 20px; }
   #nav svg { width: 22px; height: 22px; }
-  #nav a.cta { background: var(--accent); color: var(--accent-ink); }
+  #nav a.cta, #nav a.cta[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
   main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
   #toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 }
@@ -370,7 +373,7 @@ button.liked .icon { fill: currentColor; }
 /* The logo (marlin over Africa) is navy line art: white on the dark theme. */
 :root:not([data-theme="light"]) .brand img.mark { filter: brightness(0) invert(1); }
 
-.brand span { font-size: 17px; letter-spacing: .01em; }
+.brand span { font: 600 19px/1 "Oswald", "Montserrat", sans-serif; letter-spacing: .03em; text-transform: uppercase; }
 /* Narrow phones: the name and the JHMMC badge still fit on one line. */
 @media (max-width: 380px) {
   .topbar { gap: 8px; }
@@ -618,10 +621,11 @@ button.link[hidden] { display: none; }
 .club-logo { display: block; width: 120px; height: auto; margin: 4px 0 8px; }
 
 /* On the JHMMC side: a small JHMMC tag in the header, on every page. */
-.club-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 4px; border-radius: 999px;
-  background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 800; text-decoration: none; flex: none; }
+.club-chip { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  background: #ffffff; border: 1px solid var(--line); text-decoration: none; flex: none; }
+.club-chip span { display: none; }
 .club-chip[hidden] { display: none; }
-.club-chip img { width: 22px; height: auto; }
+.club-chip img { width: 24px; height: auto; }
 .section-note { margin: -4px 4px 8px; }
 
 /* Photo and video previews on posts and the weigh sheet. */
@@ -775,9 +779,9 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
 .photo-field-img[hidden] { display: none; }
 /* The feed: weigh-ins and fish logged at sea, under the boat. */
 .feed-tabs { margin-bottom: 12px; }
-.feed-list { padding: 0; }
-.feed-item { padding: 14px 16px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
-.feed-item:last-child { border-bottom: 0; }
+.feed-list { padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; display: grid; gap: 14px; }
+.feed-item { padding: 14px 16px; display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .feed-boat { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-size: 17px; }
 .feed-boat img, .feed-ph { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; flex: none; }
@@ -832,7 +836,11 @@ a.me-card { color: var(--text); text-decoration: none; }
 .weigh-call > span:nth-of-type(1) { flex: 1; display: grid; min-width: 150px; }
 /* Photos: a logged fish's photo, and a weigh-in's scale photos and release videos. */
 .feed-photo { width: 100%; max-height: 420px; object-fit: cover; border-radius: 14px; }
-.feed-gallery { border-radius: 14px; overflow: hidden; margin: 6px 0; }
+.feed-gallery { overflow: hidden; margin: 4px -16px; }
+.photo-link { position: relative; display: block; color: #fff; text-decoration: none; }
+.photo-cap { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 1px; padding: 40px 16px 12px;
+  background: linear-gradient(transparent, rgba(0, 10, 30, .78)); color: #fff; font-size: 14px; font-weight: 600; pointer-events: none; }
+.photo-cap b { font: 600 22px/1.1 "Oswald", "Montserrat", sans-serif; letter-spacing: .02em; text-transform: uppercase; }
 .feed-gallery .catch-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0; }
 /* Log fish: each fish's photo square, on the right of its row. */
 .fo-row { display: flex; align-items: center; gap: 12px; }
@@ -856,8 +864,8 @@ a.me-card { color: var(--text); text-decoration: none; }
 .hour-bars i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); }
 .hour-names { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
 /* Trends: validated categorical series (light / dark), thin lines, recessive grid. */
-:root { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; }
-:root[data-theme="light"] { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; }
+:root { --series-1: #6fa6ee; --series-2: #f5a524; --series-3: #3fcf8e; }
+:root[data-theme="light"] { --series-1: #0b2d63; --series-2: #d9861a; --series-3: #1baf7a; }
 .tr-svg { width: 100%; height: auto; display: block; overflow: visible; }
 .tr-grid { stroke: var(--line); stroke-width: 1; }
 .tr-axis { font-size: 10px; fill: var(--muted); }
@@ -1014,3 +1022,42 @@ img.logo-ph { object-fit: contain; filter: brightness(0) invert(1); opacity: .9;
 .info-sheet-body { font-size: 15px; line-height: 1.55; color: var(--text); margin-bottom: 16px; }
 .info-sheet-body p { margin: 0 0 10px; }
 #info-sheet > button.primary { width: 100%; justify-content: center; text-align: center; }
+
+/* Boat page: the boat's photo across the top, its name over it. */
+.hero { position: relative; margin: 0 -16px 16px; min-height: 180px; display: flex; align-items: flex-end; overflow: hidden; color: #fff;
+  background: linear-gradient(150deg, #0b2d63, var(--navy)); }
+.hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 35%, rgba(0, 10, 30, .82)); }
+.hero.no-photo::after { display: none; }
+.hero .hero-mark { position: absolute; right: -10px; top: 6px; width: 190px; height: 190px; color: rgba(255, 255, 255, .1); fill: currentColor; }
+.hero-text { position: relative; z-index: 1; padding: 60px 16px 16px; }
+.hero h1 { font-size: 2.3rem; margin: 0 0 4px; color: #fff; }
+.hero p { margin: 0; color: rgba(255, 255, 255, .85); font-size: 14px; }
+.hero a { color: #fff; }
+@media (min-width: 700px) { .hero { margin: 0 0 18px; border-radius: var(--radius); min-height: 240px; } }
+
+/* Pages fade in; while one loads, grey shapes stand in for it. */
+main > div { animation: view-in .22s ease-out; }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+main > div:empty { min-height: 60vh; }
+main > div:empty::before, main > div:empty::after { content: ""; display: block; border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%) 0 0 / 300% 100%;
+  animation: shimmer 1.2s linear infinite, sk-show .2s .2s both; }
+main > div:empty::before { height: 34px; width: 55%; margin: 10px 0 18px; }
+main > div:empty::after { height: 300px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes sk-show { from { opacity: 0; } to { opacity: 1; } }
+
+/* A fish logged: a tick pops up in the middle of the screen. */
+.celebrate { position: fixed; z-index: 60; left: 50%; top: 42%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 4px;
+  min-width: 210px; padding: 22px 26px 18px; border-radius: 26px; background: var(--navy); color: #fff; text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 10, 30, .35); animation: pop-in .32s cubic-bezier(.2, 1.4, .4, 1) both; pointer-events: none; }
+.celebrate.out { transition: opacity .35s, transform .35s; opacity: 0; transform: translate(-50%, -56%); }
+.celebrate b { font: 600 22px/1.2 "Oswald", "Montserrat", sans-serif; text-transform: uppercase; letter-spacing: .03em; }
+.celebrate span:last-child { font-size: 14px; color: rgba(255, 255, 255, .8); }
+.celebrate-tick { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: #3fcf8e; margin-bottom: 8px; }
+.celebrate-tick svg { width: 32px; height: 32px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24; animation: tick .35s .15s ease-out forwards; }
+@keyframes pop-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes tick { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { main > div, .celebrate, .celebrate-tick svg, #info-sheet[open] { animation: none; } .celebrate-tick svg { stroke-dashoffset: 0; } }

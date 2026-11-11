@@ -66,6 +66,19 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// A fish logged: a short buzz and a tick that pops up, then fades.
+function celebrate(title, sub = '') {
+  try { navigator.vibrate?.([18, 40, 28]); } catch { /* not on every phone */ }
+  document.querySelector('.celebrate')?.remove();
+  const el = document.createElement('div');
+  el.className = 'celebrate';
+  el.setAttribute('role', 'status');
+  el.innerHTML = html`<span class="celebrate-tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>${title}</b>${sub ? raw(html`<span>${sub}</span>`) : ''}`;
+  document.body.append(el);
+  setTimeout(() => el.classList.add('out'), 1500);
+  setTimeout(() => el.remove(), 1900);
+}
+
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -1001,12 +1014,13 @@ const feedItem = (x) => (x.kind === 'announcement' ? html`<article class="feed-i
     <span class="small muted">${fmtWhen(x.at)}</span>
   </div>
   <p class="feed-line">${feedLine(x)}</p>
-  ${x.kind === 'log' && x.photoUrl ? raw(html`<img class="feed-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy">`) : ''}
+  ${x.kind === 'log' && x.photoUrl ? raw(html`<div class="feed-gallery"><div class="photo-link"><img class="catch-photo" src="${x.photoUrl}" alt="${x.species}" loading="lazy"><span class="photo-cap"><b>${x.species}</b>${x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span></div></div>`) : ''}
   ${x.kind === 'weighin' && x.fish.some((f) => f.photos.length || f.videoUrl) ? raw(feedGallery(x.fish.flatMap((f) => [
-    ...f.photos.map((url, i) => html`<a href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i === f.photos.length - 1 ? ' at the weigh station' : ''}" loading="lazy"></a>`),
+    ...f.photos.map((url, i) => html`<a class="photo-link" href="#/catch/${f.id}"><img class="catch-photo" src="${url}" alt="${f.species}${i === f.photos.length - 1 ? ' at the weigh station' : ''}" loading="lazy">
+      <span class="photo-cap"><b>${f.species}</b>${[f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'Released' : '', f.angler || '', f.points != null ? fmtPoints(f.points) : ''].filter(Boolean).join(' · ')}</span></a>`),
     ...(f.videoUrl ? [html`<video class="catch-photo" src="${f.videoUrl}" controls playsinline preload="metadata" aria-label="${f.species} released"></video>`] : []),
   ]))) : ''}
-  ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish">${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
+  ${x.kind === 'weighin' ? raw(html`<ul class="weighin-fish" ${x.fish.length === 1 && x.fish[0].photos.length ? raw('hidden') : ''}>${x.fish.map((f) => raw(html`<li><a href="#/catch/${f.id}">
     <span><b>${f.species}</b> · ${f.angler || 'the crew'}</span>
     <span>${f.weightKg ? fmtWeight(f.weightKg) : f.released ? 'released' : ''}${f.points != null ? raw(html` <small class="muted">${fmtPoints(f.points)}</small>`) : ''}</span></a></li>`))}
     ${x.single ? '' : raw(html`<li class="weighin-total"><span>Total</span><span>${fmtWeight(x.fish.reduce((n, f) => n + (f.weightKg || 0), 0))} · ${fmtPoints(x.points)}</span></li>`)}</ul>
@@ -1541,9 +1555,11 @@ const pagesFor = (view) => ({
         ${actions && team.canManage && m.id !== state.me.id ? raw(`<span class="actions"><button data-act="make-captain">Make captain</button><button data-act="remove" class="danger">Remove</button></span>`) : ''}
       </li>`))}${team.members.length ? '' : raw('<li class="muted">No crew yet.</li>')}</ul></div>`;
     if (!manage) {
-      view.innerHTML = html`${team.photoUrl ? raw(html`<img class="cover" src="${team.photoUrl}" alt="${team.name}">`) : ''}
-        <div class="boat-head"><h1>${team.name}</h1></div>
-        <p class="muted">${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p>
+      view.innerHTML = html`<div class="hero ${team.photoUrl ? '' : 'no-photo'}">
+          ${team.photoUrl ? raw(html`<img src="${team.photoUrl}" alt="${team.name}">`) : raw(`<svg class="hero-mark" viewBox="0 0 24 24" aria-hidden="true">${ICONS.boat}</svg>`)}
+          <div class="hero-text"><h1>${team.name}</h1>
+          <p>${facts}${team.clubName ? raw(html`${facts ? ' · ' : ''}<a href="#/club/${team.clubId}">${team.clubName}</a>`) : ''}</p></div>
+        </div>
         <h2>Catches</h2>
         <div id="trophies"></div>
         <h2>Crew (${team.members.length})</h2>
@@ -2749,7 +2765,7 @@ const pagesFor = (view) => ({
         speciesId: sp.id, species: sp.name, fate: btn.dataset.fate,
         lat: spot?.lat ?? '', lng: spot?.lng ?? '', landedAt: now.toISOString(), date: day,
       }]);
-      toast(`${sp.name} ${btn.dataset.fate}${spot ? ', spot taken' : ''}. Tight lines!`);
+      celebrate(`${sp.name} ${btn.dataset.fate === 'kept' ? 'boated' : btn.dataset.fate}`, spot ? 'Spot taken. Tight lines!' : 'Tight lines!');
       // Nothing stays picked: each fish is chosen on purpose.
       for (const r of card.querySelectorAll('[name=fo-sp]')) r.checked = false;
       other.value = '';
@@ -4300,7 +4316,7 @@ async function route() {
 
 // Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
 // setting (light if it has none) and is where everyone starts.
-const THEME_COLORS = { dark: '#1d1e21', light: '#f3f8fc' };
+const THEME_COLORS = { dark: '#000f29', light: '#f4f6fa' };
 // A new key: choices saved before Auto existed (under 'theme') no longer count.
 const THEME_KEY = 'appearance';
 try {
