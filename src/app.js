@@ -363,6 +363,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   // The address people reach the app at, for links in emails.
+  // Requests waiting for the admin (opening a club...) also arrive by email, when email is set up.
+  const emailAdmin = (subject, text) => {
+    if (!mailer.configured || !adminEmail) return;
+    mailer.send({ to: adminEmail, subject, text }).catch((err) => console.error('Admin email failed:', err.message));
+  };
   const baseUrl = (req) => (appUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 
   function passwordChangedEmail(user, req) {
@@ -898,6 +903,11 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (pending) {
       pushWhere('review', { title: 'Club request', body: `${req.user.name} asks to open ${name} (${country}).`, url: '/#/clubs' },
         req.user, (p) => !!adminEmail && p.email.toLowerCase() === adminEmail, true);
+      emailAdmin(`Club request: ${name} (${country})`,
+        `${req.user.name} (${req.user.email}) asks to open a club on Africa Sportfishing:\n\n`
+        + `Name: ${name}\nCountry: ${country}\n${str(req.body.city, 80) ? `City: ${str(req.body.city, 80)}\n` : ''}`
+        + `${str(req.body.description, 1000) ? `About: ${str(req.body.description, 1000)}\n` : ''}`
+        + `\nApprove or decline it in the app: ${baseUrl(req)}/#/clubs (More → Platform admin → Clubs).`);
     }
     res.status(201).json({ club: db.prepare('SELECT * FROM clubs WHERE id = ?').get(Number(lastInsertRowid)), requested: !!pending });
   });

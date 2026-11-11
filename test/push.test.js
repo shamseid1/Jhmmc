@@ -21,7 +21,9 @@ test('the secretary gets a phone notification when fish are registered', async (
       return !sub.endpoint.includes('gone');
     },
   };
-  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher });
+  const mails = [];
+  const mailer = { configured: true, send: async (m) => { mails.push(m); } };
+  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'uploads'), adminEmail: 'boss@example.com', pusher, mailer });
   const srv = app.listen(0);
   await new Promise((r) => srv.once('listening', r));
   const at = `http://127.0.0.1:${srv.address().port}/api`;
@@ -158,6 +160,11 @@ test('the secretary gets a phone notification when fish are registered', async (
     assert.deepEqual([asked.status, asked.body.requested], [201, true]);
     await settle();
     assert.deepEqual(sent.map((s) => [s.endpoint.split('/').pop(), s.title]), [['boss-phone', 'Club request']]);
+    // ...and by email to the admin.
+    const mail = mails.find((m) => m.subject.startsWith('Club request'));
+    assert.equal(mail.to, 'boss@example.com');
+    assert.match(mail.subject, /Conakry Big Game \(Guinea\)/);
+    assert.match(mail.text, /#\/clubs/);
     assert.equal((await cap('GET', '/clubs')).body.clubs.some((c) => c.name === 'Conakry Big Game'), false, 'not listed yet');
     assert.equal((await cap('GET', `/clubs/${asked.body.club.id}`)).status, 404);
     assert.equal((await cap('GET', '/admin/club-requests')).status, 403);
