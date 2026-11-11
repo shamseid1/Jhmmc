@@ -256,9 +256,7 @@ PAGE_GROUPS.push((view) => ({
     if (!live) {
       // An earlier day: no GPS.
     } else if (navigator.geolocation) {
-      // Opening Log fish asks for the GPS (the phone's own Allow question). If the phone
-      // says no, a button asks again, and says where to switch it on if it's still no.
-      const startWatch = () => { if (watch != null) navigator.geolocation.clearWatch(watch); watch = navigator.geolocation.watchPosition((pos) => {
+      watch = navigator.geolocation.watchPosition((pos) => {
         fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
         gps.classList.remove('gps-wait');
@@ -272,59 +270,11 @@ PAGE_GROUPS.push((view) => ({
           view.querySelector('.fates')?.classList.add('waiting');
         }
         if (fix) return;
-        if (err.code !== 1) { gps.textContent = 'Finding GPS… Fish can be logged as soon as the spot is taken.'; return; }
-        const where = isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app'
-          : "your browser's site settings → Location → Allow";
-        gps.innerHTML = html`<b>Location is off.</b> Fish are logged with their spot, so it's needed here.
-          <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
-          <span class="gps-where" hidden>If nothing asks you: ${where}, then come back.</span>`;
-      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 }); };
-      startWatch();
-      // Still no spot after a few seconds: either the phone hasn't been asked yet (a button
-      // asks, from a tap) or the GPS has no open sky (indoors); then a rougher position from
-      // the phone's network does, if there is one, and the page says so.
-      setTimeout(async () => {
-        if (fix || !view.isConnected) return;
-        let perm = 'prompt';
-        try { perm = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { /* not every phone says */ }
-        if (fix || perm === 'denied') return;
-        if (perm === 'prompt') {
-          gps.innerHTML = html`<b>Allow location to log fish.</b> Fish are logged with their spot.
-            <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
-            <span class="gps-where" hidden>If nothing asks you: ${isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app'
-              : "your browser's site settings → Location → Allow"}, then come back.</span>`;
-          return;
-        }
-        // Allowed as far as the page can tell, but nothing comes: the app's location may be off on
-        // the phone, or the phone's Location switch. A tap on the button asks the phone again.
-        gps.innerHTML = html`<b>No GPS yet.</b> If location is off, turn it on. Indoors the GPS can take a while.
-          <button type="button" class="primary small-btn" data-act="gps-on">Turn on location</button>
-          <span class="gps-where" hidden>If nothing asks you: check Location is on in the phone's quick settings, and
-          ${isInstalled() ? 'Settings → Apps → Africa Sportfishing → Permissions → Location → Allow only while using the app' : "your browser's site settings → Location → Allow"}.</span>`;
-        navigator.geolocation.getCurrentPosition((pos) => {
-          if (fix) return;
-          fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
-          gps.textContent = `Rough position: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m). The GPS will sharpen it outside.`;
-          gps.classList.remove('gps-wait');
-          view.querySelector('.fates')?.classList.remove('waiting');
-        }, () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 });
-      }, 8000);
-      gps.addEventListener('click', (e) => {
-        if (!e.target.closest('[data-act=gps-on]')) return;
-        gps.querySelector('.gps-where').hidden = false;
-        gps.querySelector('[data-act=gps-on]').textContent = 'Asking…';
-        // Asked from a tap: the phone shows its question if it still can.
-        navigator.geolocation.getCurrentPosition(() => startWatch(), () => {
-          const b = gps.querySelector('[data-act=gps-on]');
-          if (b) b.textContent = 'Try again';
-        }, { enableHighAccuracy: true, timeout: 20000 });
-      });
-      // Back from the phone's settings: try again straight away.
-      const again = () => { if (document.visibilityState === 'visible' && !fix) startWatch(); };
-      document.addEventListener('visibilitychange', again);
-      window.addEventListener('hashchange', () => document.removeEventListener('visibilitychange', again), { once: true });
+        gps.textContent = err.code === 1 ? 'Location is off for this app. Fish are logged with their spot.'
+          : 'Finding GPS… Fish can be logged as soon as the spot is taken.';
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 });
     } else {
-      gps.textContent = "This phone or browser can't share its location, so fish can't be logged at sea from it.";
+      gps.textContent = "This phone can't share its location, so fish can't be logged at sea from it.";
     }
     // At sea a fish is only logged with its spot: the buttons wait for the GPS.
     if (live) {

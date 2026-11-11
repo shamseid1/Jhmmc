@@ -1145,7 +1145,3 @@ body { overscroll-behavior-y: contain; }
 .setup-done .icon { width: 20px; height: 20px; }
 .setup-blocked { color: var(--danger); max-width: 48%; text-align: right; }
 .setup-close { width: 100%; margin-top: 12px; }
-
-/* Log fish: location off, with a button to turn it on. */
-#fo-gps .small-btn { display: block; margin: 10px 0 6px; padding: 10px 16px; }
-#fo-gps .gps-where { display: block; color: var(--muted); font-weight: 500; }
