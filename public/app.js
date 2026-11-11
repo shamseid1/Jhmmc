@@ -1914,7 +1914,7 @@ const pagesFor = (view) => ({
     // Two trophies: overall points (every day) and tournament points only.
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const board = q.get('board') === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
-    const { boats, biggest, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
+    const { boats, biggest, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
     view.innerHTML = html`${raw(top)}
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Which table">${raw(options([
@@ -1939,11 +1939,6 @@ const pagesFor = (view) => ({
         <a class="drill pts" href="${drill({ team: b.teamId })}">${b.points}</a></li>`))}</ol>`) : ''}
       ${boats.length ? '' : raw(emptyState('trophy', scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.',
         state.me?.canWeigh ? ['#/weigh', 'Go to the weigh-in'] : null))}
-      <h2>Tournaments</h2>
-      <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
-        <a href="#/tournament/${t.id}?division=${division}"><b>${t.name}</b></a>
-        <div class="muted small">${fmtDays(t)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
-      </li>`)) : raw('<li class="muted">No tournaments on the calendar yet.</li>')}</ul></div>
       <h2>Biggest catches</h2>
       ${biggest.length ? raw(html`<ol class="card rank-list big-list">${biggest.map((c, i) => raw(html`<li>
         <span class="rk">${i + 1}</span>
