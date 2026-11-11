@@ -335,6 +335,7 @@ async function savePdf({ title, subtitle = '', sections, file }) {
   y += 16;
   y += 22;
   for (const s of sections) {
+    if (s.newPage) { doc.addPage(); y = 50; continue; }
     if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
     if (s.heading) { doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text(s.heading, 40, y + 4); y += 12; }
     // A bar chart: one bar per row, the value at its end (bars grow from zero; a negative one points left).
@@ -1950,19 +1951,27 @@ const pagesFor = (view) => ({
         <a class="drill fish" href="${drill({ angler: a.anglerKey })}">${plural(a.catches, 'fish')}</a>
         <a class="drill pts" href="${drill({ angler: a.anglerKey })}">${a.points}</a></li>`))}</ol>`) : raw(emptyState('user', 'No anglers on the board yet.'))}
       <p class="pdf-row">${raw(pdfButton())}</p>`;
-    const table = scope === 'tournaments' ? 'JHMMC Tournaments' : board === 'jhmmc' ? 'JHMMC Season' : 'All of West Africa';
-    view.querySelector('[data-pdf]').pdf = () => ({
-      title: `Leaderboard: ${table}, ${division === 'river' ? 'River' : 'Ocean'}`,
-      subtitle: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. Approved fish only${pending ? `; ${plural(pending, 'registration')} waiting for the secretary` : ''}.`,
-      file: fileName(`Leaderboard ${table} ${division} ${today()}`),
-      sections: [
-        ...(boats.length ? [{ heading: 'Points by boat', bars: boats.slice(0, 15).map((b) => ({ label: b.teamName, value: b.points })) }] : []),
-        { heading: 'Boats', head: ['#', 'Boat', 'Fish', 'Points'], body: boats.map((b, i) => [i + 1, b.teamName, b.catches, b.points]),
+    // The club's PDF: the JHMMC table (Season, or Tournaments if that's on screen), Ocean and River both.
+    view.querySelector('[data-pdf]').pdf = async () => {
+      const table = scope === 'tournaments' ? 'JHMMC Tournaments' : 'JHMMC Season';
+      const [ocean, river] = await Promise.all(['ocean', 'river'].map((d) => api(`/points?division=${d}&scope=${scope}&board=jhmmc`)));
+      const part = (side, r) => [
+        ...(r.boats.length ? [{ heading: `${side}: points by boat`, bars: r.boats.slice(0, 15).map((b) => ({ label: b.teamName, value: b.points })) }] : []),
+        { heading: `${side}: boats`, head: ['#', 'Boat', 'Fish', 'Points'], none: `No approved ${side.toLowerCase()} fish yet.`,
+          body: r.boats.map((b, i) => [i + 1, b.teamName, b.catches, b.points]),
           widths: { 0: { cellWidth: 30 }, 2: { halign: 'right', cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 } } },
-        { heading: 'Anglers', head: ['#', 'Angler', 'Boat', 'Fish', 'Points'], body: anglers.map((a, i) => [i + 1, a.angler, a.teamName, a.catches, a.points]),
+        { heading: `${side}: anglers`, head: ['#', 'Angler', 'Boat', 'Fish', 'Points'], none: `No ${side.toLowerCase()} anglers on the board yet.`,
+          body: r.anglers.map((a, i) => [i + 1, a.angler, a.teamName, a.catches, a.points]),
           widths: { 0: { cellWidth: 30 }, 3: { halign: 'right', cellWidth: 60 }, 4: { halign: 'right', cellWidth: 70 } } },
-      ],
-    });
+      ];
+      const waiting = ocean.pending + river.pending;
+      return {
+        title: `${table} leaderboard: Ocean and River`,
+        subtitle: `Season ${fmtDay(season.start)} to ${fmtDay(season.end)}. JHMMC boats, approved fish only${waiting ? `; ${plural(waiting, 'registration')} waiting for the secretary` : ''}.`,
+        file: fileName(`${table} leaderboard ${today()}`),
+        sections: [...part('Ocean', ocean), { newPage: true }, ...part('River', river)],
+      };
+    };
   },
 
   async tournament(id) {
