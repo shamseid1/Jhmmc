@@ -14,6 +14,14 @@ module.exports = (ctx) => {
 
   // A phone or browser that agreed to notifications; one person may have several.
   api.post('/push/subscribe', (req, res) => {
+    // The Android app: a Firebase token, kept as an "fcm:" endpoint.
+    const fcm = req.body?.fcm;
+    if (fcm !== undefined) {
+      if (typeof fcm !== 'string' || !/^[\w:.-]{20,4096}$/.test(fcm)) return res.status(400).json({ error: 'That notification token could not be read.' });
+      db.prepare(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, '', '')
+        ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id`).run(req.user.id, `fcm:${fcm}`);
+      return res.status(201).json({ ok: true });
+    }
     const { endpoint, keys } = req.body ?? {};
     if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint) || endpoint.length > 1000
       || typeof keys?.p256dh !== 'string' || typeof keys?.auth !== 'string') {

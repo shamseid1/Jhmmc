@@ -3,3 +3,7 @@ data/
 uploads/
 *.db
 .env
+# The Android app: build output, Firebase config and signing keys stay out of git.
+android-app/android/app/google-services.json
+*.keystore
+*.jks

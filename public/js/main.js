@@ -93,7 +93,49 @@ async function refreshPending() {
 setInterval(() => { if (document.visibilityState === 'visible') refreshPending(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshPending(); });
 
-const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const pushSupported = () => NATIVE || ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+
+// 'granted', 'denied' or 'default', from the browser or, in the Android app, from Android.
+async function notifyPermission() {
+  if (NATIVE) {
+    try { const r = (await native('PushNotifications', 'checkPermissions')).receive; return r === 'granted' || r === 'denied' ? r : 'default'; } catch { return 'default'; }
+  }
+  return Notification.permission;
+}
+
+// The Android app: Firebase gives the phone a token; the server sends notifications to it.
+const FCM_KEY = 'fcm-token';
+const fcmWaiting = [];
+if (NATIVE) {
+  nativeListen('PushNotifications', 'registration', (r) => fcmWaiting.splice(0).forEach((w) => w.resolve(r?.value)));
+  nativeListen('PushNotifications', 'registrationError', (e) => fcmWaiting.splice(0).forEach((w) => w.reject(new Error(e?.error || 'Notifications could not be set up.'))));
+  // Tapping a notification opens the page it's about.
+  nativeListen('PushNotifications', 'pushNotificationActionPerformed', (a) => {
+    const url = a?.notification?.data?.url;
+    if (url && url.startsWith('/')) location.href = url;
+  });
+  // In the app already: Android doesn't show it, so a toast does.
+  nativeListen('PushNotifications', 'pushNotificationReceived', (n) => { if (n?.title) toast(n.body ? `${n.title}: ${n.body}` : n.title); });
+}
+function fcmToken() {
+  return new Promise((resolve, reject) => {
+    fcmWaiting.push({ resolve, reject });
+    native('PushNotifications', 'register').catch(reject);
+    setTimeout(() => reject(new Error('Notifications could not be set up. Try again.')), 20000);
+  });
+}
+const savedFcm = () => { try { return localStorage.getItem(FCM_KEY); } catch { return null; } };
+// Firebase can change a phone's token: each start of the app, the current one goes to the server.
+if (NATIVE && savedFcm()) {
+  setTimeout(async () => {
+    try {
+      if ((await notifyPermission()) !== 'granted' || !state.me) return;
+      const token = await fcmToken();
+      try { localStorage.setItem(FCM_KEY, token); } catch { /* fine */ }
+      await api('/push/subscribe', { method: 'POST', body: { fcm: token } });
+    } catch { /* tried again next start */ }
+  }, 4000);
+}
 
 function pushKey(base64) {
   const raw = atob((base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -102,6 +144,15 @@ function pushKey(base64) {
 
 // Asks the phone (its Allow / Don't allow) and, if allowed, registers it with the server.
 async function enablePush() {
+  if (NATIVE) {
+    let r = (await native('PushNotifications', 'checkPermissions')).receive;
+    if (r !== 'granted') r = (await native('PushNotifications', 'requestPermissions')).receive;
+    if (r !== 'granted') return false;
+    const token = await fcmToken();
+    try { localStorage.setItem(FCM_KEY, token); } catch { /* registered again next time */ }
+    await api('/push/subscribe', { method: 'POST', body: { fcm: token } });
+    return true;
+  }
   if ((await Notification.requestPermission()) !== 'granted') return false;
   const { reg } = await pushSubscription();
   const { publicKey } = await api('/push/key');
@@ -112,6 +163,15 @@ async function enablePush() {
 }
 
 async function pushSubscription() {
+  if (NATIVE) {
+    // The same shape as the browser's subscription.
+    const token = (await notifyPermission()) === 'granted' ? savedFcm() : null;
+    return { sub: token && {
+      endpoint: `fcm:${token}`,
+      toJSON: () => ({ fcm: token }),
+      unsubscribe: async () => { try { localStorage.removeItem(FCM_KEY); } catch { /* fine */ } await native('PushNotifications', 'unregister').catch(() => {}); },
+    } };
+  }
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
   return { reg, sub: await reg.pushManager.getSubscription() };
@@ -121,7 +181,8 @@ async function pushSubscription() {
 // on the Review page for officials (fish to review), and on the feed until it's on.
 async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn = false } = {}) {
   // On the feed it's only an offer: nothing if this phone can't, or won't, have them.
-  if (hideWhenOn && (!pushSupported() || Notification.permission === 'denied')) return;
+  const permission = pushSupported() ? await notifyPermission() : 'default';
+  if (hideWhenOn && (!pushSupported() || permission === 'denied')) return;
   const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (!pushSupported()) {
@@ -130,7 +191,7 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
       : '<p class="small muted">This browser can\'t show notifications. Chrome on Android, or the app added to an iPhone Home Screen, can.</p>';
     return;
   }
-  if (Notification.permission === 'denied') {
+  if (permission === 'denied') {
     el.innerHTML = isInstalled()
       ? '<p class="small muted">Notifications are blocked on this phone. Turn them on in Settings → Apps → Africa Sportfishing → Notifications, then come back here.</p>'
       : '<p class="small muted">Notifications are blocked for this site. Allow them in your browser\'s site settings, then come back here.</p>';
@@ -323,7 +384,7 @@ window.addEventListener('appinstalled', () => {
   document.querySelector('.install-card')?.remove();
   toast('Installed. Open Africa Sportfishing from your home screen.');
 });
-const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isInstalled = () => NATIVE || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 // In the installed app (signed in), a sheet asks for what it needs: notifications and
 // the phone's location. A page can only ask when someone taps, so each is a button;
@@ -334,10 +395,9 @@ const SETUP_KEY = 'setup-shown-at';
 async function firstOpenSetup() {
   if (!isInstalled() || !state.me || document.getElementById('setup-sheet')) return;
   try { if (Date.now() - Number(localStorage.getItem(SETUP_KEY) || 0) < 864e5) return; } catch { return; }
-  const state0 = async (name) => { try { return (await navigator.permissions.query({ name })).state; } catch { return 'prompt'; } };
-  const notifyOn = pushSupported() && Notification.permission === 'granted' && !!(await pushSubscription().catch(() => ({}))).sub;
+  const notifyOn = pushSupported() && (await notifyPermission()) === 'granted' && !!(await pushSubscription().catch(() => ({}))).sub;
   // Nothing missing: no sheet.
-  if ((notifyOn || !pushSupported()) && (await state0('geolocation')) === 'granted') return;
+  if ((notifyOn || !pushSupported()) && (await locationPermission()) === 'granted') return;
   const where = 'Settings → Apps → Africa Sportfishing';
   const dlg = document.createElement('dialog');
   dlg.id = 'setup-sheet';
@@ -347,12 +407,13 @@ async function firstOpenSetup() {
     : blocked ? raw(html`<span class="small setup-blocked">Blocked: ${blocked}</span>`)
       : raw(html`<button type="button" class="primary" data-ask="${key}">Allow</button>`)}</div>`;
   const draw = async () => {
-    const loc = await state0('geolocation');
+    const loc = await locationPermission();
+    const notify = pushSupported() ? await notifyPermission() : 'default';
     dlg.innerHTML = html`<h2>Set up the app</h2>
       <p class="small muted">Two quick permissions so it works at sea and tells you what's happening.</p>
       ${raw(pushSupported() ? row('notify', 'Notifications', 'Weigh-ins, fish logged and club announcements',
-        notifyOn || (Notification.permission === 'granted' && dlg.dataset.notify === 'on'),
-        Notification.permission === 'denied' ? `${where} → Notifications → Allow` : '') : '')}
+        notifyOn || (notify === 'granted' && dlg.dataset.notify === 'on'),
+        notify === 'denied' ? `${where} → Notifications → Allow` : '') : '')}
       ${raw(row('location', 'Location', 'The spot of each fish you log, for your crew only',
         loc === 'granted', loc === 'denied' ? `${where} → Permissions → Location → Allow` : ''))}
       <button type="button" class="setup-close">Done</button>`;

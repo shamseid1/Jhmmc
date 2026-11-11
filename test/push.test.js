@@ -185,3 +185,39 @@ test('the secretary gets a phone notification when fish are registered', async (
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('the Android app gets its notifications from Firebase', async () => {
+  const { createPusher } = require('../src/push');
+  const { DatabaseSync } = require('node:sqlite');
+  const crypto = require('node:crypto');
+  const db = new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)');
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const account = { project_id: 'asf-test', client_email: 'push@asf-test.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) };
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    if (url.includes('oauth2')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }));
+    const { message } = JSON.parse(init.body);
+    if (message.token === 'gone-token') return new Response('{"error":{"status":"NOT_FOUND","details":[{"errorCode":"UNREGISTERED"}]}}', { status: 404 });
+    return new Response('{}');
+  };
+  const env = { FIREBASE_SERVICE_ACCOUNT: Buffer.from(JSON.stringify(account)).toString('base64') };
+  const pusher = createPusher(db, { env, fetchImpl });
+  assert.equal(await pusher.send({ endpoint: 'fcm:live-token' }, { title: 'Weigh-in', body: 'Blue marlin', url: '/#/catch/1' }), true);
+  // Signed in once with the service account's key (a JWT the key's public half checks).
+  const assertion = new URLSearchParams(calls[0].init.body.toString()).get('assertion');
+  const [h, p, sig] = assertion.split('.');
+  assert.ok(crypto.verify('RSA-SHA256', Buffer.from(`${h}.${p}`), publicKey, Buffer.from(sig, 'base64url')));
+  assert.equal(JSON.parse(Buffer.from(p, 'base64url')).iss, account.client_email);
+  const sent = JSON.parse(calls[1].init.body).message;
+  assert.equal(calls[1].url, 'https://fcm.googleapis.com/v1/projects/asf-test/messages:send');
+  assert.equal(calls[1].init.headers.Authorization, 'Bearer tok');
+  assert.deepEqual([sent.token, sent.notification.title, sent.data.url], ['live-token', 'Weigh-in', '/#/catch/1']);
+  // An uninstalled app's token is gone for good; the access token is reused.
+  assert.equal(await pusher.send({ endpoint: 'fcm:gone-token' }, { title: 'x' }), false);
+  assert.equal(calls.filter((c) => c.url.includes('oauth2')).length, 1);
+  // Without Firebase set up, Android phones are skipped (and kept).
+  const off = createPusher(db, { env: {}, fetchImpl: () => assert.fail('no call') });
+  assert.equal(await off.send({ endpoint: 'fcm:live-token' }, { title: 'x' }), true);
+});

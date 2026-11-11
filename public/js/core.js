@@ -8,6 +8,53 @@
 const state = { me: null, meta: null, clubs: null, afterLogin: null, pending: 0, navActive: null };
 const main = document.getElementById('view');
 
+// ---- the Android app (Google Play) ----------------------------------------
+// There the site runs in a native shell (Capacitor). Android's own location takes the
+// browser's place: it asks with the phone's Allow dialog and, when the phone's location
+// is off, offers to turn it on right there. Notifications come through Firebase (main.js).
+const NATIVE = !!(window.Capacitor?.isNativePlatform?.() && window.Capacitor.nativePromise);
+const native = (plugin, method, options = {}) => window.Capacitor.nativePromise(plugin, method, options);
+const nativeListen = (plugin, eventName, fn) => window.Capacitor.nativeCallback(plugin, 'addListener', { eventName }, fn);
+if (NATIVE && navigator.geolocation) {
+  // The same calls as the browser's, so every page works unchanged.
+  const geo = navigator.geolocation;
+  const position = (p) => ({ coords: { ...p.coords }, timestamp: p.timestamp });
+  // The plugin's codes (OS-PLUG-GLOC-00nn) as the browser's: 1 no permission (or location
+  // left off), 3 too slow, 2 anything else.
+  const failure = (e) => {
+    const n = Number(String(e?.code ?? '').slice(-4));
+    return { code: n === 3 || n === 9 || n === 7 ? 1 : n === 10 ? 3 : 2, message: e?.message || 'No position' };
+  };
+  const options = (o = {}) => ({ enableHighAccuracy: !!o.enableHighAccuracy, timeout: o.timeout ?? 60000, maximumAge: o.maximumAge ?? 0 });
+  const watches = new Map();
+  let nextWatch = 1;
+  const set = (name, value) => Object.defineProperty(geo, name, { value, configurable: true, writable: true });
+  set('getCurrentPosition', (ok, fail, o) => {
+    native('Geolocation', 'getCurrentPosition', options(o)).then((p) => ok(position(p)), (e) => fail?.(failure(e)));
+  });
+  set('watchPosition', (ok, fail, o) => {
+    const id = nextWatch++;
+    watches.set(id, window.Capacitor.nativeCallback('Geolocation', 'watchPosition', options(o), (p, e) => {
+      if (!watches.has(id)) return;
+      if (e) fail?.(failure(e));
+      else if (p) ok(position(p));
+    }));
+    return id;
+  });
+  set('clearWatch', (id) => {
+    const callbackId = watches.get(id);
+    watches.delete(id);
+    if (callbackId != null) Promise.resolve(callbackId).then((c) => native('Geolocation', 'clearWatch', { id: c })).catch(() => {});
+  });
+}
+// Location permission: 'granted', 'denied' or 'prompt'.
+async function locationPermission() {
+  if (NATIVE) {
+    try { const r = (await native('Geolocation', 'checkPermissions')).location; return r === 'granted' || r === 'denied' ? r : 'prompt'; } catch { return 'prompt'; }
+  }
+  try { return (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { return 'prompt'; }
+}
+
 const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

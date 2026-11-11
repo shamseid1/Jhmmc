@@ -1,0 +1,20 @@
+{
+  "appId": "com.africasportfishing.app",
+  "appName": "Africa Sportfishing",
+  "webDir": "www",
+  "server": {
+    "url": "https://africasportfishing.com",
+    "androidScheme": "https",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f4f6fa"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}
