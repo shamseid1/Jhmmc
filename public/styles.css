@@ -1152,3 +1152,7 @@ body { overscroll-behavior-y: contain; }
 .pdf-row { margin: 14px 0 6px; }
 .pdf-btn .icon { width: 18px; height: 18px; }
 .big-list .nm { display: grid; }
+.big-list li { grid-template-columns: 28px 1fr auto; }
+.big-angler { color: var(--accent); font-weight: 700; }
+.big-wt { display: grid; justify-items: end; gap: 2px; }
+.big-wt .small { font: 600 12.5px/1 "Montserrat", sans-serif; }

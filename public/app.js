@@ -1947,9 +1947,8 @@ const pagesFor = (view) => ({
       <h2>Biggest catches</h2>
       ${biggest.length ? raw(html`<ol class="card rank-list big-list">${biggest.map((c, i) => raw(html`<li>
         <span class="rk">${i + 1}</span>
-        <a class="nm" href="#/catch/${c.id}">${c.species}<span class="muted small">${c.angler || 'the crew'} · ${c.teamName}</span></a>
-        <span class="fish">${fmtPoints(c.points)}</span>
-        <a class="pts" href="#/catch/${c.id}">${fmtWeight(c.weightKg)}</a></li>`))}</ol>`) : raw(emptyState('fish', 'No fish weighed in yet this season.'))}
+        <a class="nm" href="#/catch/${c.id}"><span>${c.species} <span class="big-angler">· ${c.angler || 'the crew'}</span></span><span class="muted small">${c.teamName}</span></a>
+        <a class="pts big-wt" href="#/catch/${c.id}">${fmtWeight(c.weightKg)}<span class="muted small">${fmtPoints(c.points)}</span></a></li>`))}</ol>`) : raw(emptyState('fish', 'No fish weighed in yet this season.'))}
       <p class="pdf-row">${raw(pdfButton())}</p>`;
     // The club's PDF: the JHMMC table (Season, or Tournaments if that's on screen), Ocean and River both.
     view.querySelector('[data-pdf]').pdf = async () => {
