@@ -711,7 +711,8 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
         emailed = await backups.email(b);
       } catch (err) {
         console.error('Backup email failed:', err.message);
-        return res.status(502).json({ error: `Backup made, but the email failed: ${err.message}`, backup: b });
+        // 424, not 502: the app reads 502 as 'the server is restarting' and would hide this message.
+        return res.status(424).json({ error: `Backup made, but the email failed: ${err.message}`, backup: b });
       }
     }
     res.status(201).json({ backup: b, emailed });
