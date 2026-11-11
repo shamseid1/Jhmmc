@@ -1292,7 +1292,6 @@ const pagesFor = (view) => ({
         </form></details>`) : ''}
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
-      <div id="finish-call"></div>
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
@@ -1310,14 +1309,6 @@ const pagesFor = (view) => ({
             <span><b>${plural(waiting.length, 'fish')} boated today</b>
               <span class="small muted">${Object.entries(counts).map(([sp, n]) => `${n} ${sp.toLowerCase()}`).join(', ')}</span></span>
             <span class="btn primary">Go to the weigh-in</span></a>`;
-        }
-        // The season numbers need the trip's details; they're easy to forget.
-        const missing = [!trip.technique.length && 'technique', !trip.area && 'area', trip.depthM == null && 'depth', trip.waterC == null && 'water temp'].filter(Boolean);
-        const finish = view.querySelector('#finish-call');
-        if (state.me.isCaptain && new Date().getHours() >= 15 && trip.landings.length && missing.length && finish) {
-          finish.innerHTML = html`<a class="card pad weigh-call finish-call" href="#/fishon?finish=1">${raw(icon('edit'))}
-            <span><b>Finish today's trip</b><span class="small muted">Add the ${missing.join(', ')}: it helps the season numbers.</span></span>
-            <span class="btn">Finish the trip</span></a>`;
         }
       }).catch(() => {});
     }
@@ -2469,8 +2460,19 @@ const pagesFor = (view) => ({
       view.innerHTML = html`<h1>Log fish</h1>${raw(noBoatBanner())}`;
       return;
     }
-    const day = new URLSearchParams(location.hash.split('?')[1] || '').get('date') || today();
-    const live = day === today();
+    // Opened without a day it's live, at sea. A trip ends on its own: the next
+    // day starts a new one. Except a night trip: before 5 am, if the boat landed
+    // a fish in the last 8 hours (yesterday evening), it's still yesterday's trip.
+    const asked = new URLSearchParams(location.hash.split('?')[1] || '').get('date');
+    let day = asked || today();
+    const live = !asked || asked === today();
+    if (!asked && new Date().getUTCHours() < 5) {
+      const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      try {
+        const { trip: last } = await api(`/outings/trip?date=${yesterday}`);
+        if (last?.landings?.some((l) => l.landedAt && Date.now() - Date.parse(l.landedAt) < 8 * 36e5)) day = yesterday;
+      } catch { /* no signal: today's trip */ }
+    }
     // Without signal these fail; the fish waiting on the phone still show.
     const [got, list0] = await Promise.all([
       api(`/outings/trip?date=${day}`, { once: true }).catch(() => null),
@@ -2489,7 +2491,7 @@ const pagesFor = (view) => ({
     const quick = QUICK[state.me.division === 'river' ? 'river' : 'ocean'].map((n) => byName.get(n)).filter(Boolean);
     view.innerHTML = html`<p class="back"><a href="#/log">‹ Log</a></p>
       <h1>Log fish</h1>
-      <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span><span class="chip-date">${live ? 'Today' : fmtDate(day)}</span></div>
+      <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span><span class="chip-date">${day === today() ? 'Today' : live ? 'Last night' : fmtDate(day)}</span></div>
       <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost.' : 'An earlier trip. Fish are logged at sea, as they\'re landed, so its spots are right.'}</p>
       <div class="card pad stack fishon" ${live ? '' : raw('hidden')}>
         <div class="quick-species" role="radiogroup" aria-label="Species" ${quick.length ? '' : 'hidden'}>${quick.map((x) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}"><span>${x.name}</span></label>`))}</div>
@@ -2541,7 +2543,7 @@ const pagesFor = (view) => ({
         finish.innerHTML = '';
         return;
       }
-      finish.innerHTML = html`<h2>Finish the trip</h2>
+      finish.innerHTML = html`<h2>Trip details <span class="muted small">(optional)</span></h2>
         <form class="card pad stack" id="fo-trip">
           <span class="spot-head">Technique</span>
           <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}" ${trip.technique.includes(t) ? 'checked' : ''}> ${t}</label>`))}</div>
@@ -2695,10 +2697,6 @@ const pagesFor = (view) => ({
     });
     draw();
     flush();
-    // From the feed's "Finish today's trip": straight to the trip details.
-    if (new URLSearchParams(location.hash.split('?')[1] || '').get('finish')) {
-      setTimeout(() => view.querySelector('#fo-trip')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
-    }
     // Keep a GPS fix warm so the spot is right where the fish came aboard.
     const gps = view.querySelector('#fo-gps');
     let fix = null;
