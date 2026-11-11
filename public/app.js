@@ -356,17 +356,6 @@ function mediaHtml(item, alt = '') {
     <span class="gallery-count">${raw(icon('camera'))} ${slides.length}</span></div>`;
 }
 
-// The top three boats on a podium: 2nd, 1st, 3rd, with their photos and medals.
-function podium(top, href) {
-  if (!top.length) return '';
-  const order = [top[1], top[0], top[2]].map((b, k) => b && { ...b, place: [2, 1, 3][k] }).filter(Boolean);
-  return html`<div class="podium">${order.map((b) => raw(html`<a class="pod p${b.place}" href="#/boat/${b.teamId}">
-    <span class="pod-pic">${b.photoUrl ? raw(html`<img src="${b.photoUrl}" alt="" loading="lazy">`) : raw(icon('boat'))}<i class="medal">${b.place}</i></span>
-    <b class="pod-name">${b.teamName}</b>
-    <span class="pod-pts">${b.points} pts</span>
-    <span class="pod-step"></span></a>`))}</div>`;
-}
-
 // An empty page or list: a picture, a line, and the next step if there is one.
 function emptyState(iconName, text, action = null) {
   return html`<div class="card empty-state"><span class="es-icon">${raw(icon(iconName))}</span><p>${text}</p>
@@ -1856,9 +1845,9 @@ const pagesFor = (view) => ({
           : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
 </p><p>Fish registered at the weigh station and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''}</p><p><a href="#/scoring">How points work</a></p>`))}</h2>
-      ${raw(podium(boats.slice(0, 3), (b) => drill({ team: b.teamId })))}`) : ''}
-      ${boats.length > 3 ? raw(html`<ol class="card rank-list" start="4">${boats.slice(3).map((b, i) => raw(html`<li>
-        <span class="rk">${i + 4}</span>
+      <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
+      ${boats.length ? raw(html`<h2>Boats</h2><ol class="card rank-list">${boats.map((b, i) => raw(html`<li>
+        <span class="rk">${i + 1}</span>
         <a class="nm" href="#/boat/${b.teamId}">${b.teamName}</a>
         <a class="drill fish" href="${drill({ team: b.teamId })}">${plural(b.catches, 'fish')}</a>
         <a class="drill pts" href="${drill({ team: b.teamId })}">${b.points}</a></li>`))}</ol>`) : ''}
@@ -4186,6 +4175,31 @@ const ICONS = {
   trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
   medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
 };
+
+// Bar graph of season points, one bar per boat. Bars grow from zero, so a
+// boat below zero (a small marlin kept) points left. The value sits at the
+// bar's end; hovering shows the fish count too.
+const TOP_BARS = 10;
+function pointsBars(boats) {
+  const lo = Math.min(0, ...boats.map((b) => b.points));
+  const hi = Math.max(0, ...boats.map((b) => b.points));
+  // Room at either end for the value label.
+  const left = lo < 0 ? 16 : 0;
+  const right = hi > 0 ? 16 : 0;
+  const scale = (v) => left + ((v - lo) / (hi - lo || 1)) * (100 - left - right);
+  const zero = scale(0);
+  return boats.map((b) => {
+    const end = scale(b.points);
+    const neg = b.points < 0;
+    const [from, to] = neg ? [end, zero] : [zero, end];
+    return html`<a class="bar-row" href="#/boat/${b.teamId}" title="${b.teamName}: ${b.points} points from ${plural(b.catches, 'fish')}">
+      <span class="bar-name">${b.teamName}</span>
+      <span class="bar-track" style="--zero:${zero}%">
+        <span class="bar${neg ? ' neg' : ''}" style="left:${from}%;width:${Math.max(to - from, 0.5)}%"></span>
+        <span class="bar-value${neg ? ' neg' : ''}" style="${neg ? `right:${100 - from}%` : `left:${to}%`}">${b.points}</span>
+      </span></a>`;
+  }).join('');
+}
 
 // ---- review badge & phone notifications ----------------------------------
 
