@@ -353,7 +353,7 @@ const photoField = (label, current) => html`<div class="photo-field"><span class
   <div class="photo-field-row">
     <img class="photo-field-img" src="${current || ''}" alt="" ${current ? '' : 'hidden'}>
     <label class="btn">${raw(icon('camera'))} <span>${current ? 'Change photo' : 'Add a photo'}</span>
-      <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></label>
+      <input name="photo" type="file" accept="image/*" hidden></label>
   </div></div>`;
 document.addEventListener('change', (e) => {
   const input = e.target.closest('.photo-field input[type=file]');
