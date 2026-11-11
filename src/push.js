@@ -4,15 +4,39 @@ const webpush = require('web-push');
 // The Android app gets its notifications from Firebase Cloud Messaging (HTTP v1 API).
 // FIREBASE_SERVICE_ACCOUNT holds the Firebase project's service account key (the JSON
 // file, as is or base64). Without it, phones on the Android app get no notifications.
+// The key file as pasted into a dashboard from a phone: real line breaks inside the
+// private key (where the file has \n), curly quotes, or base64. Read all of them.
+function readServiceAccount(raw) {
+  let text = String(raw).trim().replace(/^\uFEFF/, '').replace(/[\u201C\u201D]/g, '"');
+  if (!text.startsWith('{')) text = Buffer.from(text, 'base64').toString('utf8').trim();
+  // Line breaks inside a quoted value become \n, as JSON needs; those between values stay.
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString && ch === '\\') { out += ch + (text[i + 1] ?? ''); i++; continue; }
+    if (ch === '"') inString = !inString;
+    if (inString && (ch === '\n' || ch === '\r')) { if (ch === '\n') out += '\\n'; continue; }
+    out += ch;
+  }
+  const account = JSON.parse(out);
+  if (typeof account.private_key === 'string') account.private_key = account.private_key.replace(/\\n/g, '\n');
+  return account;
+}
+
 function createFcm(env, fetchImpl = globalThis.fetch) {
   let account = null;
   const rawKey = env.FIREBASE_SERVICE_ACCOUNT;
   if (rawKey) {
     try {
-      account = JSON.parse(rawKey.trim().startsWith('{') ? rawKey : Buffer.from(rawKey, 'base64').toString('utf8'));
-    } catch {
-      console.warn('FIREBASE_SERVICE_ACCOUNT could not be read: Android app notifications are off.');
+      account = readServiceAccount(rawKey);
+    } catch (err) {
+      // Never the key itself in the log: only its length and where it went wrong.
+      console.warn(`FIREBASE_SERVICE_ACCOUNT could not be read (${String(rawKey).trim().length} characters, starts with "${String(rawKey).trim().slice(0, 1)}"; ${err.message.replace(/"[^"]*"/g, '…')}): Android app notifications are off.`);
     }
+    const missing = account && ['project_id', 'client_email', 'private_key'].filter((k) => !account[k]);
+    if (missing?.length) console.warn(`FIREBASE_SERVICE_ACCOUNT is missing ${missing.join(', ')}: paste the whole key file. Android app notifications are off.`);
+    else if (account) console.log(`Android app notifications on (Firebase project ${account.project_id}).`);
   }
   if (!account?.client_email || !account?.private_key || !account?.project_id) return null;
   let token = null;
@@ -92,4 +116,4 @@ function createPusher(db, { contact, env = process.env, fetchImpl } = {}) {
   };
 }
 
-module.exports = { createPusher };
+module.exports = { createPusher, readServiceAccount };
