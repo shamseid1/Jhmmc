@@ -356,6 +356,23 @@ function mediaHtml(item, alt = '') {
     <span class="gallery-count">${raw(icon('camera'))} ${slides.length}</span></div>`;
 }
 
+// The top three boats on a podium: 2nd, 1st, 3rd, with their photos and medals.
+function podium(top, href) {
+  if (!top.length) return '';
+  const order = [top[1], top[0], top[2]].map((b, k) => b && { ...b, place: [2, 1, 3][k] }).filter(Boolean);
+  return html`<div class="podium">${order.map((b) => raw(html`<a class="pod p${b.place}" href="#/boat/${b.teamId}">
+    <span class="pod-pic">${b.photoUrl ? raw(html`<img src="${b.photoUrl}" alt="" loading="lazy">`) : raw(icon('boat'))}<i class="medal">${b.place}</i></span>
+    <b class="pod-name">${b.teamName}</b>
+    <span class="pod-pts">${b.points} pts</span>
+    <span class="pod-step"></span></a>`))}</div>`;
+}
+
+// An empty page or list: a picture, a line, and the next step if there is one.
+function emptyState(iconName, text, action = null) {
+  return html`<div class="card empty-state"><span class="es-icon">${raw(icon(iconName))}</span><p>${text}</p>
+    ${action ? raw(html`<a class="btn primary" href="${action[0]}">${action[1]}</a>`) : ''}</div>`;
+}
+
 // Club roles and how they read.
 const ROLE_OPTIONS = [['', 'Member'], ['president', 'President'], ['vice_president', 'Vice President'], ['secretary', 'Secretary'], ['treasurer', 'Treasurer']];
 const roleLabel = (role) => ROLE_OPTIONS.find(([k]) => k === role)?.[1] || role;
@@ -851,10 +868,7 @@ function catchCard(c, { full = false } = {}) {
         ${c.scaleVideoUrl && !c.released ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
-        <button data-act="like" class="${c.liked ? 'liked' : ''}" aria-pressed="${c.liked}" aria-label="Like">${raw(icon('heart'))} <span>${c.likes}</span></button>
-        <a class="btn" href="#/catch/${c.id}" aria-label="Comments">${raw(icon('comment'))} ${c.comments}</a>
-        <button data-act="share">Share</button>
-        <a class="btn" href="${whatsapp(`${shareText(c)} ${location.origin}/#/catch/${c.id}`)}" target="_blank" rel="noopener">WhatsApp</a>
+        <button data-act="share">${raw(icon('share'))} Share</button>
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
         ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.ownPhoto ? 'Change your photo' : 'Add your photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
@@ -1104,7 +1118,7 @@ async function renderTrophies(box, query) {
           <button type="button" class="${sort === 'biggest' ? 'on' : ''}" data-sort="biggest">Biggest</button>
         </div>
         <div class="trophy-grid">${shown.map((f) => raw(tile(f)))}</div>`)
-        : raw('<div class="card pad empty muted">No fish yet. Fish weighed in show here once the secretary approves them, and fish logged with a photo straight away.</div>')}`;
+        : raw(emptyState('fish', 'No fish yet. Weigh-ins show here once the secretary approves them.', state.me?.teamId ? ['#/fishon', 'Log your first fish'] : null))}`;
   }
   box.addEventListener('click', (e) => {
     const b = e.target.closest('[data-species], [data-sort]');
@@ -1202,10 +1216,13 @@ function needLogin(view, what) {
   </div>`;
 }
 
-const HERO = `<section class="hero">
+// The first thing a visitor sees: navy, the logo's marlin, one line, two buttons.
+const HERO = `<section class="hero welcome">
+  <img class="welcome-mark" src="/logo-mark.png" alt="">
+  <p class="welcome-eyebrow">JHMMC · Liberia</p>
   <h1>Every big fish in West Africa, in one place</h1>
-  <p>Follow the boats and anglers, every fish weighed in and released, and the leaderboard. Crews sign in to log their fish.</p>
-  <a class="btn primary" href="#/register">Create an account</a> <a class="btn ghost-light" href="#/login">Sign in</a>
+  <p>Weigh-ins, the leaderboard and every boat's fish, live.</p>
+  <div class="welcome-buttons"><a class="btn primary" href="#/register">Create an account</a><a class="btn" href="#/login">Sign in</a></div>
 </section>`;
 
 // Shown to anglers who are signed in but not on a boat, and to visitors.
@@ -1350,41 +1367,15 @@ const pagesFor = (view) => ({
   },
 
   async catch(id) {
-    const { catch: c, comments } = await api(`/catches/${id}`);
+    const { catch: c } = await api(`/catches/${id}`);
     // The secretary and admin see a registration's record on its page.
     const record = c.status !== 'unofficial' && state.me?.canReview ? (await api(`/registrations/log?catch=${c.id}`)).fish : null;
     view.innerHTML = html`
       <div class="feed">${raw(catchCard(c, { full: true }))}</div>
       ${record ? raw(html`<h2>Registration history</h2><div class="card"><ul class="list log">${raw(logItems(record))}</ul></div>`) : ''}
-      <h2>Comments</h2>
-      <div class="card pad">
-        ${comments.length ? comments.map((m) => raw(html`<div class="comment" data-cid="${m.id}">
-          <a href="#/user/${m.userId}"><b>${m.author}</b></a> <span class="muted small">${fmtDate(m.createdAt)}</span>
-          ${state.me && (m.userId === state.me.id || state.me.isAdmin) ? raw('<button data-act="delete-comment" class="link danger">Remove</button>') : ''}
-          <div>${m.body}</div></div>`)) : raw('<p class="muted">No comments yet.</p>')}
-        ${state.me ? raw(`<form class="stack" id="comment">
-          <textarea name="body" required maxlength="1000" placeholder="Congratulate the angler…"></textarea>
-          <p class="error"></p>
-          <div><button type="submit" class="primary">Post comment</button></div>
-        </form>`) : raw('<p><a href="#/login" data-return>Sign in</a> to comment.</p>')}
-      </div>`;
+`;
     wireCards(view.querySelector('.feed'), new Map([[String(c.id), c]]));
     drawSpotMaps(view);
-    view.addEventListener('click', async (e) => {
-      const btn = e.target.closest('button[data-act=delete-comment]');
-      if (!btn || !confirm('Remove this comment?')) return;
-      try {
-        await api(`/catches/${id}/comments/${btn.closest('[data-cid]').dataset.cid}`, { method: 'DELETE' });
-        route();
-      } catch (ex) {
-        toast(ex.message);
-      }
-    });
-    const form = view.querySelector('#comment');
-    if (form) bindForm(form, async () => {
-      await api(`/catches/${id}/comments`, { method: 'POST', body: formData(form) });
-      route();
-    });
   },
 
   // Posting by hand is closed: the feed fills itself from weigh-ins and Log fish.
@@ -1842,7 +1833,6 @@ const pagesFor = (view) => ({
     const scope = q.get('scope') === 'tournaments' ? 'tournaments' : 'overall';
     const board = q.get('board') === 'jhmmc' || scope === 'tournaments' ? 'jhmmc' : 'all';
     const { boats, anglers, tournaments, season, pending } = await api(`/points?division=${division}&scope=${scope}&board=${board}`);
-    const empty = (cols, text) => raw(`<tr><td colspan="${cols}" class="muted">${text}</td></tr>`);
     view.innerHTML = html`${raw(top)}
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Which table">${raw(options([
@@ -1859,27 +1849,25 @@ const pagesFor = (view) => ({
           : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
 </p><p>Fish registered at the weigh station and approved by the JHMMC secretary.
         ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''}</p><p><a href="#/scoring">How points work</a></p>`))}</h2>
-      <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
-      <h2>Boats</h2>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>#</th><th>Boat</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
-        <tbody>${boats.length ? boats.map((b, i) => raw(html`<tr><td>${i + 1}</td><td><a href="#/boat/${b.teamId}">${b.teamName}</a></td>
-          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}">${b.catches}</a></td>
-          <td class="num"><a class="drill" href="${drill({ team: b.teamId })}"><b>${b.points}</b></a></td></tr>`)) : empty(4, scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.')}</tbody>
-      </table></div>
+      ${raw(podium(boats.slice(0, 3), (b) => drill({ team: b.teamId })))}`) : ''}
+      ${boats.length > 3 ? raw(html`<ol class="card rank-list" start="4">${boats.slice(3).map((b, i) => raw(html`<li>
+        <span class="rk">${i + 4}</span>
+        <a class="nm" href="#/boat/${b.teamId}">${b.teamName}</a>
+        <a class="drill fish" href="${drill({ team: b.teamId })}">${plural(b.catches, 'fish')}</a>
+        <a class="drill pts" href="${drill({ team: b.teamId })}">${b.points}</a></li>`))}</ol>`) : ''}
+      ${boats.length ? '' : raw(emptyState('trophy', scope === 'tournaments' ? 'No approved tournament fish yet this season.' : 'No approved catches yet this season.',
+        state.me?.canWeigh ? ['#/weigh', 'Go to the weigh-in'] : null))}
       <h2>Tournaments</h2>
       <div class="card"><ul class="list">${tournaments.length ? tournaments.map((t) => raw(html`<li>
         <a href="#/tournament/${t.id}?division=${division}"><b>${t.name}</b></a>
         <div class="muted small">${fmtDays(t)}${t.winner ? ` · Winner: ${t.winner.teamName}, ${t.winner.points} pts` : ' · No approved results yet'}</div>
       </li>`)) : raw('<li class="muted">No tournaments on the calendar yet.</li>')}</ul></div>
       <h2>Anglers</h2>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>#</th><th>Angler</th><th class="num">Fish</th><th class="num">Points</th></tr></thead>
-        <tbody>${anglers.length ? anglers.map((a, i) => raw(html`<tr><td>${i + 1}</td>
-          <td><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><div class="muted small">${a.teamName}</div></td>
-          <td class="num"><a class="drill" href="${drill({ angler: a.anglerKey })}">${a.catches}</a></td>
-          <td class="num"><a class="drill" href="${drill({ angler: a.anglerKey })}">${a.points}</a></td></tr>`)) : empty(4, 'Nothing yet.')}</tbody>
-      </table></div>`;
+      ${anglers.length ? raw(html`<ol class="card rank-list">${anglers.map((a, i) => raw(html`<li>
+        <span class="rk">${i + 1}</span>
+        <span class="nm"><a href="${anglerHref(a.userId, a.angler)}">${a.angler}</a><span class="muted small">${a.teamName}</span></span>
+        <a class="drill fish" href="${drill({ angler: a.anglerKey })}">${plural(a.catches, 'fish')}</a>
+        <a class="drill pts" href="${drill({ angler: a.anglerKey })}">${a.points}</a></li>`))}</ol>`) : raw(emptyState('user', 'No anglers on the board yet.'))}`;
   },
 
   async tournament(id) {
@@ -2026,9 +2014,25 @@ const pagesFor = (view) => ({
       sheet.noWeighmaster.required = ownBoat;
     };
     sheet.addEventListener('change', syncReason);
+    // A species button picks it in the list (which works out the points); the list lights up the button.
+    sheet.addEventListener('click', (e) => {
+      const b = e.target.closest('.wq');
+      if (!b) return;
+      const sel = b.closest('fieldset').querySelector('select[name=speciesId]');
+      sel.value = b.dataset.sp;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    sheet.addEventListener('change', (e) => {
+      if (e.target.name !== 'speciesId') return;
+      for (const b of e.target.closest('fieldset').querySelectorAll('.wq')) b.classList.toggle('on', b.dataset.sp === e.target.value);
+    });
     const anglerOptions = (selected) => options([...crew.map((m) => [m.id, m.name]), ['other', 'Guest (type a name)']], selected, crew.length ? 'Choose…' : 'Choose the boat first');
+    // Big buttons for the fish weighed most, like Log fish; the list has every species.
+    const WEIGH_QUICK = ['Blue marlin', 'Yellowfin tuna', 'Sailfish', 'Dorado', 'Wahoo', 'Barracuda']
+      .map((n) => state.meta.species.find((x) => x.name === n)).filter(Boolean);
     const fishRow = () => html`<fieldset class="fish card pad">
       <legend><b class="fish-no"></b> <button type="button" class="link danger" data-act="remove-fish">Remove</button></legend>
+      <div class="weigh-quick">${WEIGH_QUICK.map((x) => raw(html`<button type="button" class="wq" data-sp="${x.id}">${x.name}</button>`))}</div>
       <div class="row">
         <label>Species <select name="speciesId" required>${raw(speciesOptions(null, 'Choose…'))}</select></label>
         <label>Angler <select name="anglerId" required>${raw(anglerOptions())}</select></label>
@@ -2930,7 +2934,7 @@ const pagesFor = (view) => ({
       </div>
       ${outings.length ? raw(html`<div class="card log"><ul class="list">${outings.map((o) => raw(item(o)))}</ul></div>
         ${nextBefore ? raw('<p class="center"><button type="button" id="log-more">Load more</button></p>') : ''}`)
-        : raw(`<div class="card pad empty">${scope === 'mine' ? 'No trips logged for your boat yet. Tap Log fish at sea, or pick a day there to add an earlier trip.' : 'No outings logged yet. Boat crews add theirs with Log fish.'}</div>`)}`;
+        : raw(emptyState('fish', scope === 'mine' ? 'No trips logged for your boat yet.' : 'No outings logged yet.', scope === 'mine' && state.me?.teamId ? ['#/fishon', 'Log your first fish'] : null))}`;
     const byId = new Map(outings.map((o) => [String(o.id), o]));
     // Older trips, 30 at a time, with the same filters.
     let before = nextBefore;
@@ -3026,7 +3030,7 @@ const pagesFor = (view) => ({
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
           <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
             ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
-        : raw(`<div class="card pad empty">No spots yet${year ? ` in ${year}` : ''}. Tap <b>Log fish</b> in the regional log when a fish is landed, and its spot appears here.</div>`)}`;
+        : raw(emptyState('pin', `No spots yet${year ? ` in ${year}` : ''}. Fish you log at sea appear here.`, state.me?.teamId ? ['#/fishon', 'Log fish'] : null))}`;
     if (!spots.length && !charts.length) return;
     if (!L) {
       view.querySelector('#catch-map').outerHTML = '<div class="card pad empty">The map couldn\'t load just now. Your catches are listed below.</div>';
@@ -3363,7 +3367,7 @@ const pagesFor = (view) => ({
           <p class="error"></p>
           <div class="actions"><button type="submit" class="danger">Send dispute</button> <button type="button" data-act="cancel">Cancel</button></div>
         </form>`) : ''}
-      </article>`))}</div>`) : raw('<div class="card pad empty">Nothing is waiting for the secretary.</div>')}`;
+      </article>`))}</div>`) : raw(emptyState('check', 'Nothing is waiting for the secretary.'))}`;
     view.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act=dispute], button[data-act=cancel]');
       if (!btn) return;
@@ -4166,6 +4170,7 @@ const ICONS = {
   locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  share: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   // A sportfisher, head-on (the boat mark in boat.svg).
   boat: '<use href="/boat.svg#b" x="-2.5" y="-2.5" width="29" height="29" style="fill:currentColor;stroke:none"/>',
@@ -4178,31 +4183,6 @@ const ICONS = {
   trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
   medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
 };
-
-// Bar graph of season points, one bar per boat. Bars grow from zero, so a
-// boat below zero (a small marlin kept) points left. The value sits at the
-// bar's end; hovering shows the fish count too.
-const TOP_BARS = 10;
-function pointsBars(boats) {
-  const lo = Math.min(0, ...boats.map((b) => b.points));
-  const hi = Math.max(0, ...boats.map((b) => b.points));
-  // Room at either end for the value label.
-  const left = lo < 0 ? 16 : 0;
-  const right = hi > 0 ? 16 : 0;
-  const scale = (v) => left + ((v - lo) / (hi - lo || 1)) * (100 - left - right);
-  const zero = scale(0);
-  return boats.map((b) => {
-    const end = scale(b.points);
-    const neg = b.points < 0;
-    const [from, to] = neg ? [end, zero] : [zero, end];
-    return html`<a class="bar-row" href="#/boat/${b.teamId}" title="${b.teamName}: ${b.points} points from ${plural(b.catches, 'fish')}">
-      <span class="bar-name">${b.teamName}</span>
-      <span class="bar-track" style="--zero:${zero}%">
-        <span class="bar${neg ? ' neg' : ''}" style="left:${from}%;width:${Math.max(to - from, 0.5)}%"></span>
-        <span class="bar-value${neg ? ' neg' : ''}" style="${neg ? `right:${100 - from}%` : `left:${to}%`}">${b.points}</span>
-      </span></a>`;
-  }).join('');
-}
 
 // ---- review badge & phone notifications ----------------------------------
 
@@ -4457,6 +4437,55 @@ document.addEventListener('error', (e) => {
 window.addEventListener('online', () => {
   if (document.querySelector('.offline-note, .feed-list .empty')) route();
 });
+
+// No signal: a thin bar says so, instead of errors; it goes when the signal is back.
+function showOffline() {
+  let bar = document.getElementById('offline-bar');
+  if (navigator.onLine !== false) { bar?.remove(); return; }
+  if (bar) return;
+  bar = document.createElement('div');
+  bar.id = 'offline-bar';
+  bar.setAttribute('role', 'status');
+  bar.textContent = 'Offline. Fish you log are saved and sent when you’re back in range.';
+  document.body.append(bar);
+}
+window.addEventListener('offline', showOffline);
+window.addEventListener('online', showOffline);
+showOffline();
+
+// Pull down at the top of a page to refresh it, like other apps.
+(() => {
+  let startY = null; let dy = 0; let spin = null;
+  const skip = (t) => t.closest('.leaflet-container, input, textarea, select, dialog, .gallery, .hour-bars');
+  document.addEventListener('touchstart', (e) => {
+    startY = window.scrollY <= 0 && e.touches.length === 1 && !skip(e.target) ? e.touches[0].clientY : null;
+    dy = 0;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (startY == null) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || window.scrollY > 0) { spin?.remove(); spin = null; return; }
+    if (!spin) {
+      spin = document.createElement('div');
+      spin.className = 'ptr';
+      spin.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
+      document.body.append(spin);
+    }
+    const pull = Math.min(dy / 2.2, 80);
+    spin.style.transform = `translate(-50%, ${pull}px) rotate(${dy * 1.5}deg)`;
+    spin.classList.toggle('ready', pull >= 64);
+  }, { passive: true });
+  document.addEventListener('touchend', async () => {
+    if (!spin) return;
+    const el = spin; spin = null;
+    if (el.classList.contains('ready')) {
+      el.classList.add('spinning');
+      try { navigator.vibrate?.(10); } catch { /* not on every phone */ }
+      try { await route(); } finally { el.remove(); }
+    } else el.remove();
+    startY = null;
+  });
+})();
 
 (async function init() {
   [state.meta] = await Promise.all([

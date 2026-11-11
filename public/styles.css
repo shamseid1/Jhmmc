@@ -728,7 +728,7 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .club-pick { display: grid; gap: 4px; font-weight: 600; margin-bottom: 12px; }
 
 /* Tap a number on the points tables for the fish behind it. */
-a.drill { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; display: inline-block; min-width: 28px; padding: 4px 0; }
+a.drill { color: inherit; text-decoration: none; display: inline-block; min-width: 28px; padding: 4px 0; }
 .drill-list a { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
 .drill-list a > span { display: grid; }
 .drill-pts { white-space: nowrap; color: var(--accent); }
@@ -1085,3 +1085,68 @@ main > div:empty::after { height: 300px; }
 img.catch-photo:not(a img) { cursor: zoom-in; }
 /* Dark: a faint light halo keeps the crest's navy edges visible on the navy page. */
 :root:not([data-theme="light"]) .club-chip img { filter: drop-shadow(0 0 2px rgba(255, 255, 255, .55)) drop-shadow(0 0 6px rgba(255, 255, 255, .2)); }
+
+/* Names (anglers, boats, clubs) are tappable without underlines: bold, in the text colour. */
+.meta a, .list a, table a, .rank-list a, .cap a, .feed-boat, .catch-title a, .hero-text a, .trophy-best a, .comment a {
+  text-decoration: none; }
+.meta a, table td a, .list li > a:not(.btn), .list li > span > a { font-weight: 600; color: var(--text); }
+body { overscroll-behavior-y: contain; }
+
+/* Leaderboard: the top three on a podium, then a clean ranked list. */
+.podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; align-items: end; gap: 8px; margin: 6px 0 14px; }
+.pod { display: grid; justify-items: center; gap: 4px; text-align: center; color: var(--text); text-decoration: none; min-width: 0; }
+.pod-pic { position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--surface-2);
+  border: 3px solid var(--medal); color: var(--muted); }
+.pod.p1 .pod-pic { width: 84px; height: 84px; }
+.pod-pic img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.pod-pic .icon { width: 60%; height: 60%; }
+.medal { position: absolute; bottom: -6px; right: -4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--medal); color: #2a1d00; font: 700 13px/1 "Montserrat", sans-serif; font-style: normal; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.pod-name { font-size: 14px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+.pod-pts { font: 600 17px/1 "Oswald", "Montserrat", sans-serif; letter-spacing: .02em; }
+.pod-step { width: 100%; margin-top: 6px; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, var(--medal), color-mix(in srgb, var(--medal) 55%, transparent)); }
+.pod.p1 { --medal: #e3b341; } .pod.p1 .pod-step { height: 74px; }
+.pod.p2 { --medal: #b9c2cf; } .pod.p2 .pod-step { height: 52px; }
+.pod.p3 { --medal: #c98a52; } .pod.p3 .pod-step { height: 36px; }
+.rank-list { list-style: none; margin: 0 0 8px; padding: 4px 0; }
+.rank-list li { display: grid; grid-template-columns: 28px 1fr auto auto; align-items: center; gap: 10px; padding: 10px 16px; }
+.rank-list li + li { border-top: 1px solid var(--line); }
+.rank-list .rk { color: var(--muted); font-weight: 700; text-align: center; }
+.rank-list .nm { display: grid; min-width: 0; font-weight: 600; color: var(--text); }
+.rank-list .nm a { color: var(--text); font-weight: 600; }
+.rank-list .fish { color: var(--muted); font-size: 14px; }
+.rank-list .pts { font: 600 18px/1 "Oswald", "Montserrat", sans-serif; color: var(--text); min-width: 44px; text-align: right; }
+
+/* The visitor's first screen. */
+.hero.welcome { position: relative; overflow: hidden; padding: 28px 22px 24px; border: 0; color: #fff;
+  background: radial-gradient(ellipse at 85% 10%, #1b4c95 0%, #0b2d63 45%, var(--navy) 100%); }
+.welcome-mark { position: absolute; right: -40px; top: -20px; width: 220px; opacity: .14; filter: brightness(0) invert(1); pointer-events: none; }
+.welcome-eyebrow { margin: 0 0 8px !important; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #f5c451 !important; }
+.hero.welcome h1 { position: relative; font-size: 2.1rem; line-height: 1.08; text-transform: uppercase; margin: 0 0 10px; color: #fff; }
+.hero.welcome > p { position: relative; color: rgba(255, 255, 255, .82); }
+.welcome-buttons { position: relative; display: flex; gap: 10px; flex-wrap: wrap; }
+.hero.welcome .btn.primary { background: #fff; border-color: #fff; color: var(--navy); }
+.hero.welcome .btn:not(.primary) { background: transparent; border-color: rgba(255, 255, 255, .5); color: #fff; }
+
+/* Empty pages and lists: a picture, a line, the next step. */
+.empty-state { display: grid; justify-items: center; gap: 10px; padding: 30px 20px; text-align: center; color: var(--muted); }
+.empty-state p { margin: 0; max-width: 30ch; }
+.es-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.es-icon .icon, .es-icon .fish-mark { width: 32px; height: 32px; }
+
+/* No signal. */
+#offline-bar { position: fixed; z-index: 30; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); padding: 9px 14px; border-radius: 14px;
+  background: #3a2a00; color: #ffe08a; font-size: 13.5px; font-weight: 600; text-align: center; box-shadow: 0 6px 18px rgba(0, 0, 0, .2); }
+
+/* Pull to refresh. */
+.ptr { position: fixed; z-index: 40; left: 50%; top: calc(4px + env(safe-area-inset-top)); display: grid; place-items: center; width: 40px; height: 40px;
+  border-radius: 50%; background: var(--surface); box-shadow: 0 4px 14px rgba(0, 10, 30, .2); color: var(--muted); transform: translate(-50%, 0); }
+.ptr svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.ptr.ready { color: var(--accent); }
+.ptr.spinning svg { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Weigh-in: the usual species as big buttons. */
+.weigh-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
+.wq { min-height: 46px; padding: 6px 4px; border-radius: 12px; font-size: 13.5px; font-weight: 600; line-height: 1.2; }
+.wq.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

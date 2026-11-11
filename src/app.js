@@ -2026,9 +2026,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/points', (req, res) => {
     const { division, scope, board, start, end, base, params } = pointsFilter(req.query);
     const boats = db.prepare(`
-      SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
+      SELECT t.id AS teamId, t.name AS teamName, t.photo, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
-    `).all(params);
+    `).all(params).map(({ photo, ...b }) => ({ ...b, photoUrl: photoUrl(photo) }));
     const anglers = db.prepare(`
       SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first,
         COALESCE('u' || u.id, 'n' || lower(k.angler_name)) AS anglerKey, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
