@@ -4295,13 +4295,9 @@ function renderNav(active = state.navActive) {
     // The officials' Tournament sheets live in More; the Tournaments tab in the Leaderboard.
     tournaments: /[?&]sheets=1/.test(location.hash) ? 'more' : 'leaderboard',
   }[active] || active;
-  // Signed in, More shows your photo (or initials), like a profile tab.
-  const me = state.me;
-  const avatar = me && (me.photoUrl ? `<img class="nav-avatar" src="${esc(me.photoUrl)}" alt="">`
-    : `<span class="nav-avatar initials">${esc(((me.firstName || me.name)[0] + (me.lastName?.[0] || '')).toUpperCase())}</span>`);
   document.getElementById('nav').innerHTML = links
     .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}${key === 'more' ? ' data-nav="more"' : ''}>
-      <span class="nav-icon">${key === 'more' && avatar ? avatar : icon === 'fish' ? '<span class="fish-mark" aria-hidden="true"></span>' : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
+      <span class="nav-icon">${icon === 'fish' ? '<span class="fish-mark" aria-hidden="true"></span>' : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
 }
