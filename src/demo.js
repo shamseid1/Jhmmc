@@ -93,12 +93,12 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   });
   const sheets = [
     [girl, 20, [['Blue marlin', '212', shams, 'marlin1.jpg'], ['Yellowfin tuna', '64', rayan, 'tuna1.jpg']]],
-    [bait, 18, [['Yellowfin tuna', '88', charbel, 'tuna2.jpg'], ['Wahoo', '24', jack, 'wahoo1.jpg']]],
+    [bait, 18, [['Yellowfin tuna', '88', charbel, 'tuna2.jpg'], ['Grouper', '24', jack, 'grouper2.jpg']]],
     [aqua, 13, [['Dorado', '17', elie, 'dorado1.jpg']]],
-    [girl, 9, [['Sailfish', '', ziad, 'sail1.jpg']]],
+    [girl, 9, [['Barracuda', '15', ziad, 'barracuda1.jpg']]],
     [bait, 6, [['Blue marlin', '168', maamoun, 'marlin2.jpg']]],
     [monkey, 5, [['Yellowfin tuna', '71', lewaa, 'tuna2.jpg']]],
-    [aqua, 3, [['Yellowfin tuna', '52', steve, 'tuna1.jpg'], ['Wahoo', '19', elie, 'wahoo1.jpg']]],
+    [aqua, 3, [['Yellowfin tuna', '52', steve, 'tuna1.jpg'], ['Grouper', '19', elie, 'grouper1.jpg']]],
     [demoBoat, 10, [['Yellowfin tuna', '58', demoCap, 'tuna2.jpg']]],
   ];
   const ids = [];
