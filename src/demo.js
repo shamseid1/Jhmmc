@@ -104,11 +104,6 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   const ids = [];
   for (const [t, ago, fish] of sheets) ids.push(...(await boss.call('POST', '/weigh/sheet', sheet(t, ago, fish))).catches.map((k) => k.id));
   for (const id of ids) await sec.call('POST', `/catches/${id}/review`, { decision: 'approve' });
-  for (const [u, n, body] of [[charbel, 0, 'What a fish!'], [jack, 0, 'Congrats Shams'], [rayan, 6, 'Big one!'], [shams, 4, 'Nice tuna']]) {
-    await u.call('POST', `/catches/${ids[n]}/like`);
-    await u.call('POST', `/catches/${ids[n]}/comments`, { body });
-  }
-  for (const u of [sec, steve, ziad, lewaa]) await u.call('POST', `/catches/${ids[0]}/like`);
 
   // A tournament in two weeks, two boats already in (Liberian Girl not yet); an announcement.
   const ev = (await sec.call('POST', '/events', { kind: 'tournament', name: 'JHMMC Marlin Classic', date: day(-13), endDate: day(-14) })).event;

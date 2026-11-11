@@ -153,62 +153,6 @@ function videoTooBig(file) {
   toast(`That video is too long (${Math.round(file.size / 1048576)} MB). Keep it under about a minute (${MAX_VIDEO_MB} MB).`);
   return true;
 }
-// Choosing a post's photo and/or video: taken now or picked from the phone (Chrome
-// on newer Android phones shows no camera unless asked, hence separate choices).
-const MEDIA_PREVIEWS = `<span class="photo-preview" hidden><img alt=""></span>
-  <video class="video-preview" controls playsinline preload="metadata" hidden></video>`;
-const MEDIA_CHOICES = `<label class="btn">Take photo<input type="file" accept="image/*" capture="environment" data-photo></label>
-  <label class="btn">From photos<input type="file" accept="image/*" data-photo></label>
-  <label class="btn">Record video<input type="file" accept="video/*" capture="environment" data-video></label>
-  <label class="btn">Video from phone<input type="file" accept="video/*" data-video></label>`;
-function wireMediaPick(root) {
-  const picked = { photo: null, video: null };
-  const cta = root.querySelector('[data-act=photo-menu]');
-  const menu = root.querySelector('.photo-menu');
-  const img = root.querySelector('.photo-preview');
-  const vid = root.querySelector('.video-preview');
-  const close = () => {
-    menu.hidden = true;
-    cta.setAttribute('aria-expanded', 'false');
-  };
-  cta.addEventListener('click', () => {
-    menu.hidden = !menu.hidden;
-    cta.setAttribute('aria-expanded', String(!menu.hidden));
-  });
-  menu.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    const isVideo = e.target.matches('[data-video]');
-    e.target.value = '';
-    if (!file || (isVideo && videoTooBig(file))) return;
-    // Show what's attached so it's clear.
-    const [box, el] = isVideo ? [vid, vid] : [img, img.querySelector('img')];
-    picked[isVideo ? 'video' : 'photo'] = file;
-    URL.revokeObjectURL(el.src);
-    el.src = URL.createObjectURL(file);
-    box.hidden = false;
-    cta.classList.add('has-media');
-    close();
-  });
-  return {
-    picked,
-    // Puts the shrunk photo and the video into the form data being sent.
-    async addTo(fd) {
-      if (picked.photo) fd.set('photo', picked.photo);
-      if (picked.video) fd.set('video', picked.video);
-      return preparePhoto(fd, 'photo');
-    },
-    reset() {
-      picked.photo = null;
-      picked.video = null;
-      img.hidden = true;
-      vid.hidden = true;
-      vid.removeAttribute('src');
-      cta.classList.remove('has-media');
-      close();
-    },
-  };
-}
-
 // Editing a post's photos and video: tap a photo to mark it for removal, add
 // more (taken now or from the phone), replace or remove the video.
 function photoManager(item) {
@@ -420,7 +364,7 @@ function makeXlsx(sheets) {
       r += 1;
     }
     if (sh.totals) rows.push(`<row r="${r}">${sh.totals.map((v, i) => cell(v, r, i, 4)).join('')}</row>`);
-    const lastRow = Math.max(headRow, r - 1);
+    const lastRow = headRow + sh.rows.length;
     const last = `${col(n - 1)}${lastRow}`;
     sh.filterRef = sh.rows.length ? `$A$${headRow}:$${col(n - 1)}$${lastRow}` : null;
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1209,19 +1153,6 @@ function wireCards(root, byId) {
     if (!btn) return;
     const c = byId.get(btn.closest('[data-id]').dataset.id);
     if (btn.dataset.act === 'share') return shareCatch(c);
-    if (btn.dataset.act === 'like' && !state.me) return askToSignIn('Sign in to like catches.');
-    if (btn.dataset.act === 'like') {
-      try {
-        const r = await api(`/catches/${c.id}/like`, { method: 'POST' });
-        c.liked = r.liked;
-        c.likes = r.likes;
-        btn.classList.toggle('liked', r.liked);
-        btn.setAttribute('aria-pressed', r.liked);
-        btn.querySelector('span').textContent = r.likes;
-      } catch (ex) {
-        toast(ex.message);
-      }
-    }
     if (btn.dataset.act === 'reapprove') {
       const note = btn.closest('[data-secretary]').querySelector('[name=note]').value.trim();
       if (!note) return toast('Say why it now counts.');
@@ -1448,13 +1379,6 @@ async function renderFeed(container, query = {}) {
 const syncHeader = () => {
   document.getElementById('club-chip').hidden = !state.me?.jhmmc;
 };
-
-// Sends a visitor to sign in, then back to where they were.
-function askToSignIn(msg = 'Sign in to do that.') {
-  state.afterLogin = location.hash;
-  toast(msg);
-  location.hash = '#/login';
-}
 
 function needLogin(view, what) {
   // Signed in already: it's a matter of role, not of signing in.
@@ -4106,7 +4030,7 @@ const pagesFor = (view) => ({
       if (btn.dataset.act === 'copy-link') return copyText(row.dataset.link, 'Link copied');
       if (btn.dataset.act === 'delete-user') {
         const name = row.querySelector('b').textContent;
-        if (!confirm(`Delete ${name}'s account? This can't be undone.\n\nTheir catches stay on the app under their name; their comments and likes are removed.`)) return;
+        if (!confirm(`Delete ${name}'s account? This can't be undone.\n\nTheir catches stay on the app under their name.`)) return;
         try {
           await api(`/admin/users/${row.dataset.id}`, { method: 'DELETE' });
           row.remove();
@@ -4299,7 +4223,7 @@ const pagesFor = (view) => ({
       <details class="card pad delete-account"><summary>Delete my account and my data</summary>
         <form class="stack" id="del">
           <p class="small">This can't be undone. <b>Deleted:</b> your account, email and password, your profile photo, your posts,
-          comments and likes, and the phones getting your notifications. <b>Kept, without your name:</b> fish already weighed in
+          and the phones getting your notifications. <b>Kept, without your name:</b> fish already weighed in
           for a boat (shown as "Former member", so the season's points don't change) and your boat's logged trips.
           See the <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
           <label>Your password <input name="password" type="password" required autocomplete="current-password"></label>
@@ -4488,8 +4412,6 @@ const ICONS = {
   eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
-  switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
-  filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
   brush: '<path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/>',
   settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
@@ -4499,21 +4421,16 @@ const ICONS = {
   video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
-  locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
-  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
-  comment: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   share: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   // A sportfisher, head-on (the boat mark in boat.svg).
   boat: '<use href="/boat.svg#b" x="-2.5" y="-2.5" width="29" height="29" style="fill:currentColor;stroke:none"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-  dashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
   edit: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   rules: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
   scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
   trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
-  medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
 };
 
 // Bar graph of season points, one bar per boat. Bars grow from zero, so a
@@ -4667,6 +4584,8 @@ async function route() {
   if (state.me && (page === 'login' || page === 'register') && !(page === 'login' && state.meta?.demo)) page = 'home';
   renderNav(page);
   refreshPending();
+  // A photo or an explanation left open doesn't follow to the next page.
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
   main.replaceChildren(view);
   window.scrollTo(0, 0);
   try {
@@ -4813,7 +4732,14 @@ showOffline();
 // Pull down at the top of a page to refresh it, like other apps.
 (() => {
   let startY = null; let dy = 0; let spin = null;
-  const skip = (t) => t.closest('.leaflet-container, input, textarea, select, dialog, .gallery, .hour-bars');
+  // Only on pages that just show things: redrawing a form (a weigh-in half filled in) would empty it.
+  const REFRESHABLE = new Set(['', 'leaderboard', 'tournaments', 'tournament', 'records', 'participants', 'boat', 'user', 'guest', 'catch',
+    'log', 'spots', 'pending', 'history', 'activity', 'desk', 'review', 'points-fish', 'club', 'clubs']);
+  const skip = (t) => !REFRESHABLE.has(location.hash.replace(/^#\/?/, '').split(/[/?]/)[0])
+    || t.closest('.leaflet-container, input, textarea, select, dialog, form, details[open], .gallery, .hour-bars')
+    // ...or anything typed and not yet sent (a note for a correction).
+    || [...document.querySelectorAll('main input:not([type=hidden]):not([type=search]):not([type=checkbox]):not([type=radio]):not([type=file]), main textarea')]
+      .some((el) => el.value !== el.defaultValue);
   document.addEventListener('touchstart', (e) => {
     startY = window.scrollY <= 0 && e.touches.length === 1 && !skip(e.target) ? e.touches[0].clientY : null;
     dy = 0;

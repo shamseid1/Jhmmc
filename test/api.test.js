@@ -129,8 +129,9 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   r = await ibra('GET', '/catches');
   assert.equal(r.body.catches.length, 1);
   assert.equal(r.body.catches[0].canDelete, false);
-  assert.deepEqual((await ibra('POST', `/catches/${c.id}/like`)).body, { liked: true, likes: 1 });
-  assert.equal((await ibra('POST', `/catches/${c.id}/comments`, { body: 'Bravo!' })).status, 201);
+  // Likes and comments are gone from the app.
+  assert.equal((await ibra('POST', `/catches/${c.id}/like`)).status, 404);
+  assert.equal((await ibra('POST', `/catches/${c.id}/comments`, { body: 'Bravo!' })).status, 404);
   assert.equal((await ibra('DELETE', `/catches/${c.id}`)).status, 403);
   assert.equal((await fetch(base + c.photoUrl)).status, 200, 'photos are public');
 
@@ -292,14 +293,11 @@ test('visitors without an account can look but not act', async () => {
   assert.equal(r.status, 200);
   assert.ok(r.body.catches.length > 0);
   assert.equal(r.body.catches[0].canDelete, false);
-  assert.equal(r.body.catches[0].liked, false);
   assert.equal((await anon('GET', `/catches/${r.body.catches[0].id}`)).status, 200);
   assert.equal((await anon('GET', '/anglers')).status, 200);
   const teams = (await anon('GET', '/teams')).body.teams;
   const t = (await anon('GET', `/teams/${teams[0].id}`)).body.team;
   assert.equal(t.joinCode, undefined, 'invite code stays with the crew');
-  assert.equal((await anon('POST', `/catches/${r.body.catches[0].id}/like`)).status, 401);
-  assert.equal((await anon('POST', `/catches/${r.body.catches[0].id}/comments`, { body: 'hi' })).status, 401);
   assert.equal((await anon('POST', '/teams/join', { code: 'ABCDEF' })).status, 401);
   assert.equal((await anon('GET', '/me')).body.user, null);
   const clubs = (await anon('GET', '/clubs')).body.clubs;
@@ -623,12 +621,6 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await boss('PATCH', `/teams/${ocean.id}`, { name: 'Sea Hunter' });
     assert.equal((await boss('POST', `/teams/${ocean.id}/code`)).status, 200);
     assert.match((await boss('DELETE', `/teams/${ocean.id}/members/${capId}`)).body.error, /captain/, 'the captain stays until replaced');
-    const said = (await other('POST', `/catches/${post.id}/comments`, { body: 'Nice fish' })).body.comment;
-    assert.equal((await sec('DELETE', `/catches/${post.id}/comments/${said.id}`)).status, 403);
-    assert.equal((await boss('DELETE', `/catches/${post.id}/comments/${said.id}`)).status, 200);
-    const mine = (await other('POST', `/catches/${post.id}/comments`, { body: 'Oops' })).body.comment;
-    assert.equal((await other('DELETE', `/catches/${post.id}/comments/${mine.id}`)).status, 200, 'authors remove their own');
-    assert.equal((await as()('GET', `/catches/${post.id}`)).body.comments.length, 0);
 
     // The feed only shows posts; a boat's registrations are listed separately.
     const feed = (await as()('GET', `/catches?team=${ocean.id}`)).body.catches.map((c) => c.id);
@@ -787,8 +779,6 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     await mate('POST', '/auth/register', { name: 'Deck Hand', email: 'dh@example.com', password: 'password1' });
     await mate('POST', '/teams/join', { code: (await cap('GET', `/teams/${ocean.id}`)).body.team.joinCode });
     const mateId = (await mate('GET', '/me')).body.user.id;
-    await other('POST', `/catches/${post.id}/comments`, { body: 'Well done' });
-    await cap('POST', `/catches/${post.id}/comments`, { body: 'Thanks' });
     const people = (await boss('GET', '/admin/users')).body.users;
     const bossId = people.find((u) => u.email === 'boss@example.com').id;
     assert.equal((await sec('DELETE', `/admin/users/${capId}`)).status, 403, 'admin only');
@@ -797,7 +787,6 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await cap('GET', '/me')).body.user, null, 'signed out');
     const kept = (await as()('GET', `/catches/${wahoo.id}`)).body;
     assert.deepEqual([kept.catch.angler, kept.catch.userId, kept.catch.points], ['Ocean Captain', null, 105], 'registrations keep the name and points');
-    assert.deepEqual((await as()('GET', `/catches/${post.id}`)).body.comments.map((c) => c.body), ['Well done'], 'their comments go');
     const after = (await as()('GET', `/teams/${ocean.id}`)).body.team;
     assert.equal(after.captainId, mateId, 'the crew member is captain now');
     assert.equal((await boss('DELETE', `/admin/users/${capId}`)).status, 404);

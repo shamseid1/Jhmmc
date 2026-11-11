@@ -169,7 +169,6 @@ button, .btn {
 button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
 button:hover, .btn:hover { filter: brightness(1.1); }
 button.danger { color: var(--danger); background: rgba(255, 107, 107, .12); }
-button.liked { border-color: var(--danger); color: var(--danger); }
 button:disabled { opacity: .6; cursor: default; }
 
 .stack { display: grid; gap: 14px; }
@@ -211,8 +210,6 @@ td.num, th.num { text-align: right; }
 .list li { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .list li:last-child { border-bottom: 0; }
 
-.comment { padding: 10px 0; border-bottom: 1px solid var(--line); }
-.comment:last-child { border-bottom: 0; }
 
 .hero {
   background: var(--surface);
@@ -243,7 +240,6 @@ td.num, th.num { text-align: right; }
   max-width: calc(100% - 32px);
 }
 
-.btn.ghost-light { background: transparent; border-color: var(--line); color: var(--text); }
 .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .how h3 { margin: 0 0 4px; font-size: 1rem; }
 .how p { margin: 0; }
@@ -370,7 +366,6 @@ label[hidden] { display: none; }
 
 /* ---- icons (replace emoji) ---- */
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
-button.liked .icon { fill: currentColor; }
 .brand { display: inline-flex; align-items: center; gap: 8px; }
 .brand .mark { width: 40px; height: 40px; fill: currentColor; flex: none; object-fit: contain; }
 /* The logo (marlin over Africa) is navy line art: white on the dark theme. */
@@ -427,19 +422,12 @@ button.liked .icon { fill: currentColor; }
 .member-row .delete-user button { padding: 0; font-size: 13px; }
 
 /* ---- quick post ---- */
-.photo-pick { display: grid; gap: 8px; font-weight: 600; }
-.photo-cta { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 18px; border: 2px dashed var(--line); border-radius: var(--radius); background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
-.photo-cta:focus-visible { border-color: var(--accent); outline: none; }
 .photo-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .photo-menu[hidden] { display: none; }
 .photo-menu .btn { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer; }
 .photo-menu .btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .photo-menu input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.photo-preview img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: var(--line); border-radius: var(--radius); }
-.photo-preview[hidden] { display: none; }
 /* ---- catch location ---- */
-.spot-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.spot-row button { font-weight: 600; }
 .spot-map { margin: 10px 0; }
 .spot-map-view { width: 100%; height: 240px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; z-index: 0; }
 .spot-map p { margin: 6px 0 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -599,8 +587,6 @@ button.link[hidden] { display: none; }
 .member-pay { flex-wrap: nowrap; }
 .member-pay > span:first-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .member-pay > label.check { flex: none; white-space: nowrap; }
-.location-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
-.location-note .icon { width: 18px; height: 18px; flex: none; margin-top: 2px; }
 .log-steps { list-style: none; margin: 8px 0 6px; padding: 0 0 0 14px; border-left: 2px solid var(--line); display: grid; gap: 6px; }
 .log-steps li { position: relative; }
 .log-steps li::before { content: ""; position: absolute; left: -19px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
@@ -614,7 +600,7 @@ button.link[hidden] { display: none; }
 .member-pay .badge { display: inline-block; margin-top: 6px; }
 
 /* A person's full name under their nickname, on their profile. */
-.full-name { margin: -0.5rem 0 0.25rem; font-weight: 600; }.icon.tiny { width: 13px; height: 13px; vertical-align: -2px; }
+.full-name { margin: -0.5rem 0 0.25rem; font-weight: 600; }
 /* More as a profile tab: your photo or initials. */
 
 /* Switch feeds from the profile card on More. */
@@ -628,12 +614,10 @@ button.link[hidden] { display: none; }
 .club-chip span { display: none; }
 .club-chip[hidden] { display: none; }
 .club-chip img { width: 40px; height: auto; filter: drop-shadow(0 1px 2px rgba(0, 10, 30, .25)); }
-.section-note { margin: -4px 4px 8px; }
 
 /* Photo and video previews on posts and the weigh sheet. */
 .video-preview { display: block; width: 100%; max-height: 420px; background: #000; border-radius: var(--radius); }
 .video-preview[hidden], .scale-video-preview[hidden] { display: none; }
-.photo-cta.has-media { border-style: solid; }
 video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #000; }
 .scale-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .scale-video-preview { display: block; width: 100%; max-height: 260px; background: #000; border-radius: 12px; margin-bottom: 8px; }
@@ -766,7 +750,6 @@ select.chip-select { width: auto; min-height: 0; padding: 5px 28px 5px 12px; bor
   background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; }
 .chip-date::after { content: none; }
 .chip-date input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.shared-fish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); }
 /* Log fish: the boat's usual fish as big buttons, one tap each. */
 .quick-species { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .qs { position: relative; display: block; }
@@ -839,7 +822,6 @@ a.me-card { color: var(--text); text-decoration: none; }
 .weigh-call > .icon { width: 28px; height: 28px; color: var(--accent); }
 .weigh-call > span:nth-of-type(1) { flex: 1; display: grid; min-width: 150px; }
 /* Photos: a logged fish's photo, and a weigh-in's scale photos and release videos. */
-.feed-photo { width: 100%; max-height: 420px; object-fit: cover; border-radius: 14px; }
 .feed-gallery { overflow: hidden; margin: 4px -16px; }
 .photo-link { position: relative; display: block; color: #fff; text-decoration: none; }
 .photo-cap { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 1px; padding: 40px 16px 12px;
@@ -904,11 +886,7 @@ a.me-card { color: var(--text); text-decoration: none; }
 .secretary-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border, rgba(127,127,127,.25)); }
 .secretary-box h3 { margin: 0; font-size: 16px; }
 /* The photo for the feed, on the weigh-in sheet. */
-.feed-pick { margin-top: 12px; }
-.feed-preview { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; }
-.feed-preview[hidden] { display: none; }
 /* A weighed fish's photo, added later by the angler or crew. */
-.add-photo { display: flex; justify-content: center; margin: 10px 0; }
 /* A crew's own weigh-in post: add the photos for the feed. */
 .add-photos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
 .add-photos > span { flex-basis: 100%; }
@@ -950,13 +928,8 @@ a.me-card { color: var(--text); text-decoration: none; }
 .record-note { display: flex; gap: 10px; align-items: flex-start; border-left: 4px solid var(--accent); margin: 8px 0 14px; }
 .record-note .icon { flex: none; margin-top: 2px; }
 /* Your card on More: the card opens your dashboard; the pencil edits your profile. */
-.me-main { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; color: var(--text); text-decoration: none; }
 .me-who { display: flex; flex-direction: column; min-width: 0; }
-.me-edit { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--line); color: var(--accent); align-self: flex-start; }
-.me-edit .icon { width: 20px; height: 20px; }
 /* A boat's page: its name, and the crew's pencil to manage it. */
-.boat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.boat-head h1 { margin-bottom: 0; }
 /* Your card on More: your dashboard and your boat's, side by side. */
 .me-photo { flex: none; line-height: 0; }
 .me-links { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }
@@ -1091,7 +1064,7 @@ img.catch-photo:not(a img) { cursor: zoom-in; }
 :root:not([data-theme="light"]) .club-chip img { filter: drop-shadow(0 0 2px rgba(255, 255, 255, .55)) drop-shadow(0 0 6px rgba(255, 255, 255, .2)); }
 
 /* Names (anglers, boats, clubs) are tappable without underlines: bold, in the text colour. */
-.meta a, .list a, table a, .rank-list a, .cap a, .feed-boat, .catch-title a, .hero-text a, .trophy-best a, .comment a {
+.meta a, .list a, table a, .rank-list a, .cap a, .feed-boat, .catch-title a, .hero-text a, .trophy-best a {
   text-decoration: none; }
 .meta a, table td a, .list li > a:not(.btn), .list li > span > a { font-weight: 600; color: var(--text); }
 body { overscroll-behavior-y: contain; }

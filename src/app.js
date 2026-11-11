@@ -123,6 +123,37 @@ function createApp({
   // Hosts such as Render sit behind one proxy; trust it so req.ip is the visitor's.
   app.set('trust proxy', 1);
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
+  // Security headers on every answer. The content policy lets the page load only
+  // its own files, Google's fonts and the satellite map pictures, and run only its
+  // own scripts (the one inline script, which sets the theme, by its hash), so
+  // text someone managed to slip into a page couldn't run as code.
+  const inlineScripts = [...fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`);
+  const CSP = [
+    "default-src 'self'",
+    `script-src 'self' ${inlineScripts.join(' ')}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://server.arcgisonline.com",
+    "media-src 'self' blob:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  app.use((_req, res, next) => {
+    res.set({
+      'Content-Security-Policy': CSP,
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'geolocation=(self), camera=(self), microphone=(self)',
+    });
+    // Over https (production): browsers keep using https for a year.
+    if (secureCookies) res.set('Strict-Transport-Security', 'max-age=31536000');
+    next();
+  });
   app.use(express.json({ limit: '100kb' }));
   app.use((req, _res, next) => {
     req.body ??= {};
@@ -1214,10 +1245,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       s.id AS speciesId, s.name AS species, s.category,
       u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler,
       t.id AS teamId, t.name AS teamName,
-      c.id AS clubId, c.name AS clubName,
-      (SELECT COUNT(*) FROM likes l WHERE l.catch_id = k.id) AS likes,
-      (SELECT COUNT(*) FROM comments m WHERE m.catch_id = k.id) AS comments,
-      EXISTS (SELECT 1 FROM likes l WHERE l.catch_id = k.id AND l.user_id = :viewer) AS liked
+      c.id AS clubId, c.name AS clubName
     FROM catches k
     LEFT JOIN species s ON s.id = k.species_id
     LEFT JOIN users u ON u.id = k.user_id
@@ -1272,7 +1300,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       hasSpot: row.lat != null,
       released: !!row.released,
       tagged: !!row.tagged,
-      liked: !!row.liked,
       noAngler: !!row.noAngler,
       photoUrl: photos[0]?.url ?? null,
       photos,
@@ -1293,7 +1320,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
 
   api.get('/catches', (req, res) => {
     const where = [];
-    const params = { viewer: req.user?.id ?? 0 };
+    const params = {};
     const filters = {
       club: ['k.club_id = :club', intId],
       team: ['k.team_id = :team', intId],
@@ -1749,7 +1776,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // The secretary's work list; captains see their own registrations waiting.
   api.get('/officials/queue', requireWeigh, (req, res) => {
     const toReview = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.caught_on, t.name, k.id`)
-      .all({ viewer: req.user.id })
+      .all()
       .map((r) => ({ ...present(r, req.user), suggested: suggestPoints(r.id), events: eventsOn(r.caughtOn),
         disputes: disputesFor.all(r.id), disputeUntil: disputeUntil(r.createdAt) }));
     // Captains see what they registered that the secretary hasn't decided yet.
@@ -1760,7 +1787,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   // captains so they can dispute one within 24 hours.
   api.get('/registrations/pending', requireWeigh, (req, res) => {
     const now = Date.now();
-    const rows = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.created_at DESC, k.id DESC`).all({ viewer: req.user.id });
+    const rows = db.prepare(`${CATCH_SELECT} WHERE k.status = 'pending_review' ORDER BY k.created_at DESC, k.id DESC`).all();
     res.json({
       registrations: rows.map((r) => {
         const disputes = disputesFor.all(r.id);
@@ -2015,7 +2042,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team && !angler) return res.status(400).json({ error: 'Choose a boat or an angler.' });
     const who = team ? 'AND k.team_id = :team' : "AND COALESCE('u' || k.user_id, 'n' || lower(k.angler_name)) = :angler";
     const rows = db.prepare(`${CATCH_SELECT} ${base.replace(/^FROM catches k JOIN teams t ON t.id = k.team_id\s+WHERE/, 'WHERE')} ${who}
-      ORDER BY k.caught_on DESC, k.id DESC`).all({ ...params, ...(team ? { team } : { angler }), viewer: req.user?.id ?? 0 });
+      ORDER BY k.caught_on DESC, k.id DESC`).all({ ...params, ...(team ? { team } : { angler }) });
     const fish = rows.map((r) => present(r, req.user));
     res.json({
       division, scope, board, fish,
@@ -2027,15 +2054,9 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   api.get('/points', (req, res) => {
     const { division, scope, board, start, end, base, params } = pointsFilter(req.query);
     const boats = db.prepare(`
-      SELECT t.id AS teamId, t.name AS teamName, t.photo, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
+      SELECT t.id AS teamId, t.name AS teamName, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
       ${base} GROUP BY t.id ORDER BY points DESC, catches DESC
-    `).all(params).map(({ photo, ...b }) => ({ ...b, photoUrl: photoUrl(photo) }));
-    const anglers = db.prepare(`
-      SELECT u.id AS userId, COALESCE(NULLIF(u.nickname, ''), u.name, k.angler_name) AS angler, t.name AS teamName, MIN(k.id) AS first,
-        COALESCE('u' || u.id, 'n' || lower(k.angler_name)) AS anglerKey, COUNT(*) AS catches, ROUND(SUM(k.points), 1) AS points
-      ${base.replace('JOIN teams t ON t.id = k.team_id', 'JOIN teams t ON t.id = k.team_id LEFT JOIN users u ON u.id = k.user_id')}
-      GROUP BY COALESCE('u' || u.id, 'n' || lower(k.angler_name)) ORDER BY points DESC LIMIT 20
-    `).all(params).map(({ first, ...a }) => a);
+    `).all(params);
     // The biggest fish weighed in, heaviest first (released fish have no weight).
     const biggest = db.prepare(`
       SELECT k.id, sp.name AS species, k.weight_kg AS weightKg, k.points, t.id AS teamId, t.name AS teamName,
@@ -2058,7 +2079,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
       }));
     const pending = db.prepare(`SELECT COUNT(*) AS n FROM catches k JOIN teams t ON t.id = k.team_id
       WHERE k.status = 'pending_review' AND t.division = ?`).get(division).n;
-    res.json({ division, scope, board, season: { start, end }, boats, anglers, biggest, tournaments, pending });
+    res.json({ division, scope, board, season: { start, end }, boats, biggest, tournaments, pending });
   });
 
   // A boat's, an angler's or a guest angler's page (a name typed at the weigh-in,
@@ -2072,7 +2093,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     if (!team && !user && !guest) return res.status(400).json({ error: 'Choose a boat or an angler.' });
     const whose = team ? 'k.team_id = :who' : user ? 'k.user_id = :who' : 'k.user_id IS NULL AND lower(k.angler_name) = lower(:who)';
     const rows = db.prepare(`${CATCH_SELECT} WHERE k.status = 'approved' AND ${whose}
-      ORDER BY k.caught_on DESC, k.id DESC`).all({ who: team || user || guest, viewer: req.user?.id ?? 0 });
+      ORDER BY k.caught_on DESC, k.id DESC`).all({ who: team || user || guest });
     const fish = rows.map((r) => {
       const c = present(r, req.user);
       return { id: c.id, species: c.species, speciesId: c.speciesId, weightKg: c.weightKg, released: c.released, points: c.points,
@@ -2131,7 +2152,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     // Only boats entered in the tournament compete in it; others fishing that day score for the season only.
     const rows = db.prepare(`${CATCH_SELECT} WHERE k.caught_on BETWEEN :date AND :endDate AND t.division = :division AND k.status = 'approved'
       AND k.club_id = :home AND k.team_id IN (SELECT team_id FROM tournament_entries WHERE event_id = :event)
-      ORDER BY k.points DESC`).all({ date: event.date, endDate: event.endDate, division, home: homeClubId(), event: event.id, viewer: req.user?.id ?? 0 });
+      ORDER BY k.points DESC`).all({ date: event.date, endDate: event.endDate, division, home: homeClubId(), event: event.id });
     const boats = new Map();
     for (const r of rows) {
       const b = boats.get(r.teamId) ?? { teamId: r.teamId, teamName: r.teamName, points: 0, catches: [] };
@@ -2534,7 +2555,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
   });
 
   function getCatch(id, viewer) {
-    const row = db.prepare(`${CATCH_SELECT} WHERE k.id = :id`).get({ id, viewer: viewer?.id ?? 0 });
+    const row = db.prepare(`${CATCH_SELECT} WHERE k.id = :id`).get({ id });
     return row ? present(row, viewer) : null;
   }
 
@@ -2542,12 +2563,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     const id = intId(req.params.id);
     const item = id && getCatch(id, req.user);
     if (!item) return res.status(404).json({ error: 'Catch not found.' });
-    const comments = db.prepare(`
-      SELECT m.id, m.body, m.created_at AS createdAt, u.id AS userId, ${SHOWN} AS author
-      FROM comments m JOIN users u ON u.id = m.user_id
-      WHERE m.catch_id = ? ORDER BY m.id
-    `).all(id);
-    res.json({ catch: item, comments });
+    res.json({ catch: item });
   });
 
   api.delete('/catches/:id', (req, res) => {
@@ -2600,44 +2616,6 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     db.prepare('UPDATE catches SET photo = ? WHERE id = ?').run(req.file.filename, id);
     removeUpload(old);
     res.json({ catch: getCatch(id, req.user) });
-  });
-
-  api.post('/catches/:id/like', (req, res) => {
-    const id = intId(req.params.id);
-    if (!id || !db.prepare('SELECT 1 FROM catches WHERE id = ?').get(id)) {
-      return res.status(404).json({ error: 'Catch not found.' });
-    }
-    const removed = db.prepare('DELETE FROM likes WHERE user_id = ? AND catch_id = ?').run(req.user.id, id);
-    if (!removed.changes) db.prepare('INSERT INTO likes (user_id, catch_id) VALUES (?, ?)').run(req.user.id, id);
-    const { likes } = db.prepare('SELECT COUNT(*) AS likes FROM likes WHERE catch_id = ?').get(id);
-    res.json({ liked: !removed.changes, likes });
-  });
-
-  api.post('/catches/:id/comments', (req, res) => {
-    const id = intId(req.params.id);
-    if (!id || !db.prepare('SELECT 1 FROM catches WHERE id = ?').get(id)) {
-      return res.status(404).json({ error: 'Catch not found.' });
-    }
-    const body = str(req.body.body, 1000);
-    if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
-    const { lastInsertRowid } = db
-      .prepare('INSERT INTO comments (catch_id, user_id, body) VALUES (?, ?, ?)')
-      .run(id, req.user.id, body);
-    res.status(201).json({
-      comment: { id: Number(lastInsertRowid), body, userId: req.user.id, author: req.user.nickname || req.user.name },
-    });
-  });
-
-  // Whoever wrote a comment can remove it; the club admin can remove any.
-  api.delete('/catches/:id/comments/:commentId', (req, res) => {
-    const comment = db.prepare('SELECT id, user_id AS userId FROM comments WHERE id = ? AND catch_id = ?')
-      .get(intId(req.params.commentId) ?? 0, intId(req.params.id) ?? 0);
-    if (!comment) return res.status(404).json({ error: 'Comment not found.' });
-    if (comment.userId !== req.user.id && !isAdminUser(req.user)) {
-      return res.status(403).json({ error: 'Only whoever wrote it or the club admin can remove a comment.' });
-    }
-    db.prepare('DELETE FROM comments WHERE id = ?').run(comment.id);
-    res.json({ ok: true });
   });
 
   // ---- the regional log: one line per outing ---------------------------------

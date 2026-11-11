@@ -123,9 +123,12 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
     const row = board.boats.find((b) => b.teamId === boat.id);
     const drill = (await as()('GET', `/points/fish?division=ocean&team=${boat.id}`)).body;
     assert.deepEqual([drill.title, drill.fish.length, drill.total, drill.fish[0].species], ['Liberian Girl', row.catches, row.points, 'Wahoo']);
-    const guestRow = board.anglers.find((a) => a.angler === 'Guest');
-    const byAngler = (await as()('GET', `/points/fish?division=ocean&angler=${encodeURIComponent(guestRow.anglerKey)}`)).body;
-    assert.deepEqual([byAngler.fish.length, byAngler.total], [guestRow.catches, guestRow.points]);
+    // The biggest catches, heaviest first, each with its angler and boat.
+    assert.ok(board.biggest.length > 0);
+    assert.deepEqual(board.biggest.map((c) => c.weightKg), board.biggest.map((c) => c.weightKg).sort((a, b) => b - a));
+    assert.ok(board.biggest.every((c) => c.species && c.teamName && c.weightKg > 0));
+    const byAngler = (await as()('GET', '/points/fish?division=ocean&angler=nguest')).body;
+    assert.ok(byAngler.fish.length > 0 && byAngler.fish.every((f) => f.angler === 'Guest'));
     assert.equal((await as()('GET', `/points/fish?division=ocean&scope=tournaments&team=${boat.id}`)).body.fish.length, 0, 'no tournament entered');
     assert.equal((await as()('GET', '/points/fish')).status, 400);
 

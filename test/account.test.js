@@ -35,7 +35,8 @@ test('delete my account: password needed; posts go, weighed fish stay as "Former
     assert.ok(weighed > 0);
     const before = raw.prepare("SELECT points FROM catches WHERE user_id = ? AND status = 'approved'").all(ziad).map((r) => r.points);
     const me = await s.login('ziad@example.com');
-    await me('POST', `/catches/${raw.prepare('SELECT id FROM catches LIMIT 1').get().id}/comments`, { body: 'Nice one' });
+    // A comment from before comments were taken out of the app: it goes with the account.
+    raw.prepare('INSERT INTO comments (catch_id, user_id, body) VALUES (?, ?, ?)').run(raw.prepare('SELECT id FROM catches LIMIT 1').get().id, ziad, 'Nice one');
     assert.equal((await me('DELETE', '/me', { password: 'wrong-pass' })).status, 400);
     assert.equal((await me('DELETE', '/me', { password: 'demo-pass-1' })).status, 200);
     assert.equal((await me('GET', '/me')).body.user, null, 'signed out');
