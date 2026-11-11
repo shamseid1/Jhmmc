@@ -35,7 +35,10 @@ function brevoApiMailer(env, fetchImpl = globalThis.fetch) {
   };
 }
 
-function createMailer(env = process.env, { fetchImpl } = {}) {
+function createMailer(rawEnv = process.env, { fetchImpl } = {}) {
+  // Settings pasted with a stray space or line break at the end still work.
+  const env = Object.fromEntries(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM', 'BREVO_API_KEY']
+    .map((k) => [k, typeof rawEnv[k] === 'string' ? rawEnv[k].trim() : rawEnv[k]]));
   if (env.BREVO_API_KEY) return brevoApiMailer(env, fetchImpl);
   if (!env.SMTP_HOST) {
     return {
@@ -46,7 +49,7 @@ function createMailer(env = process.env, { fetchImpl } = {}) {
     };
   }
   const port = Number(env.SMTP_PORT) || 587;
-  const transport = nodemailer.createTransport({
+  const transportOptions = {
     host: env.SMTP_HOST,
     port,
     secure: port === 465,
@@ -55,10 +58,12 @@ function createMailer(env = process.env, { fetchImpl } = {}) {
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 60000,
-  });
+  };
+  const transport = nodemailer.createTransport(transportOptions);
   const from = env.MAIL_FROM || env.SMTP_USER;
   return {
     configured: true,
+    transportOptions,
     send: ({ to, subject, text, html, attachments }) => transport.sendMail({ from, to, subject, text, html, attachments }),
   };
 }

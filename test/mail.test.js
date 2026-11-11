@@ -24,3 +24,10 @@ test('mail through Brevo\'s API: sender, attachment, and Brevo\'s own error mess
   reply = { ok: false, status: 401, statusText: 'Unauthorized', json: async () => ({ code: 'unauthorized', message: 'Key not found' }) };
   await assert.rejects(mailer.send({ to: 'a@b.c', subject: 's', text: 't' }), /Brevo said 401 \(unauthorized\): Key not found/);
 });
+
+test('mail settings with a stray line break or space still work', () => {
+  const mailer = createMailer({ SMTP_HOST: 'smtp-relay.brevo.com\n', SMTP_PORT: ' 587 ', SMTP_USER: 'c278e4001@smtp-brevo.com\n', SMTP_PASS: 'xsmtpsib-abc \n' });
+  assert.equal(mailer.configured, true);
+  const opts = mailer.transportOptions;
+  assert.deepEqual([opts.host, opts.port, opts.auth.user, opts.auth.pass], ['smtp-relay.brevo.com', 587, 'c278e4001@smtp-brevo.com', 'xsmtpsib-abc']);
+});
