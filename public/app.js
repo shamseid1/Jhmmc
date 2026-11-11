@@ -640,7 +640,12 @@ function bindForm(form, handler) {
 async function shrinkPhoto(file, max = 1600) {
   if (!file?.size || !file.type.startsWith('image/')) return file;
   try {
-    const img = await createImageBitmap(file);
+    // An <img> applies the photo's EXIF rotation, so a portrait photo stays portrait
+    // (createImageBitmap ignores it on some browsers, e.g. older Samsung Internet).
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    try { img.src = url; await img.decode(); } finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
+    img.width = img.naturalWidth; img.height = img.naturalHeight;
     const scale = Math.min(1, max / Math.max(img.width, img.height));
     if (scale === 1 && file.size < 1.5e6 && file.type === 'image/jpeg') return file;
     const canvas = document.createElement('canvas');
@@ -653,6 +658,26 @@ async function shrinkPhoto(file, max = 1600) {
     return file;
   }
 }
+
+// Tapping a photo opens it whole, any shape, full screen; tap again to close.
+const PHOTO_URL = /\.(jpe?g|png|webp)(\?|$)/i;
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[target="_blank"]');
+  const img = !a && e.target.closest('img.catch-photo, img[data-view]');
+  const src = a && PHOTO_URL.test(a.getAttribute('href') || '') ? a.getAttribute('href') : img && !img.closest('a') ? img.currentSrc || img.src : '';
+  if (!src) return;
+  e.preventDefault();
+  let dlg = document.getElementById('photo-viewer');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'photo-viewer';
+    dlg.innerHTML = '<img alt=""><button type="button" class="pv-close" aria-label="Close">×</button>';
+    dlg.addEventListener('click', () => dlg.close());
+    document.body.append(dlg);
+  }
+  dlg.querySelector('img').src = src;
+  dlg.showModal();
+});
 
 // Replaces a photo field in form data with its shrunk version, or drops it if empty.
 async function preparePhoto(fd, field) {
@@ -4316,7 +4341,7 @@ async function route() {
 
 // Auto, light or dark: chosen with the brush on More. Auto follows the phone's own
 // setting (light if it has none) and is where everyone starts.
-const THEME_COLORS = { dark: '#0f1115', light: '#f4f6fa' };
+const THEME_COLORS = { dark: '#001a43', light: '#f4f6fa' };
 // A new key: choices saved before Auto existed (under 'theme') no longer count.
 const THEME_KEY = 'appearance';
 try {
