@@ -332,6 +332,7 @@ async function savePdf({ title, subtitle = '', sections, file }) {
   }
   y += 22;
   for (const s of sections) {
+    if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
     if (s.heading) { doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...NAVY).text(s.heading, 40, y + 4); y += 12; }
     doc.autoTable({
       startY: y, head: [s.head], body: s.body.length ? s.body : [[{ content: s.none || 'None.', colSpan: s.head.length }]],
@@ -341,7 +342,10 @@ async function savePdf({ title, subtitle = '', sections, file }) {
       alternateRowStyles: { fillColor: [242, 245, 250] },
       columnStyles: s.widths || {},
       // Number columns: the heading lines up with the numbers.
-      didParseCell: (d) => { if (d.section === 'head' && s.widths?.[d.column.index]?.halign) d.cell.styles.halign = s.widths[d.column.index].halign; },
+      didParseCell: (d) => {
+        if (d.section === 'head' && s.widths?.[d.column.index]?.halign) d.cell.styles.halign = s.widths[d.column.index].halign;
+        s.paint?.(d);
+      },
     });
     y = doc.lastAutoTable.finalY + 30;
   }
@@ -3619,18 +3623,25 @@ const pagesFor = (view) => ({
       ${manage ? raw('<p class="small muted">The captain is notified.</p>') : ''}`;
     view.querySelector('.sheet-totals').insertAdjacentHTML('afterend', `<p class="pdf-row">${pdfButton('Download the sheet (PDF)')}</p>`);
     view.querySelector('[data-pdf]').pdf = () => {
-      let k = 0;
       return {
         title: `${tournament.name}: registration sheet`,
         subtitle: `${fmtDays(tournament)}. ${plural(inBoats.length, 'boat')} in, ${plural(all.length, 'angler')} (${all.length - guests.length} members, ${guests.length} non-members). Temporary membership USD ${fee}: ${unpaid.length ? `${unpaid.length} still to pay, USD ${unpaid.length * fee}` : guests.length ? 'all paid' : 'none due'}.`,
         file: fileName(`${tournament.name} registration sheet`),
+        // Each boat, with its anglers under it: members, then guests, and who has paid.
         sections: [
-          { heading: `Boats in (${inBoats.length})`, head: ['Boat', 'Division', 'Weigh station', 'Anglers'], none: 'No boats in yet.',
-            body: inBoats.map((b) => [b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '', b.anglers.length]),
-            widths: { 3: { halign: 'right', cellWidth: 60 } } },
-          { heading: 'Anglers', head: ['#', 'Angler', 'Boat', 'Member', 'Paid'], none: 'No anglers listed yet.',
-            body: inBoats.flatMap((b) => b.anglers.map((a) => [++k, a.name, b.teamName, a.member ? 'Member' : 'Non-member', a.member ? '' : a.paid ? 'Paid' : 'Not paid'])),
-            widths: { 0: { cellWidth: 30 } } },
+          ...(inBoats.length ? inBoats.map((b) => {
+            const members = b.anglers.filter((a) => a.member);
+            const guestsHere = b.anglers.filter((a) => !a.member);
+            const owing = guestsHere.filter((a) => !a.paid).length;
+            return {
+              heading: `${b.teamName}  ·  ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? `  ·  ${b.station}` : ''}  ·  ${plural(b.anglers.length, 'angler')}${owing ? `  ·  USD ${owing * fee} to pay` : ''}`,
+              head: ['#', 'Angler', 'Status', 'Paid'], none: 'No anglers listed yet.',
+              body: [...members, ...guestsHere].map((a, n) => [n + 1, a.name, a.member ? 'JHMMC member' : 'Guest (temporary membership)',
+                a.member ? 'Paid (season)' : a.paid ? `Paid (USD ${fee})` : `NOT PAID (USD ${fee})`]),
+              widths: { 0: { cellWidth: 26 }, 1: { cellWidth: 170 }, 2: { cellWidth: 175 } },
+              paint: (d) => { if (d.section === 'body' && d.column.index === 3 && String(d.cell.raw).startsWith('NOT')) { d.cell.styles.textColor = [198, 40, 40]; d.cell.styles.fontStyle = 'bold'; } },
+            };
+          }) : [{ head: ['Boats in'], none: 'No boats in yet.', body: [] }]),
           { heading: `Not in (${outBoats.length})`, head: ['Boat', 'Division', 'Weigh station'], none: 'Every JHMMC boat is in.',
             body: outBoats.map((b) => [b.teamName, b.division === 'river' ? 'River' : 'Ocean', b.station || '']) },
         ],
