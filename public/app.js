@@ -479,26 +479,24 @@ function trendsHtml(tr, { perBoat, link, mine }) {
     arrival = weeks === 0 ? `${tr.species} arrived about the same time as in ${prev.year}.`
       : `${tr.species} arrived ${Math.abs(weeks)} week${Math.abs(weeks) === 1 ? '' : 's'} ${weeks > 0 ? 'earlier' : 'later'} than in ${prev.year} (first caught ${fmtDate(cur.first)}).`;
   } else if (cur?.first) arrival = `First ${tr.species.toLowerCase()} this year: ${fmtDate(cur.first)}.`;
-  const yearChart = tr.species ? `<h2>Year against year</h2><div class="card pad">
+  const yearChart = tr.species ? `<h2>Year against year${info(perBoat ? '<p>Fish per boat that logged fish that month, so more boats on the app doesn\'t look like more fish.</p>' : '<p>Fish caught each month. Tap “Per boat logging fish” to allow for more boats using the app.</p>')}</h2><div class="card pad">
     <label class="season-species">${esc(tr.species)} caught, by month
       <select id="trend-species">${options(tr.speciesList.map((v) => [v, v]), tr.species)}</select></label>
     <div class="tr-legend">${tr.years.map((yr, k) => `<span class="tr-s${k + 1}"><i></i>${yr.year}</span>`).join('')}
       <a class="small" href="${link({ per: perBoat ? '' : 'boat' })}">${perBoat ? 'Show totals' : 'Per boat logging fish'}</a></div>
     <svg viewBox="0 0 ${W} ${H}" class="tr-svg" role="img" aria-label="${esc(tr.species)} by month, year against year">${grid}${months}${lines}</svg>
     ${arrival ? `<p class="small">${esc(arrival)}</p>` : ''}
-    <p class="small muted">${perBoat ? 'Fish per boat that logged fish that month, so more boats on the app doesn\'t look like more fish.' : 'Fish caught each month. Tap “Per boat logging fish” to allow for more boats using the app.'}</p>
     <table class="sr-only"><thead><tr><th>Month</th>${tr.years.map((yr) => `<th>${yr.year}</th>`).join('')}</tr></thead>
       <tbody>${MONTH_SHORT.map((m, i) => `<tr><td>${m}</td>${tr.years.map((yr) => `<td>${nice(value(yr.months[i]))}</td>`).join('')}</tr>`).join('')}</tbody></table>
   </div>` : '<div class="card pad empty">Trends start once fish are logged.</div>';
 
   // What's biting now
   const arrow = (r) => (r.now > r.before ? '↑ up' : r.now < r.before ? '↓ down' : '= same');
-  const biting = `<h2>What's biting now</h2><div class="card">
+  const biting = `<h2>What's biting now${info(`<p>Fish caught in the last 14 days against the 14 before${mine ? '' : `, from ${plural(tr.now.boats, 'boat')} (${tr.now.boatsBefore} before)`}.</p>`)}</h2><div class="card">
     ${tr.now.biting.length ? `<ul class="list">${tr.now.biting.slice(0, 8).map((r) => `<li class="biting">
       <span><b>${esc(r.species)}</b>${r.area ? ` <span class="small muted">· mostly ${esc(r.area)}</span>` : ''}</span>
       <span class="small"><b>${r.now}</b> <span class="muted">vs ${r.before}</span> · ${arrow(r)}</span></li>`).join('')}</ul>`
-      : '<p class="pad muted">No fish logged in the last four weeks.</p>'}
-    <p class="small muted pad">Fish caught in the last 14 days against the 14 before${mine ? '' : `, from ${plural(tr.now.boats, 'boat')} (${tr.now.boatsBefore} before)`}.</p></div>`;
+      : '<p class="pad muted">No fish logged in the last four weeks.</p>'}</div>`;
 
   // Water and billfish by week: two charts on the same weeks (never two scales on one chart).
   const n = tr.weeks.length;
@@ -526,11 +524,10 @@ function trendsHtml(tr, { perBoat, link, mine }) {
     <text x="${L - 4}" y="${12}" class="tr-axis" text-anchor="end">${bTop}</text><text x="${L - 4}" y="${SH - 10}" class="tr-axis" text-anchor="end">0</text>
     <g class="tr-s1">${tr.weeks.map((w, i) => (w.billfish ? `<rect x="${sx(i) - bw / 2}" y="${(SH - 14) - ((SH - 22) * w.billfish) / bTop}" width="${bw}" height="${((SH - 22) * w.billfish) / bTop}" rx="2" class="tr-bar"><title>Week of ${fmtDate(w.start)}: ${w.billfish} billfish</title></rect>` : '')).join('')}</g>
     ${[0, Math.floor(n / 2), n - 1].map((i) => `<text x="${sx(i)}" y="${SH - 1}" class="tr-axis" text-anchor="middle">${new Date(`${tr.weeks[i].start}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</text>`).join('')}</svg>`;
-  const weekly = `<h2>Water and billfish, week by week</h2><div class="card pad">
-    <p class="small"><b>Water temperature (${unit('temp')})</b>, average of the trips that logged it</p>
-    ${water || '<p class="small muted">No water temperatures logged in the last 26 weeks. Add them in Finish the trip.</p>'}
-    <p class="small"><b>Billfish caught</b></p>${bars}
-    <p class="small muted">The last 26 weeks, on the same weeks, so you can see the fish come as the water changes.</p></div>`;
+  const weekly = `<h2>Water and billfish, week by week${info('<p>The last 26 weeks, on the same weeks, so you can see the fish come as the water changes. Water temperature is the average of the trips that logged it.</p>')}</h2><div class="card pad">
+    <p class="small"><b>Water temperature (${unit('temp')})</b></p>
+    ${water || '<p class="small muted">No water temperatures logged yet.</p>'}
+    <p class="small"><b>Billfish caught</b></p>${bars}</div>`;
   return yearChart + biting + weekly;
 }
 
@@ -546,9 +543,9 @@ async function renderGridMap(box, q, link) {
       ${g.years.length > 1 ? raw(sel('Year', g.years.map((y) => [link({ gyear: y, gmonth: '' }), y]), link({ gyear: g.year, gmonth: '' }))) : ''}
       ${raw(sel('Species', [[link({ gspecies: '', gmonth: '' }), 'All species'], ...g.speciesList.map((x) => [link({ gspecies: x, gmonth: '' }), x])], link({ gspecies: g.species || '', gmonth: '' })))}
       ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
+      ${raw(info(html`<p>Each circle marks an area about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count.</p><p>No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`))}
     </div>
-    ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}
-    <p class="small muted">Each circle marks an area about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count. No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`;
+    ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}`;
   if (!g.cells.length || !L) return;
   const map = L.map('grid-map', { zoomControl: true });
   addSatellite(L, map);
@@ -706,6 +703,27 @@ const MARLIN = '<img class="marlin logo-ph" src="/logo-mark.png" alt="">';
 const icon = (name, cls = 'icon') => (name === 'fish' ? `<span class="${cls} fish-mark" aria-hidden="true"></span>`
   : `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`);
 
+// A small ⓘ that opens an explanation in a sheet, so screens keep only what's needed.
+// body is HTML (already escaped, e.g. from html``).
+const info = (body, label = 'How this works') => `<button type="button" class="info-btn" aria-label="${esc(label)}">`
+  + '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>'
+  + `</button><template class="info-body">${body}</template>`;
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.info-btn');
+  if (!btn) return;
+  e.preventDefault(); e.stopPropagation();
+  let dlg = document.getElementById('info-sheet');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'info-sheet';
+    dlg.innerHTML = '<div class="info-sheet-body"></div><button type="button" class="primary">OK</button>';
+    dlg.addEventListener('click', (ev) => { if (ev.target === dlg || ev.target.matches('button.primary') || ev.target.closest('a')) dlg.close(); });
+    document.body.append(dlg);
+  }
+  dlg.querySelector('.info-sheet-body').replaceChildren(btn.nextElementSibling.content.cloneNode(true));
+  dlg.showModal();
+});
+
 // Members have a profile page; anglers without an account link to their catches.
 // An angler with an account has a page; one typed in at the weigh-in (a guest) has one by name.
 const anglerHref = (userId, name) => (userId ? `#/user/${userId}` : `#/guest?name=${encodeURIComponent(name)}`);
@@ -791,7 +809,7 @@ function catchCard(c, { full = false } = {}) {
         ${c.weighStation ? raw(html`<p>Weighed at <b>${c.weighStation}</b>${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : ''}</p>`) : ''}
         ${c.weighRole ? raw(`<p class="weigher small">${weigherBadge(c)}</p>`) : ''}
         ${c.pointsNote && c.status !== 'pending_weigh' ? raw(html`<p>${c.status === 'rejected' ? 'Secretary: ' : ''}${c.pointsNote}</p>`) : ''}
-        ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video (only the secretary, the crew and JHMMC captains see it)</p>`) : ''}
+        ${c.scaleVideoUrl && !c.released ? raw(html`<p class="small muted">Weigh station video</p>`) : ''}
         ${c.scaleVideoUrl && !c.released ? raw(html`<video class="scale-photo" src="${c.scaleVideoUrl}" controls playsinline preload="metadata"></video>`) : ''}
       </div>`) : ''}
       <div class="actions">
@@ -811,20 +829,20 @@ function catchCard(c, { full = false } = {}) {
           <label data-fix-name hidden>Angler's name <input name="anglerName" maxlength="80"></label>
           <label>New weigh-station photo <input type="file" name="scalePhoto" accept="image/*"></label>
           <label>Note <input name="note" maxlength="300" placeholder="What was wrong" required></label>
-          <p class="small muted">The points follow from the rules. <b>The crew is notified</b> with your note, and the Activity log records it with your name and what it was before.</p>
+          <p class="small muted">The crew is notified with your note.</p>
           <div><button type="submit" class="primary">Save the correction</button></div>
         </form>
       </details>`) : ''}
       ${full && c.status === 'rejected' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary>
         <h3>Secretary</h3>
-        <p class="small muted">Not counted. Approving it again gives it its points from the rules; say why. <b>The crew is notified</b> with your note, and it's recorded in the Activity log with your name.</p>
+        <p class="small muted">Not counted. The crew is notified with your note.</p>
         <label>Note <input name="note" maxlength="300" placeholder="Why it now counts"></label>
         <div class="row-buttons"><button type="button" class="primary" data-act="reapprove">Approve again</button></div>
       </form>`) : ''}
       ${full && c.status === 'approved' && state.me?.canApprove ? raw(html`<form class="secretary-box stack" data-secretary ${raw(rescoreAttrs(c))}>
         <h3>Secretary</h3>
         <p class="small" data-rules><b>Rules give ${fmtPoints(c.points)}</b></p>
-        <p class="small muted">Correcting the weight (the points follow from the rules) or taking the fish off the points needs a note. <b>The crew is notified</b> with your note, and it's recorded in the Activity log with your name.</p>
+        <p class="small muted">A correction needs a note; the crew is notified.</p>
         ${c.released ? '' : raw(html`<label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" value="${toUnit('weight', c.weightKg)}"></label>`)}
         <label>Note <input name="note" maxlength="300" placeholder="Why"></label>
         <div class="row-buttons">${c.released ? '' : raw('<button type="button" data-act="repoint">Correct weight</button>')}
@@ -1184,7 +1202,7 @@ document.addEventListener('input', (e) => {
 });
 
 // A reminder wherever an officer changes something: who hears about it, and that it's on record.
-const recordedNote = (what) => html`<p class="card pad record-note small">${raw(icon('history'))} <span>${what} Everything you do here is also recorded in the <a href="#/activity">Activity log</a>, with your name.</span></p>`;
+const recordedNote = (what) => html`<p class="card pad record-note small">${raw(icon('history'))} <span>${what} Recorded in the <a href="#/activity">Activity log</a>.</span></p>`;
 
 // Points form for a catch waiting for the secretary.
 function reviewForm(c) {
@@ -1195,7 +1213,6 @@ function reviewForm(c) {
       ${c.released ? '' : raw(html`<label>Weight (${unit('weight')}) <input name="weightKg" type="number" step="0.1" min="0" inputmode="decimal" value="${toUnit('weight', c.weightKg)}"></label>`)}
       <label>Note <input name="note" maxlength="300" placeholder="Needed if you correct the weight or reject"></label>
     </div>
-    ${c.released ? '' : raw('<p class="small muted">A wrong weight (a missed 0)? Correct it here: the points follow from the rules.</p>')}
     <div class="actions"><button class="primary" name="decision" value="approve">Approve</button><button class="danger" name="decision" value="reject">Reject</button></div>
     <p class="error"></p>
   </form>`;
@@ -1419,7 +1436,6 @@ const pagesFor = (view) => ({
     }
     const clubs = await loadClubs(true);
     view.innerHTML = html`<h1>Get on a boat</h1>
-      <p class="muted">Catches are logged by boat crews. Join your boat with the invite code from your captain, or register your boat and become its captain.</p>
       <div class="two">
         <form class="card pad stack" id="join">
           <h2>Join a crew</h2>
@@ -1492,7 +1508,6 @@ const pagesFor = (view) => ({
         <a role="tab" href="#/participants?tab=anglers" aria-selected="${tab === 'anglers'}">Anglers</a>
         <a role="tab" href="#/participants?tab=boats" aria-selected="${tab === 'boats'}">Boats</a>
       </div>
-      <p class="small muted center">Released and weighed: fish weighed in and approved by the JHMMC secretary.</p>
       <label class="search">${raw(icon('search'))}
         <input type="search" placeholder="Search ${tab}" aria-label="Search ${tab}" autocomplete="off"></label>
       <div class="pgrid">${items.map((i) => raw(card(i)))}</div>
@@ -1552,8 +1567,7 @@ const pagesFor = (view) => ({
       </div>`) : ''}
       <h2>Crew (${team.members.length})</h2>
       ${raw(crewList(true))}
-      ${team.canManage && team.guests.length ? raw(html`<h2>Guest anglers</h2>
-      <p class="small muted">Catches logged under a typed name. If one of them joins the crew, move their catches to their account.</p>
+      ${team.canManage && team.guests.length ? raw(html`<h2>Guest anglers${raw(info('<p>Catches logged under a typed name. If one of them joins the crew, move their catches to their account.</p>'))}</h2>
       <div class="card"><ul class="list">${team.guests.map((g) => raw(html`<li class="member guest" data-name="${g.name}">
         <span><a href="${anglerHref(null, g.name)}">${g.name}</a> <span class="muted small">· ${plural(g.catches, 'catch')}</span></span>
         <span class="actions">
@@ -1668,7 +1682,7 @@ const pagesFor = (view) => ({
         </li>`)) : raw('<li class="muted">No clubs yet.</li>')}
       </ul></div>
       <h2>${admin ? 'Open a club' : 'Ask to open a club'}</h2>
-      ${admin ? '' : raw('<p class="small muted">Clubs are opened by JHMMC. Send the details and JHMMC will approve it; you\'ll get a notification.</p>')}
+      ${admin ? '' : raw('<p class="small muted">JHMMC approves new clubs.</p>')}
       ${state.me ? raw(html`<form class="card pad stack" id="f">
         <label>Club name <input name="name" required maxlength="100"></label>
         <div class="row">
@@ -1798,13 +1812,12 @@ const pagesFor = (view) => ({
         <select class="chip-select" data-go aria-label="Division">${raw(options(DIVISIONS.map(([key, label]) => [link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${key}`), label]),
           link(`${scope === 'tournaments' ? 'scope=tournaments' : `board=${board}`}&division=${division}`)))}</select>
       </div>
-      <p class="small muted">${scope === 'tournaments'
+      ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}${raw(info(html`<p>${scope === 'tournaments'
         ? `JHMMC Tournaments: JHMMC boats' points from fish caught during the season's tournaments, all tournaments added up.`
         : board === 'jhmmc' ? `JHMMC Season: JHMMC boats only, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}.`
           : `Every boat in West Africa, every fishing day of the season, ${fmtDay(season.start)} to ${fmtDay(season.end)}. Only JHMMC boats compete in the JHMMC Season and Tournaments.`}
-        Fish registered at the weigh station and approved by the JHMMC secretary.
-        ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''} <a href="#/scoring">How points work</a></p>
-      ${boats.length ? raw(html`<h2>${scope === 'tournaments' ? 'Tournament points by boat' : 'Overall points by boat'}</h2>
+</p><p>Fish registered at the weigh station and approved by the JHMMC secretary.
+        ${pending ? `${plural(pending, 'registration')} waiting for the secretary.` : ''}</p><p><a href="#/scoring">How points work</a></p>`))}</h2>
       <section class="card pad bars" aria-label="${scope === 'tournaments' ? 'Tournament' : 'Overall'} points for the top ${Math.min(boats.length, TOP_BARS)} ${division} boats">${raw(pointsBars(boats.slice(0, TOP_BARS)))}</section>`) : ''}
       <h2>Boats</h2>
       <div class="card table-wrap"><table>
@@ -1843,8 +1856,7 @@ const pagesFor = (view) => ({
         <ul class="list compact">${b.catches.map((c) => raw(html`<li><a href="#/catch/${c.id}">${c.species}</a>
           ${c.weightKg ? ` · ${fmtWeight(c.weightKg)}` : c.released ? ' · released' : ''} · ${c.angler}<span class="num-right">${fmtPoints(c.points)}</span></li>`))}</ul>
       </section>`)) : raw(html`<div class="card pad empty">${entries.length ? 'No approved results for this tournament yet.' : 'No boats entered yet.'}</div>`)}
-      <h2>${side} boats entered (${entries.length})</h2>
-      <p class="small muted">Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>
+      <h2>${side} boats entered (${entries.length})${raw(info('<p>Only entered boats compete. Boats fishing on these days without entering score for the season only.</p>'))}</h2>
       ${state.me?.canWeigh && !state.me.canHandleMoney && isJhmmc(state.me.clubId) && tournament.endDate >= today()
         ? raw(html`<p><a class="btn primary" href="#/enter/${id}">${raw(icon('trophy'))} Enter your boat</a></p>`) : ''}
       ${state.me?.canHandleMoney ? raw(html`<p><a class="btn" href="#/sheet/${id}">Open the registration sheet</a></p>`) : ''}
@@ -1869,7 +1881,6 @@ const pagesFor = (view) => ({
           <li>A <b>released sailfish</b> scores as a 25 kg sailfish.</li>
           <li>Fish under <b>2 kg (ocean)</b> or <b>1 kg (river)</b> don't count. Ocean and river boats have separate standings.</li>
         </ul>
-        <p class="small muted">Points always come from these rules. If a weight was wrong, the secretary corrects it with a note and the points follow.</p>
       </div>
       <h2>Points per kg</h2>
       ${state.me?.canReview ? raw(recordedNote('Changing the points for a species is announced to everyone in the feed.')) : ''}
@@ -1879,7 +1890,7 @@ const pagesFor = (view) => ({
           ? raw(html`<input class="ppk" data-id="${x.id}" type="number" min="0" max="100" step="0.5" value="${x.pointsPerKg}" aria-label="Points per kg for ${x.name}">`)
           : x.pointsPerKg}</td></tr>`))}</tbody>
       </table></div>
-      ${editable ? raw('<p class="small muted">Changes save as soon as you leave a box. They apply to catches approved from now on.</p>') : ''}`;
+      ${editable ? raw('<p class="small muted">Saves as you go. Applies to catches approved from now on.</p>') : ''}`;
     view.addEventListener('change', async (e) => {
       const input = e.target.closest('.ppk');
       if (!input) return;
@@ -1922,12 +1933,9 @@ const pagesFor = (view) => ({
     const atHomePort = (t) => t && !isJhmmc(t.clubId);
     let crew = own ? (await api(`/teams/${own.id}`)).team.members : [];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Weigh-in</h1>
-      <p class="small"><b>At the weigh station, for points.</b> Fish logged at sea with Log fish don't score until they're weighed in here.</p>
-      <p class="small muted">One boat's fish for the day, like the paper registration form. Registrations go to the secretary for points and don't appear on the feed.
-        Every fish weighed needs a photo or video of it hanging on the scale, the weight readable (rule 8).</p>
+      <h1>Weigh-in${raw(info('<p>At the weigh station, for points. Fish logged at sea with Log fish don\'t score until they\'re weighed in here.</p><p>One boat\'s fish for the day, like the paper registration form. It goes to the secretary for points.</p><p>Every fish needs a photo or video of it hanging on the scale, the weight readable (rule 8). Your phone\'s location is taken when you send, to show where the fish were registered.</p>'))}</h1>
       ${onNow && (official || !atHomePort(own)) ? raw(html`<p class="tournament-now">${raw(icon('trophy'))} <b>${onNow.name}</b> · ${fmtDays(onNow)} · <span id="entry-note">${entryNote(own?.id)}</span></p>`) : ''}
-      ${wm ? raw(html`<div class="card pad wm-boats"><p class="small"><b>Weighmaster at ${wm}.</b> Tap the boat you're weighing; when it's sent, tap the next.</p>
+      ${wm ? raw(html`<div class="card pad wm-boats"><p class="small"><b>Weighmaster at ${wm}.</b> Tap the boat you're weighing.</p>
         <div class="wm-boat-chips">${wmBoats.map((t) => raw(html`<button type="button" class="chip" data-boat="${t.id}">${t.name}${myBoat?.id === t.id ? ' (yours)' : ''}${weighedToday.has(t.id) ? ' ✓' : ''}</button>`))}</div>
         ${weighedToday.size ? raw(html`<p class="small muted">Weighed today: ${[...weighedToday].map((id) => jhmmcBoats.find((t) => t.id === id)?.name).filter(Boolean).join(', ')}.</p>`) : ''}
         </div>`) : ''}
@@ -1945,8 +1953,7 @@ const pagesFor = (view) => ({
           : raw(html`<label id="station-pick">Weigh station <select name="weighStation" required>${raw(options(state.meta.weighStations, null, 'Choose…'))}</select></label>
             <p class="station-fixed" id="home-port" hidden></p>`)}
         <fieldset class="card pad no-weighmaster" hidden>
-          <legend><b>No weighmaster?</b></legend>
-          <p class="small muted">Under the club rules, every fish is weighed by the station's weighmaster. If there isn't one at the station, you may weigh your own boat's fish: tick below so the secretary knows.</p>
+          <legend><b>No weighmaster?</b>${raw(info('<p>Under the club rules, every fish is weighed by the station\'s weighmaster. If there isn\'t one at the station, you may weigh your own boat\'s fish: tick below so the secretary knows.</p>'))}</legend>
           <label class="check"><input type="checkbox" name="noWeighmaster" value="absent"> There was no weighmaster at the station</label>
         </fieldset>
         <div id="fish-list" class="stack"></div>
@@ -1958,7 +1965,6 @@ const pagesFor = (view) => ({
         ${official ? '' : raw(html`<label class="check declare"><input type="checkbox" name="declared" value="yes" required>
           <span>I declare these fish were caught today by the anglers named, under the club rules, and weighed on this scale.
           A false registration disqualifies the boat (<a href="#/rules?section=app-registrations">rule</a>).</span></label>`)}
-        <p class="small muted location-note">${raw(icon('locate'))} Your phone's location is taken when you send, to show where the fish were registered. Allow location when the phone asks.</p>
         <p class="error"></p>
         <div><button type="submit" class="primary" id="submit-sheet">Submit</button></div>
       </form>
@@ -2253,7 +2259,7 @@ const pagesFor = (view) => ({
         ${raw(tab('All', '#/review', toReview.length, !stations.includes(pick)))}
         ${stations.map((w) => raw(tab(w, `#/review?station=${encodeURIComponent(w)}`, count(w), pick === w)))}
       </nav>`)}
-      <p class="small muted">${plural(toReview.length, 'registration')} to check. Approving gives the points shown; correct the weight with a note if needed.</p>
+      <p class="small muted">${plural(toReview.length, 'registration')} to check.</p>
       ${shown.map((w) => raw(html`<section class="station" data-station="${w}">
         <h2 class="station-head">${w} <span class="muted small" data-left>${count(w) ? plural(count(w), 'fish') : 'nothing waiting'}</span></h2>
         ${sheetsAt(w).map((g) => raw(html`<section class="sheet">
@@ -2321,7 +2327,6 @@ const pagesFor = (view) => ({
     const editable = !!state.me?.canReview;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
-      <p class="small muted">Every fishing day scores. Tournaments listed here get their own results page and winner.</p>
       ${editable ? raw(recordedNote('Changing the season dates is announced to everyone in the feed.')) : ''}
       ${editable ? raw(html`<form class="card pad stack" id="season">
         <div class="row">
@@ -2343,7 +2348,7 @@ const pagesFor = (view) => ({
           <label>First day <input name="date" type="date" required></label>
           <label>Last day <input name="endDate" type="date"></label>
         </div>
-        <p class="small muted">Leave the last day empty for a one-day tournament. Fish on every day of it count towards its results.</p>
+        <p class="small muted">Leave the last day empty for a one-day tournament.</p>
         <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup"></label>
         <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
       </form>`) : ''}`;
@@ -2445,7 +2450,7 @@ const pagesFor = (view) => ({
       <h1>Log fish</h1>
       <div class="fo-day"><span>${state.me.teamName || 'Your boat'}</span>
         <label class="chip-date">${live ? 'Today' : fmtDate(day)} <input type="date" id="fo-day" max="${today()}" value="${day}" aria-label="Day"></label></div>
-      <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost. The spot is taken for you; only your crew sees it.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
+      <p class="small muted">${live ? 'Tap the fish, then Kept, Released or Lost.' : 'An earlier day: add its fish (no spot), or log it as no catch.'}</p>
       <div class="card pad stack fishon">
         <div class="quick-species" role="radiogroup" aria-label="Species" ${quick.length ? '' : 'hidden'}>${quick.map((x) => raw(html`<label class="qs"><input type="radio" name="fo-sp" value="${x.id}"><span>${x.name}</span></label>`))}</div>
         <select id="fo-species" aria-label="Other species">${raw(speciesOptions(null, 'Other species…'))}</select>
@@ -2831,7 +2836,6 @@ const pagesFor = (view) => ({
           ${raw(kpi(bestMonth ? MONTHS[bestMonth.month - 1] : '—', sz.species ? `best month · ${sz.species.toLowerCase()}` : 'best month'))}
           ${raw(kpi(heaviest ? fmtWeight(heaviest.heaviestKg) : '—', heaviest ? `heaviest · ${heaviest.species.toLowerCase()}` : 'heaviest'))}
         </div>
-        <p class="small muted">From what was logged. Lost fish and blank days often aren't, so these are counts of fish caught, not rates per trip.</p>
         ${R.species.length ? raw(html`<h2>Species</h2><div class="card table-wrap"><table>
           <thead><tr><th>Species</th><th class="num">Boated</th><th class="num">Released</th><th class="num">Heaviest</th></tr></thead>
           <tbody>${R.species.map((x) => raw(html`<tr><td>${x.species}</td><td class="num">${x.kept || ''}</td><td class="num">${x.released || ''}</td>
@@ -2847,11 +2851,10 @@ const pagesFor = (view) => ({
         ${peak ? raw(html`<h2>When: time of day</h2><div class="card pad">
           <div class="hour-bars">${R.hours.slice(5, 20).map((n, i) => raw(html`<div class="mb" title="${n} fish at ${i + 5}:00"><i style="height:${n ? Math.max(3, (n / hourMax) * 100) : 0}%"></i></div>`))}</div>
           <div class="hour-names">${[5, 8, 11, 14, 17].map((h) => raw(`<span>${h}h</span>`))}</div>
-          <p class="small muted">Fish caught by the hour they were logged at sea, in local time. Busiest: ${peak.h}:00–${peak.h + 1}:00.</p>
+          <p class="small muted">Busiest: ${peak.h}:00–${peak.h + 1}:00.</p>
         </div>`) : ''}
         ${R.areas.length ? raw(html`<h2>Where: rough areas</h2><div class="card pad">${bars(R.areas)}</div>`) : ''}
-        ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}
-          <p class="small muted">Fish caught on trips that used each technique.</p></div>`) : ''}
+        ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}</div>`) : ''}
         <div class="card pad best-card">
           <b>Best conditions so far</b>
           ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,
@@ -2861,8 +2864,7 @@ const pagesFor = (view) => ({
         </div>
         ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/spots?year=${sz.year}">${raw(icon('pin'))} See them on my catch map</a></p>`) : ''}
         <p class="log-buttons"><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One line per trip</a>
-          <a class="btn" href="/api/outings/fish.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One row per fish</a></p>
-        <p class="small muted">Spreadsheets of ${scope === 'mine' ? "your boat's" : 'the whole'} log. One row per fish has the time, result, weights and conditions of every fish${scope === 'mine' ? ', and its GPS spot (only for your crew)' : ''}.</p>`;
+          <a class="btn" href="/api/outings/fish.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One row per fish</a></p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
       return;
     }
@@ -2877,8 +2879,7 @@ const pagesFor = (view) => ({
         ${o.canDelete ? raw('<button type="button" class="link danger" data-act="remove">Remove</button>') : ''}</div>
     </li>`;
     view.innerHTML = html`${raw(head)}
-      ${state.me?.teamId ? raw(html`<p class="log-buttons"><a class="btn primary" href="#/fishon">${raw(icon('fish'))} Log fish</a></p>
-        <p class="small muted">At sea, tap a fish in as it's landed: its spot is taken there and then. Back on land, pick the day to add an earlier trip, or log a blank day as no catch.</p>`) : ''}
+      ${state.me?.teamId ? raw(html`<p class="log-buttons"><a class="btn primary" href="#/fishon">${raw(icon('fish'))} Log fish</a></p>`) : ''}
       ${raw(chips)}
       <div class="filter-chips">
         <select class="chip-select" data-go aria-label="Month">${raw(options([[link({ month: '' }), 'All months'],
@@ -2942,8 +2943,7 @@ const pagesFor = (view) => ({
       ${state.me.teamId ? raw('<a role="tab" href="#/spots" aria-selected="' + !regional + '">My boat</a>') : ''}
       <a role="tab" href="#/spots?view=regional" aria-selected="${regional}">Regional</a></div>`;
     if (regional) {
-      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Catch map</h1>${raw(mapTabs)}
-        <p class="small muted">Where fish are being caught across the region, month by month. Members only.</p>
+      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Catch map${raw(info('<p>Where fish are being caught across the region, month by month. No exact spots and no boat names. Members only.</p>'))}</h1>${raw(mapTabs)}
         <div id="grid-map-box"></div>`;
       const link = (changes) => {
         const p = new URLSearchParams(sq);
@@ -2971,8 +2971,7 @@ const pagesFor = (view) => ({
     const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
     const when = (x) => fmtDate(x.date);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Catch map</h1>${raw(mapTabs)}
-      <p class="small muted">Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>
+      <h1>Catch map${raw(info(html`<p>Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>${charts.length ? raw('<p>Depth contours: zoom in to see them; switch them on and off with the layers button on the map. Depths in feet.</p>') : ''}`))}</h1>${raw(mapTabs)}
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
       ${speciesHere.length > 1 || species || monthsHere.length > 1 || month ? raw(html`<div class="filter-chips">
         ${speciesHere.length > 1 || species ? raw(html`<select class="chip-select" data-go aria-label="Species">${raw(options(
@@ -2981,7 +2980,6 @@ const pagesFor = (view) => ({
           [[spotsLink(year, species, ''), 'All months'], ...monthsHere.map((m) => [spotsLink(year, species, String(m)), MONTH_SHORT[m - 1]])], spotsLink(year, species, month)))}</select>`) : ''}
       </div>`) : ''}
       ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
-      ${charts.length ? raw('<p class="small muted">Depth contours: zoom in to see them; switch them on and off with the layers button on the map. Depths in feet; for your crew only.</p>') : ''}
       ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
@@ -3038,7 +3036,7 @@ const pagesFor = (view) => ({
       <form class="card menu notify-kinds" id="kinds">${kinds.map(([k, label, sub]) => raw(html`<label class="notify-kind">
         <span class="mi-text"><b>${label}</b><span>${sub}</span></span>
         <input type="checkbox" class="switch" name="${k}" ${me.notify?.[k] ? 'checked' : ''}></label>`))}</form>
-      <p class="small muted">These choices follow your account to any phone. Each phone also has to have notifications turned on, above.</p>`;
+`;
     renderNotify(view.querySelector('#notify'), { what: 'the things you choose below' });
     view.querySelector('#kinds').addEventListener('change', async (e) => {
       try {
@@ -3065,7 +3063,7 @@ const pagesFor = (view) => ({
         : ['Tap the browser\'s <b>menu</b> (⋮) at the top right.', 'Tap <b>Install app</b> (or <b>Add to Home screen</b>).', 'Tap <b>Install</b>.'];
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <div class="install-head"><img src="/icon-192.png" alt="" width="72" height="72"><div><h1>Install the app</h1>
-        <p class="muted">Africa Sportfishing on your home screen: it opens full screen like any other app, even without signal (catches and points load when there's a connection).</p></div></div>
+        <p class="muted">Opens full screen, like any other app.</p></div></div>
       ${isInstalled() ? raw('<div class="card pad"><p style="margin:0">It\'s installed: you\'re using the app now.</p></div>') : raw(html`
       <div class="card pad stack" data-install-ready ${installPrompt ? '' : raw('hidden')}>
         <button type="button" class="primary" id="install-now">${raw(icon('download'))} Install now</button>
@@ -3204,8 +3202,7 @@ const pagesFor = (view) => ({
     const ROLE = { admin: 'Admin', ...Object.fromEntries(ROLE_OPTIONS) };
     const row = (x) => html`<li><div><b>${x.userName}</b> <span class="small muted">${ROLE[x.role] || ''} · ${fmtWhen(x.at)}</span></div><div>${x.action}</div></li>`;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Activity log</h1>
-      <p class="small muted">Every change made by the JHMMC officers and the admin: approvals, corrections, points, the scoring table, season dates, tournaments, memberships and accounts. It can't be edited or deleted by anyone. Changes to a fish are also sent to its crew; changes to the scoring table and season dates are announced in the feed.</p>
+      <h1>Activity log${raw(info('<p>Every change made by the JHMMC officers and the admin: approvals, corrections, points, the scoring table, season dates, tournaments, memberships and accounts. It can\'t be edited or deleted by anyone.</p><p>Changes to a fish are also sent to its crew; changes to the scoring table and season dates are announced in the feed.</p>'))}</h1>
       <label class="chip-select">Who <select id="who"><option value="">Everyone</option>${raw(first.people.map((p) => html`<option value="${p.id}" ${String(p.id) === who ? 'selected' : ''}>${p.name}</option>`).join(''))}</select></label>
       <div class="card"><ul class="list" id="acts">${first.items.length ? raw(first.items.map(row).join('')) : raw('<li class="muted">Nothing yet.</li>')}</ul></div>
       <button class="more" id="more" ${first.nextBefore ? '' : 'hidden'}>Load more</button>`;
@@ -3235,7 +3232,7 @@ const pagesFor = (view) => ({
       <h2>Copies on the server</h2>
       <div class="card"><ul class="list">${backups.length ? backups.map((b) => raw(html`<li><a href="/api/admin/backups/${b.name}" download>${raw(icon('download'))} ${fmtWhen(b.at)}</a> <span class="small muted">${size(b)}</span></li>`))
         : raw('<li class="muted">None yet: the first is made a minute after the app starts.</li>')}</ul></div>
-      <p class="small muted">Photos aren't in these copies (they're too big); points, weights and every record are.</p>`;
+      <p class="small muted">Photos aren't included.</p>`;
     view.querySelector('#b-now').addEventListener('click', async () => {
       const { backup } = await api('/admin/backups', { method: 'POST', body: {} });
       location.href = `/api/admin/backups/${backup.name}`;
@@ -3269,8 +3266,7 @@ const pagesFor = (view) => ({
     const others = teams.filter((t) => !isJhmmc(t.clubId));
     const find = (t) => `${t.name} ${t.clubName || ''} ${t.weighStation || t.homePort || ''}`.toLowerCase();
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Boats (${teams.length})</h1>
-      <p class="small muted">Set each JHMMC boat's weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away.</p>
+      <h1>Boats (${teams.length})${raw(info('<p>Set each JHMMC boat\'s weigh station, which is also its home port, and whether it fishes Ocean or River. Changes save straight away.</p>'))}</h1>
       ${raw(recordedNote('Changing a boat\'s weigh station or Ocean/River is visible to the officers.'))}
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by boat, club or station" aria-label="Search boats" autocomplete="off"></label>
       <h2>JHMMC boats (${jhmmc.length})</h2>
@@ -3311,9 +3307,7 @@ const pagesFor = (view) => ({
     const { registrations } = await api('/registrations/pending');
     const until = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Pending registrations</h1>
-      <p class="small muted">Fish every JHMMC boat has registered that the secretary hasn't decided on yet. If something looks wrong,
-        dispute it within 24 hours with a reason; the secretary sees it before approving. <a href="#/rules?section=app-registrations">The rule</a></p>
+      <h1>Pending registrations${raw(info('<p>Fish every JHMMC boat has registered that the secretary hasn\'t decided on yet.</p><p>If something looks wrong, dispute it within 24 hours with a reason; the secretary sees it before approving. <a href="#/rules?section=app-registrations">The rule</a></p>'))}</h1>
       ${registrations.length ? raw(html`<div class="stack">${registrations.map((c) => raw(html`<article class="card pad pending-item" data-id="${c.id}">
         <div class="catch-head"><h3 class="catch-title"><a href="#/catch/${c.id}">${c.species}</a></h3>
           <span class="weight">${c.weightKg ? fmtWeight(c.weightKg) : c.released ? 'Released' : ''}</span></div>
@@ -3358,8 +3352,7 @@ const pagesFor = (view) => ({
     const team = new URLSearchParams(location.hash.split('?')[1] || '').get('team') || '';
     const [{ teams }, { fish, nextBefore }] = await Promise.all([api('/teams'), api(`/registrations/log?team=${encodeURIComponent(team)}`)]);
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Registration history</h1>
-      <p class="small muted">Every JHMMC registration, one entry per fish with where it stands now, and underneath everything that happened to it: who registered, disputed, approved, rejected or withdrew it, when, and where the captain's phone was. Nothing here can be changed.</p>
+      <h1>Registration history${raw(info('<p>Every JHMMC registration, one entry per fish with where it stands now, and underneath everything that happened to it: who registered, disputed, approved, rejected or withdrew it, when, and where the captain\'s phone was. Nothing here can be changed.</p>'))}</h1>
       <label class="log-filter">Boat <select id="log-team">${raw(options(teams.filter((t) => isJhmmc(t.clubId)).map((t) => [t.id, t.name]), team, 'All boats'))}</select></label>
       <div class="card"><ul class="list log" id="log">${raw(logItems(fish))}</ul></div>
       ${nextBefore ? raw(html`<p><button id="log-more" data-before="${nextBefore}">Show older</button></p>`) : ''}`;
@@ -3388,10 +3381,7 @@ const pagesFor = (view) => ({
     // On the Leaderboard: coming up (to join) first, then the results of those started or over.
     const listed = official ? tournaments : tournaments.filter((t) => t.date <= today());
     view.innerHTML = html`${official ? raw('<p class="back"><a href="#/more">‹ More</a></p><h1>Tournament sheets</h1>' + recordedNote('Entering or removing a boat, and marking memberships paid, are visible to the officers.')) : raw(html`<h1>Leaderboard</h1>${raw(boardTabs('tournaments'))}`)}
-      <p class="small muted">${official
-        ? `Open a tournament for its registration sheet: who's in, the anglers on each boat, and the temporary memberships non-members pay (USD ${fee} each).`
-        : captain ? `Enter your boat under Coming up. Anglers who aren't JHMMC members pay a USD ${fee} temporary membership before the tournament day.`
-          : "This season's JHMMC tournaments, for JHMMC boats (for now). Tap one for its results, Ocean and River."}</p>
+      ${captain && !official ? raw(html`<p class="small muted">Non-members pay a USD ${fee} temporary membership.</p>`) : ''}
       ${official && state.me?.canReview ? raw(html`<p><a class="btn primary" href="#/calendar?new=1">${raw(icon('trophy'))} New tournament</a></p>`) : ''}
       ${!official && tournaments.some((t) => t.open) ? raw(html`<h2 id="coming-up">Coming up</h2>
       <div class="stack">${tournaments.filter((t) => t.open).map((t) => raw(html`<div class="card pad tournament-call join-card" id="t-${t.id}">
@@ -3423,8 +3413,7 @@ const pagesFor = (view) => ({
       <p class="muted">${fmtDays(tournament)} · <b>${team.name}</b> · ${team.division === 'river' ? 'River' : 'Ocean'}${team.station ? ` · ${team.station}` : ''}</p>
       <p class="tournament-now">${raw(icon(entered ? 'check' : 'trophy'))} ${entered ? 'Your boat is entered.' : 'Your boat is not entered yet.'}</p>
       ${open ? raw(html`<form class="card pad stack" id="entry">
-        <h2>Anglers on ${team.name}</h2>
-        <p class="small muted">Tick your crew who are fishing and add anyone else as a guest. Only people the secretary has marked as paid JHMMC members count as members; everyone else, guests included, pays a USD ${fee} temporary membership before the tournament day.</p>
+        <h2>Anglers on ${team.name}${raw(info(html`<p>Tick your crew who are fishing and add anyone else as a guest.</p><p>Only people the secretary has marked as paid JHMMC members count as members; everyone else, guests included, pays a USD ${fee} temporary membership before the tournament day.</p>`))}</h2>
         ${raw(anglerEditor(crew, anglers, false, named))}
         <p class="error"></p>
         <div class="actions"><button type="submit" class="primary">${entered ? 'Save changes' : 'Enter my boat'}</button>
@@ -3494,7 +3483,7 @@ const pagesFor = (view) => ({
       <div class="card"><ul class="list">${outBoats.length ? outBoats.map((b) => raw(html`<li class="member" data-team="${b.teamId}">
         <span>${b.teamName} <span class="muted small">· ${b.division === 'river' ? 'River' : 'Ocean'}${b.station ? ` · ${b.station}` : ''}</span></span>
         ${manage ? raw('<button type="button" data-act="put-in">Put in</button>') : ''}</li>`)) : raw('<li class="muted">Every JHMMC boat is in.</li>')}</ul></div>
-      ${manage ? raw('<p class="small muted">"Put in" enters a boat, then opens its anglers to fill in. The captain is notified.</p>') : ''}`;
+      ${manage ? raw('<p class="small muted">The captain is notified.</p>') : ''}`;
     const put = (teamId, body) => api(`/tournaments/${id}/entries/${teamId}`, { method: 'PUT', body });
     view.addEventListener('change', async (e) => {
       const box = e.target.closest('input[data-act]');
@@ -3562,12 +3551,9 @@ const pagesFor = (view) => ({
     const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
     const paid = people.filter((p) => p.paid).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Club members</h1>
-      <p class="small muted">Everyone in JHMMC, and who has paid their membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).
-        In tournaments, anyone who isn't ticked paid here counts as a non-member and pays the temporary membership.</p>
+      <h1>Club members${raw(info(html`<p>Everyone in JHMMC, and who has paid their membership for the ${label} season (${fmtDay(season.start)} to ${fmtDay(season.end)}).</p><p>In tournaments, anyone who isn't ticked paid here counts as a non-member and pays the temporary membership.</p>`))}</h1>
       ${canSetMembers ? raw(html`<form class="card pad stack" id="add-member">
         <h3>Add someone to JHMMC</h3>
-        <p class="small muted">Anyone with an account who is a club member. Type to find them.</p>
         <label class="search">${raw(icon('search'))}<input list="non-members" name="who" placeholder="Name, email or boat" autocomplete="off" aria-label="Find a person"></label>
         <datalist id="non-members">${raw(others.map((o) => html`<option value="${o.name} · ${o.email}">${o.teamName || 'No boat'}</option>`).join(''))}</datalist>
         <label class="check"><input type="checkbox" name="paid" checked> Paid ${label}</label>
@@ -3587,8 +3573,7 @@ const pagesFor = (view) => ({
         <span class="pay-col"><label class="check"><input type="checkbox" ${p.paid ? 'checked' : ''}> Paid ${label}</label>
           ${canSetMembers && !p.isAdmin ? raw('<button type="button" class="link danger small" data-act="not-member">Remove from JHMMC</button>') : ''}</span>
       </li>`))}</ul></div>
-      <h2>Members without an account</h2>
-      <p class="small muted">Children and anyone else who doesn't use the app. Give them their boat so its captain can pick them for tournaments.</p>
+      <h2>Members without an account${raw(info('<p>Children and anyone else who doesn\'t use the app. Give them their boat so its captain can pick them for tournaments.</p>'))}</h2>
       <div class="card"><ul class="list">${named.length ? named.map((p) => raw(html`<li class="member member-pay" data-person="${p.id}" data-paid="${p.paid}" data-find="${`${p.name} ${p.teamName || ''}`.toLowerCase()}">
         <span><b>${p.name}</b><div class="muted small">${p.teamName || 'No boat'} · no account ·
           <button type="button" class="link danger" data-act="remove-person">Remove</button></div></span>
@@ -3699,9 +3684,8 @@ const pagesFor = (view) => ({
     const { users } = await api('/admin/users');
     const inClub = users.filter((u) => u.jhmmc).length;
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Members (${users.length})</h1>
+      <h1>Members (${users.length})${raw(info(html`<p>Tick who belongs to JHMMC; the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Weighmasters are appointed on the Weighmasters page. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>`))}</h1>
       ${admin ? '' : raw(recordedNote('Adding someone to JHMMC or taking them out is visible to the officers.'))}
-      <p class="small muted">Tick who belongs to JHMMC (${inClub} of ${users.length}); the secretary then marks which of them have paid this season. Roles such as Secretary are set on the Club members page. Captains of JHMMC boats register their own boat's fish. When a member forgets their password, check the request came from their sign-up email, then make a reset link and send it to them. It works once and expires after 24 hours; they choose the new password themselves.</p>
       <label class="search">${raw(icon('search'))}<input type="search" placeholder="Search by name, email or boat" aria-label="Search members" autocomplete="off"></label>
       <div class="card"><ul class="list">${users.map((u) => raw(html`<li class="member-row" data-id="${u.id}" data-find="${`${u.name} ${u.nickname || ''} ${u.email} ${u.teamName || ''}`.toLowerCase()}">
         <div><b>${u.name}</b>${u.nickname ? raw(html` <span class="muted">“${u.nickname}”</span>`) : ''}<div class="muted small">${u.email}${u.teamName ? ` · ${u.teamName}` : ''}</div></div>
@@ -3818,8 +3802,7 @@ const pagesFor = (view) => ({
     let body;
     if (isIgfa) {
       const month = new Date(checked + '-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-      body = html`<h2>IGFA all-tackle world records</h2>
-        <p class="small muted">The heaviest fish of each species ever accepted by the International Game Fish Association. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>
+      body = html`<h2>IGFA all-tackle world records${raw(info(html`<p>The heaviest fish of each species ever accepted by the International Game Fish Association. Checked ${month}; <a href="${igfaUrl}" target="_blank" rel="noopener">IGFA's search</a> has the official, current list and every line-class record.</p>`))}</h2>
         <div class="records">${species.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.igfa?.african ? raw('<span class="badge release">Caught in Africa</span>') : ''}</div>
           ${s.igfa ? raw(html`<div><span class="wr-lb">${s.igfa.display}</span> <span class="muted">${kg(s.igfa.kg)}</span></div>
@@ -3832,9 +3815,8 @@ const pagesFor = (view) => ({
       const who = (r) => (r.fromApp ? raw(html`<a href="${anglerHref(r.userId, r.angler)}">${r.angler}</a>`) : r.angler);
       const boat = (r) => (r.teamId ? raw(html`<a href="#/boat/${r.teamId}">${r.boat}</a>`) : r.boat || '—');
       const isNew = (r) => (r.fromApp ? raw('<span class="badge new">New</span>') : '');
-      body = html`<h2>${club.name} record book</h2>
-        <p class="small muted">The club's records as at ${fmtDay(recordBook.asAt)}, with fish approved in the app ranked in among them (marked New).
-          <a href="${recordBook.pdf}" target="_blank" rel="noopener">Download the record book (PDF)</a></p>
+      body = html`<h2>${club.name} record book${raw(info(html`<p>The club's records as at ${fmtDay(recordBook.asAt)}, with fish approved in the app ranked in among them (marked New).</p>`))}</h2>
+        <p class="small"><a href="${recordBook.pdf}" target="_blank" rel="noopener">Download the record book (PDF)</a></p>
         <div class="records">${recordBook.groups.map((g) => {
           const [top, ...rest] = g.records;
           return raw(html`<article class="card pad record">
@@ -3862,7 +3844,6 @@ const pagesFor = (view) => ({
       const held = species.filter((s) => s.best);
       const open = species.filter((s) => !s.best);
       body = html`<h2>${club.name} club records</h2>
-        <p class="small muted">${isWa ? 'The heaviest fish of each species weighed and approved, from every boat in West Africa.' : `The heaviest weighed fish of each species logged by ${club.name} boats.`}</p>
         ${held.length ? raw(html`<div class="records">${held.map((s) => raw(html`<article class="card pad record">
           <div class="record-head"><b>${s.name}</b>${s.best.lineClass ? raw(html`<span class="badge">${s.best.lineClass} line</span>`) : ''}</div>
           <div><a class="wr-lb" href="#/catch/${s.best.catchId}">${lb(s.best.weightKg)}</a> <span class="muted">${kg(s.best.weightKg)}</span></div>
@@ -3919,9 +3900,8 @@ const pagesFor = (view) => ({
           <label>First name <input name="firstName" required maxlength="40" autocomplete="given-name" value="${me.firstName || ''}"></label>
           <label>Last name <input name="lastName" required maxlength="40" autocomplete="family-name" value="${me.lastName || ''}"></label>
         </div>
-        <p class="small muted">Your full name is shown on your profile.</p>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo" value="${me.nickname || ''}">
-          <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
+          <span class="small muted">Shown instead of your full name.</span></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, me.country, 'Choose…'))}</select></label>
         <label>About you <textarea name="bio" maxlength="500">${me.bio || ''}</textarea></label>
         ${raw(photoField('Your photo', me.photoUrl))}
@@ -4080,15 +4060,13 @@ const pagesFor = (view) => ({
 
   async register() {
     view.innerHTML = html`<h1>Create your account</h1>
-      <p class="muted">Every angler signs in with their own account. After this you can join your boat's crew, register a boat, or just follow the feed.</p>
       <form class="card pad stack" id="f">
         <div class="row">
           <label>First name <input name="firstName" required maxlength="40" autocomplete="given-name"></label>
           <label>Last name <input name="lastName" required maxlength="40" autocomplete="family-name"></label>
         </div>
-        <p class="small muted">Your full name is shown on your profile.</p>
         <label>Nickname (optional) <input name="nickname" maxlength="40" placeholder="e.g. Big Mo">
-          <span class="small muted">What everyone else sees: the feed, Participants, leaderboards. Leave it empty to show your full name.</span></label>
+          <span class="small muted">Shown instead of your full name.</span></label>
         <label>Email <input name="email" type="email" required autocomplete="email"></label>
         <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
         <label>Country <select name="country">${raw(options(state.meta.countries, null, 'Choose…'))}</select></label>
