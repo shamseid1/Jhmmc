@@ -91,9 +91,9 @@ PAGE_GROUPS.push((view) => ({
       <div id="sea-card"></div>
       <div class="home-tiles">
         <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
+        <div id="biting" class="home-wide-slot"></div>
         ${state.me?.canWeigh || state.me?.canApprove ? raw(html`<a class="home-tile wide" href="#/weigh">${raw(icon('weight'))}<span><b>Weigh-in</b><span>${
           state.me.canApprove && !state.me.teamId ? 'For any boat, any day' : state.me.weighmasterAt ? `You're the weighmaster at ${state.me.weighmasterAt}` : `Today's fish for ${state.me.teamName || 'your boat'}${state.me.weighStation ? ` at ${state.me.weighStation}` : ''}`}</span></span><span class="go" aria-hidden="true">›</span></a>`) : ''}
-        <div id="biting" class="home-wide-slot"></div>
         <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
         <a class="home-tile" href="#/leaderboard">${raw(icon('leaderboard'))}<b>Leaderboard</b><span>The season's points</span></a>
         <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
