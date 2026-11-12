@@ -317,7 +317,7 @@ PAGE_GROUPS.push((view) => ({
       const most = Math.max(1, ...grid.cells.map((c) => c.fish));
       overlays.regional?.remove();
       overlays.regional = L.layerGroup(grid.cells.map((c) => L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2],
-        { radius: 6000, color: '#fff', weight: 1, fillColor: '#ffd166', fillOpacity: 0.25 + 0.55 * (c.fish / most) })
+        { radius: 11000, color: '#fff', weight: 1, fillColor: '#ffd166', fillOpacity: 0.2 + 0.5 * (c.fish / most) })
         .bindPopup(`<dl><dt>Fish</dt><dd>${c.fish}</dd><dt>Boats</dt><dd>${c.boats}</dd></dl>`, { className: 'chart-pop' }))).addTo(map);
       filters();
     };
