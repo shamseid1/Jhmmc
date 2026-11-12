@@ -657,7 +657,7 @@ video.catch-photo { display: block; width: 100%; max-height: 70vh; background: #
 .install-card button { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .install-card .icon { width: 18px; height: 18px; }
 /* My catch map. */
-.catch-map { height: 380px; margin-bottom: 8px; }
+.catch-map { height: 380px; margin-bottom: 8px; position: relative; z-index: 0; isolation: isolate; }
 .catch-map .leaflet-popup-content { font: 14px/1.4 system-ui, sans-serif; color: #1a242e; }
 .year-tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; }
 .year-tabs a { padding: 8px 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-weight: 700; }
@@ -1265,7 +1265,7 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .depth-list b { font-size: 18px; white-space: nowrap; }
 
 /* The currents map. */
-.cur-map { position: relative; height: min(68vh, 560px); border-radius: var(--radius); overflow: hidden; background: #0a1a33; margin: 10px 0; }
+.cur-map { position: relative; z-index: 0; isolation: isolate; height: min(60vh, 560px); border-radius: var(--radius); overflow: hidden; background: #0a1a33; margin: 10px 0; }
 .flow-canvas { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
 .field-image { image-rendering: auto; }
 .cur-bar .seg { margin: 6px 0 0; }

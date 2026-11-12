@@ -311,20 +311,23 @@ function flowLayer(map, getField) {
   const seed = () => {
     const r = box.getBoundingClientRect();
     const n = Math.round(Math.min(2200, (r.width * r.height) / 140));
-    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.random() * 10 }));
+    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.random() * 5, life: 3 + Math.random() * 3 }));
     ctx.clearRect(0, 0, r.width, r.height);
   };
   // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen).
-  const PX_PER_KNOT_SECOND = 8; // 1 knot of current: 8 pixels a second, a slow drift
+  // Like Windy: a lively flow that still reads (1 knot: 22 pixels a second), with weak water
+  // still creeping along so its direction shows.
+  const PX_PER_KNOT_SECOND = 22;
+  const MIN_PX_SECOND = 5;
   let last = 0;
   const step = (now) => {
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
     last = now;
     const r = box.getBoundingClientRect();
     const at = getField();
-    // Fade the old trails slowly (a few seconds), so even a slow drift draws a line.
+    // Fade the old trails within about a second: short streaks, as on Windy.
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.55, dt).toFixed(3)})`;
+    ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.12, dt).toFixed(3)})`;
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';
     ctx.lineWidth = 1.3;
@@ -334,13 +337,15 @@ function flowLayer(map, getField) {
       const ll = map.containerPointToLatLng([p.x, p.y]);
       const u = at && at(ll.lat, ll.lng, 'u');
       const v = at && at(ll.lat, ll.lng, 'v');
-      if (u == null || v == null || p.age > 10) {
-        p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0;
+      if (u == null || v == null || p.age > p.life) {
+        p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0; p.life = 3 + Math.random() * 3;
         continue;
       }
       // A gentle drift, faster where the current is stronger (the same at every zoom).
-      const nx = p.x + u * PX_PER_KNOT_SECOND * dt;
-      const ny = p.y - v * PX_PER_KNOT_SECOND * dt;
+      const kn = Math.hypot(u, v);
+      const k = kn > 0.001 ? Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) / kn : 0;
+      const nx = p.x + u * k * dt;
+      const ny = p.y - v * k * dt;
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(nx, ny);
       p.x = nx; p.y = ny; p.age += dt;
