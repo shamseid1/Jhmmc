@@ -83,10 +83,9 @@ function homeCards(view) {
 
 PAGE_GROUPS.push((view) => ({
   // Home: what's on (a tournament, today's weigh-in), today's sea, the main places a tap away
-  // (the fishing chart first), notifications and your account. The feed is a tab of its own.
+  // (the fishing chart first) and notifications. The feed is a tab of its own.
   async home() {
-    view.innerHTML = html`${state.me ? raw(html`<a class="card pad home-account" href="#/profile">${raw(icon('user'))}<span><b>My account</b><span class="small muted">${state.me.displayName || state.me.name}${state.me.teamName ? ` · ${state.me.teamName}` : ''}</span></span><span aria-hidden="true">›</span></a>`) : ''}
-      ${raw(noBoatBanner())}
+    view.innerHTML = html`${raw(noBoatBanner())}
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
       <div id="sea-card"></div>
