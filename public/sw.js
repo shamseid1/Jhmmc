@@ -4,11 +4,11 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v159';
+const CACHE = 'app-v161';
 const APP_FILES = [
   '/', '/index.html', '/styles.css',
   '/js/core.js', '/js/exports.js', '/js/widgets.js', '/js/cards.js', '/js/pages-feed.js', '/js/pages-board.js', '/js/pages-weigh.js', '/js/pages-log.js', '/js/pages-more.js', '/js/pages-officers.js', '/js/pages-account.js', '/js/main.js',
-  '/scoring.js', '/rules.js', '/manifest.webmanifest',
+  '/scoring.js', '/rules.js', '/land.json', '/manifest.webmanifest',
   '/marlin.svg', '/boat.svg', '/logo-mark.png', '/fish-mark.png', '/jhmmc-logo.png', '/favicon.png', '/icon-192.png', '/icon-512.png',
   '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/vendor/jspdf/jspdf.umd.min.js', '/vendor/jspdf/jspdf.plugin.autotable.min.js',
 ];

@@ -230,7 +230,7 @@ function sampler(g, f) {
       [f[key][(j + 1) * g.nx + i], (1 - fx) * fy], [f[key][(j + 1) * g.nx + i + 1], fx * fy]];
     let s = 0; let w = 0;
     for (const [val, wt] of corners) if (val != null) { s += val * wt; w += wt; }
-    return w > 0.15 ? s / w : null;
+    return w > 0 ? s / w : null;
   };
 }
 const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
@@ -266,8 +266,15 @@ function colourAt(stops, v) {
   }
   return stops.at(-1)[1];
 }
-// The colour layer for one frame: one pixel per grid point, smoothed by the browser.
-function fieldImage(L, g, f, kind, stops) {
+// The coastline (Natural Earth land, simplified to about 400 m): drawn as a mask so the colours
+// and lines stop at the shore. `land` is a list of rings of [lat, lng]; toXY maps a point to pixels.
+function fillLand(ctx, land, toXY) {
+  ctx.beginPath();
+  for (const ring of land || []) ring.forEach(([lat, lng], k) => { const [x, y] = toXY(lat, lng); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+  ctx.fill();
+}
+// The colour layer for one frame, smoothed between grid points and cut at the coast.
+function fieldImage(L, g, f, kind, stops, land) {
   const at = sampler(g, f);
   const S = 8; // pixels per grid step
   const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
@@ -288,11 +295,13 @@ function fieldImage(L, g, f, kind, stops) {
     }
   }
   ctx.putImageData(img, 0, 0);
+  ctx.globalCompositeOperation = 'destination-out';
+  fillLand(ctx, land, (lat, lng) => [((lng - g.west) / g.step) * S, h - 1 - ((lat - g.south) / g.step) * S]);
   return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
     { opacity: 0.85, className: 'field-image', interactive: false });
 }
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
-function flowLayer(map, getField) {
+function flowLayer(map, getField, getLand = () => null, bounds = null) {
   const box = map.getContainer();
   const cv = document.createElement('canvas');
   cv.className = 'flow-canvas';
@@ -308,10 +317,41 @@ function flowLayer(map, getField) {
     cv.style.width = `${r.width}px`; cv.style.height = `${r.height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  const seed = () => {
+  // Where the land is on screen (redrawn when the map moves), so no line runs over it.
+  let landAt = () => false;
+  const mask = () => {
+    const land = getLand();
     const r = box.getBoundingClientRect();
-    const n = Math.round(Math.min(2200, (r.width * r.height) / 140));
-    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.random() * 5, life: 3 + Math.random() * 3 }));
+    if (!land || !r.width) { landAt = () => false; return; }
+    const W = Math.ceil(r.width); const H = Math.ceil(r.height);
+    const m = document.createElement('canvas'); m.width = W; m.height = H;
+    const mc = m.getContext('2d');
+    fillLand(mc, land, (lat, lng) => { const pt = map.latLngToContainerPoint([lat, lng]); return [pt.x, pt.y]; });
+    const px = mc.getImageData(0, 0, W, H).data;
+    landAt = (x, y) => { const i = Math.floor(y) * W + Math.floor(x); return x >= 0 && y >= 0 && x < W && y < H && px[i * 4 + 3] > 0; };
+  };
+  // Lines start only where there is data on screen (the map's grid, not the whole view), with
+  // the same density at every zoom: zoomed out, fewer lines in the smaller patch of sea.
+  let area = { x: 0, y: 0, w: 0, h: 0 };
+  const spawn = (p) => {
+    for (let k = 0; k < 6; k++) {
+      p.x = area.x + Math.random() * area.w; p.y = area.y + Math.random() * area.h;
+      if (!landAt(p.x, p.y)) break;
+    }
+    p.age = 0; p.life = 3 + Math.random() * 3;
+    return p;
+  };
+  const seed = () => {
+    mask();
+    const r = box.getBoundingClientRect();
+    let x0 = 0; let y0 = 0; let x1 = r.width; let y1 = r.height;
+    if (bounds) {
+      const a = map.latLngToContainerPoint(bounds[1]); const b = map.latLngToContainerPoint(bounds[0]); // north-east, south-west
+      x0 = Math.max(0, b.x); x1 = Math.min(r.width, a.x); y0 = Math.max(0, a.y); y1 = Math.min(r.height, b.y);
+    }
+    area = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    const n = Math.round(Math.min(2200, (area.w * area.h) / 140));
+    parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.life; return p; });
     ctx.clearRect(0, 0, r.width, r.height);
   };
   // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen).
@@ -325,6 +365,8 @@ function flowLayer(map, getField) {
     last = now;
     const r = box.getBoundingClientRect();
     const at = getField();
+    // Slower when zoomed out (the sea is smaller on screen), a little faster zoomed in.
+    const zoomK = Math.min(1.6, Math.max(0.35, 2 ** ((map.getZoom() - 7) * 0.6)));
     // Fade the old trails within about a second: short streaks, as on Windy.
     ctx.globalCompositeOperation = 'destination-in';
     ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.12, dt).toFixed(3)})`;
@@ -337,13 +379,13 @@ function flowLayer(map, getField) {
       const ll = map.containerPointToLatLng([p.x, p.y]);
       const u = at && at(ll.lat, ll.lng, 'u');
       const v = at && at(ll.lat, ll.lng, 'v');
-      if (u == null || v == null || p.age > p.life) {
-        p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0; p.life = 3 + Math.random() * 3;
+      if (u == null || v == null || p.age > p.life || landAt(p.x, p.y)) {
+        spawn(p);
         continue;
       }
       // A gentle drift, faster where the current is stronger (the same at every zoom).
       const kn = Math.hypot(u, v);
-      const k = kn > 0.001 ? Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) / kn : 0;
+      const k = kn > 0.001 ? (Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) * zoomK) / kn : 0;
       const nx = p.x + u * k * dt;
       const ny = p.y - v * k * dt;
       ctx.moveTo(p.x, p.y);

@@ -147,6 +147,9 @@ PAGE_GROUPS.push((view) => ({
       From the Copernicus ocean model through Open-Meteo, on a grid of about 30 km: the big picture, not every current line on the water.</p>`;
     let data;
     let L;
+    let land = null;
+    let redraw = null; // set once the map is up
+    fetch('/land.json').then((r) => r.json()).then((x) => { land = x; redraw?.(); }).catch(() => {});
     try {
       [data, L] = await Promise.all([api('/currents'), loadLeaflet()]);
     } catch (err) {
@@ -155,7 +158,7 @@ PAGE_GROUPS.push((view) => ({
     }
     const box = view.querySelector('#cur-map');
     box.innerHTML = '';
-    const map = L.map(box, { zoomControl: true, attributionControl: true }).setView([6.0, -10.6], 7);
+    const map = L.map(box, { zoomControl: true, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
     addSatellite(L, map);
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     if (crew) {
@@ -189,12 +192,13 @@ PAGE_GROUPS.push((view) => ({
       const f = data.frames[Number(slider.value)];
       at = sampler(data, f);
       image?.remove();
-      image = fieldImage(L, data, f, kind, stopsFor(kind)).addTo(map);
+      image = fieldImage(L, data, f, kind, stopsFor(kind), land).addTo(map);
       const t = new Date(`${f.time}:00Z`);
       when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
       legend();
     };
-    flowLayer(map, () => at);
+    const flow = flowLayer(map, () => at, () => land, [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]]);
+    redraw = () => { show(); flow.reseed(); };
     slider.addEventListener('input', show);
     view.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => {
       kind = b.dataset.kind;
