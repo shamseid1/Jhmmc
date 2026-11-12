@@ -187,7 +187,7 @@ PAGE_GROUPS.push((view) => ({
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" checked></label>
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${hq.get('view') === 'regional' ? 'checked' : ''}></label>
         </div>
-        <div class="catch-filters" id="catch-filters"></div>`) : ''}
+        <div class="catch-filters" id="catch-filters" ${hq.get('view') === 'regional' ? '' : 'hidden'}></div>`) : ''}
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
@@ -350,7 +350,12 @@ PAGE_GROUPS.push((view) => ({
         drawFish();
         drawRegional();
       });
-      view.querySelector('[data-show=regional]').addEventListener('change', drawRegional);
+      // The filters show with the region's circles (and then pick your fish too).
+      view.querySelector('[data-show=regional]').addEventListener('change', (e) => {
+        view.querySelector('#catch-filters').hidden = !e.target.checked;
+        if (!e.target.checked && (cf.season || cf.species || cf.month)) { cf.season = ''; cf.species = ''; cf.month = ''; filters(); drawFish(); }
+        drawRegional();
+      });
       view.querySelector('[data-open-list]').addEventListener('click', () => { openLayers(false); view.querySelector('#chart-list').hidden = false; });
       view.querySelector('[data-close-list]').addEventListener('click', () => { view.querySelector('#chart-list').hidden = true; });
       map.on('click', () => { view.querySelector('#chart-list').hidden = true; });
