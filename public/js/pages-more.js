@@ -730,8 +730,8 @@ PAGE_GROUPS.push((view) => ({
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
-        ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
         ${item('#/chart', 'map', 'Fishing chart', 'Contours, hotspots, currents, wind, waves and your catches')}
+        ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
       ${me.canWeigh && !me.canApprove ? `<h2>Weigh-in &amp; points</h2><div class="card menu">
