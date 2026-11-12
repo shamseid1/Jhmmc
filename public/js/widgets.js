@@ -9,12 +9,37 @@ function addSatellite(L, map) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
   L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
   L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
+  map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
+  twoFingers(map);
   // Places the club wants on every map.
   for (const p of MAP_PLACES) {
     L.circleMarker([p.lat, p.lng], { radius: 5, weight: 2, color: '#ffffff', fillColor: '#f5a524', fillOpacity: 1 })
       .bindTooltip(p.name, { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] })
       .addTo(map);
   }
+}
+// On a phone, one finger scrolls the page past the map; two fingers move and zoom it (a short
+// hint says so), as Google Maps does inside a page.
+function twoFingers(map) {
+  if (!('ontouchstart' in window)) return;
+  const box = map.getContainer();
+  map.dragging.disable();
+  const hint = document.createElement('div');
+  hint.className = 'map-hint';
+  hint.textContent = 'Use two fingers to move the map';
+  box.appendChild(hint);
+  let timer = 0;
+  box.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) { map.dragging.enable(); hint.classList.remove('on'); return; }
+    map.dragging.disable();
+  }, { passive: true });
+  box.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    hint.classList.add('on');
+    clearTimeout(timer);
+    timer = setTimeout(() => hint.classList.remove('on'), 1200);
+  }, { passive: true });
+  box.addEventListener('touchend', (e) => { if (!e.touches.length) map.dragging.disable(); }, { passive: true });
 }
 // Each with its name and position.
 const MAP_PLACES = [

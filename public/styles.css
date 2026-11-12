@@ -1279,3 +1279,9 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .cur-link .icon { width: 26px; height: 26px; color: var(--accent); flex: none; }
 .seg button { text-align: center; padding: 10px; border-radius: 999px; font-weight: 700; color: var(--muted); background: none; border: 0; justify-content: center; }
 .seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+
+/* Maps: the two-finger hint, and a small, quiet imagery credit. */
+.map-hint { position: absolute; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; text-align: center;
+  background: rgba(0, 0, 0, 0.45); color: #fff; font-weight: 700; font-size: 18px; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.map-hint.on { opacity: 1; }
+.leaflet-container .leaflet-control-attribution { font-size: 9px; padding: 0 4px; background: rgba(255, 255, 255, 0.5); color: #333; }
