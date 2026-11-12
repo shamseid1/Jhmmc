@@ -120,7 +120,6 @@ PAGE_GROUPS.push((view) => ({
           state.me.canApprove && !state.me.teamId ? 'For any boat, any day' : state.me.weighmasterAt ? `You're the weighmaster at ${state.me.weighmasterAt}` : `Today's fish for ${state.me.teamName || 'your boat'}${state.me.weighStation ? ` at ${state.me.weighStation}` : ''}`}</span></span><span class="go" aria-hidden="true">›</span></a>`) : ''}
         <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
         <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
-        <a class="home-tile wide" href="#/sea">${raw(icon('wave'))}<span><b>Sea conditions</b><span>The week ahead</span></span><span class="go" aria-hidden="true">›</span></a>
       </div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}`;
     homeCards(view);
