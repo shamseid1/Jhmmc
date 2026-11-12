@@ -339,6 +339,15 @@ PAGE_GROUPS.push((view) => ({
     let lastPop = null;
     // Zooming closes the box (and takes the ring away).
     map.on('zoomstart', () => map.closePopup());
+    // Saved spots scale with the chart: names from zoom 8 (where it opens), small without names
+    // further out, and gone when the whole region is in view.
+    const spotZoom = () => {
+      const z = map.getZoom();
+      box.classList.toggle('spots-far', z < 6);
+      box.classList.toggle('spots-mid', z >= 6 && z < 8);
+    };
+    map.on('zoomend', spotZoom);
+    spotZoom();
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
     const earlyTap = (e) => tapBox(e.latlng, navRows([e.latlng.lat, e.latlng.lng]));
