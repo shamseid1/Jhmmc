@@ -321,6 +321,8 @@ function applyTheme(choice = themeChoice()) {
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', THEME_COLORS[theme]);
   // Light is "only light" so a browser's own dark mode (Samsung Internet) leaves it light.
   document.querySelector('meta[name=color-scheme]')?.setAttribute('content', theme === 'light' ? 'only light' : 'dark');
+  // The phone apps: the clock and battery icons dark on the light page, light on the dark one.
+  if (NATIVE) native('SystemBars', 'setStyle', { style: theme === 'light' ? 'LIGHT' : 'DARK' }).catch(() => {});
 }
 applyTheme();
 // Following the phone: change when the phone does.

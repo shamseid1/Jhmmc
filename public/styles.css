@@ -61,6 +61,8 @@
 body {
   margin: 0;
   min-height: 100vh;
+  /* The phone apps run edge to edge: the page starts below the status bar (0 in a browser). */
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--bg);
   color: var(--text);
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -71,7 +73,7 @@ img { max-width: 100%; display: block; }
 
 .topbar {
   position: sticky;
-  top: 10px;
+  top: calc(10px + env(safe-area-inset-top, 0px));
   z-index: 10;
   display: flex;
   align-items: center;
@@ -268,7 +270,7 @@ button.more[hidden] { display: none; }
      at the top on the page's own colour. (No transforms or blur here: they
      would trap the fixed tab bar.) */
   .topbar {
-    position: sticky; top: 0; z-index: 15; justify-content: center; margin: 0; padding: 10px 0 8px;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 15; justify-content: center; margin: 0; padding: 10px 0 8px;
     background: var(--bg); border: 0; border-radius: 0; box-shadow: none;
   }
   .brand .mark { width: 36px; height: 36px; }
@@ -1145,3 +1147,7 @@ body { overscroll-behavior-y: contain; }
 .setup-done .icon { width: 20px; height: 20px; }
 .setup-blocked { color: var(--danger); max-width: 48%; text-align: right; }
 .setup-close { width: 100%; margin-top: 12px; }
+
+/* Behind the status bar (the phone apps): the page's own colour, so scrolling content
+   doesn't show through under the clock. Nothing in a browser, where the inset is 0. */
+body::before { content: ""; position: fixed; z-index: 50; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); pointer-events: none; }
