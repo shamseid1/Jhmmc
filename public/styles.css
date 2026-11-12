@@ -1151,3 +1151,46 @@ body { overscroll-behavior-y: contain; }
 /* Behind the status bar (the phone apps): the page's own colour, so scrolling content
    doesn't show through under the clock. Nothing in a browser, where the inset is 0. */
 body::before { content: ""; position: fixed; z-index: 50; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); pointer-events: none; }
+
+/* Bigger text (a phone set to a larger font size, which the apps follow): short labels
+   stay on one line and rows make room instead (fewer columns, or a second row). */
+button, .btn { white-space: nowrap; }
+button.link, .wq { white-space: normal; }
+#nav a { min-width: 0; }
+#nav a > span:last-child { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fates { grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.2em), 1fr)); }
+.weigh-quick { grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.4em), 1fr)); }
+.fo-photo { width: auto; min-width: 64px; height: auto; min-height: 64px; padding: 6px 8px; }
+.fo-photo span { white-space: nowrap; }
+.fo-photo:has(img) { width: 64px; height: 64px; padding: 0; }
+.brand span { white-space: normal; text-align: center; }
+.trophy .cap { overflow: hidden; }
+.trophy .cap, .trophy .cap b { white-space: nowrap; text-overflow: ellipsis; }
+.trophy-stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5em), 1fr)); }
+.trophy-stats span { display: block; overflow-wrap: anywhere; }
+.desk-short { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr)); }
+.bar-value.in { color: var(--accent-ink); }
+.bar-value.in.neg { color: #fff; }
+@media (max-width: 640px) {
+  /* The tab bar: each tab as wide as its word needs, the spare room shared out, so the
+     long ones (Leaderboard, Participants) still fit with bigger text. */
+  #nav { display: flex; gap: 2px; }
+  #nav a { flex: 1 1 auto; padding-left: 3px; padding-right: 3px; }
+  #nav a.cta { flex-grow: 0; padding-left: 10px; padding-right: 10px; }
+}
+/* More room-making for bigger text. */
+.row-buttons { flex-wrap: wrap; }
+.scale-buttons .btn, .scale-button, .scale-video-button, .roll-video-button, .roll-photo-button { white-space: normal; }
+.trophy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+[role=tablist] a, [role=tab] { white-space: nowrap; }
+@media (max-width: 640px) {
+  #nav { flex-wrap: nowrap; }
+  #nav a { min-width: 0; }
+}
+/* Kept / Released / Lost: words in the middle; with big text they take two rows, the
+   last one full width (not a lone half button). */
+.fates { display: flex; flex-wrap: wrap; }
+.fate { flex: 1 1 6.2em; justify-content: center; text-align: center; }
+@media (max-width: 640px) {
+  #nav a { font-size: var(--nav-fs, 11px); }
+}

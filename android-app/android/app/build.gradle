@@ -7,9 +7,9 @@ android {
         applicationId "com.africasportfishing.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Play: each upload needs a higher versionCode (1 and 2 were the earlier web-app builds).
-        versionCode 3
-        versionName "1.1.0"
+        // Play: each upload needs a higher versionCode (1 and 2 were the earlier web-app builds, 3 was 1.1.0).
+        versionCode 4
+        versionName "1.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

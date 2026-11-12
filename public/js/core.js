@@ -51,6 +51,16 @@ if (NATIVE && navigator.geolocation) {
     if (callbackId != null) Promise.resolve(callbackId).then((c) => native('Geolocation', 'clearWatch', { id: c })).catch(() => {});
   });
 }
+// A buzz: in the phone apps through the phone's own haptics (a "success" tap, or a light
+// one); in a browser, the vibration it allows (Android).
+function buzz(kind = 'success') {
+  if (NATIVE) {
+    const call = kind === 'success' ? native('Haptics', 'notification', { type: 'SUCCESS' }) : native('Haptics', 'impact', { style: 'LIGHT' });
+    call.catch(() => { try { navigator.vibrate?.(kind === 'success' ? [18, 40, 28] : 10); } catch { /* none */ } });
+    return;
+  }
+  try { navigator.vibrate?.(kind === 'success' ? [18, 40, 28] : 10); } catch { /* not on every phone */ }
+}
 // Location permission: 'granted', 'denied' or 'prompt'.
 async function locationPermission() {
   if (NATIVE) {
@@ -122,7 +132,7 @@ async function api(path, opts = {}) {
 
 // A fish logged: a short buzz and a tick that pops up, then fades.
 function celebrate(title, sub = '') {
-  try { navigator.vibrate?.([18, 40, 28]); } catch { /* not on every phone */ }
+  buzz('success');
   document.querySelector('.celebrate')?.remove();
   const el = document.createElement('div');
   el.className = 'celebrate';

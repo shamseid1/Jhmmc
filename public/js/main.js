@@ -55,6 +55,13 @@ const ICONS = {
 // boat below zero (a small marlin kept) points left. The value sits at the
 // bar's end; hovering shows the fish count too.
 const TOP_BARS = 10;
+// A bar's number: just past its end, or inside the end of the longest bars, where
+// there's no room after them (big text on a narrow phone).
+const barValue = (points, neg, from, to) => {
+  const inside = neg ? from < 30 : to > 70;
+  const where = neg === inside ? `left:${inside ? from : to}%` : `right:${100 - (neg ? from : to)}%`;
+  return `<span class="bar-value${neg ? ' neg' : ''}${inside ? ' in' : ''}" style="${where}">${points}</span>`;
+};
 function pointsBars(boats) {
   const lo = Math.min(0, ...boats.map((b) => b.points));
   const hi = Math.max(0, ...boats.map((b) => b.points));
@@ -71,7 +78,7 @@ function pointsBars(boats) {
       <span class="bar-name">${b.teamName}</span>
       <span class="bar-track" style="--zero:${zero}%">
         <span class="bar${neg ? ' neg' : ''}" style="left:${from}%;width:${Math.max(to - from, 0.5)}%"></span>
-        <span class="bar-value${neg ? ' neg' : ''}" style="${neg ? `right:${100 - from}%` : `left:${to}%`}">${b.points}</span>
+        ${raw(barValue(b.points, neg, from, to))}
       </span></a>`;
   }).join('');
 }
@@ -268,7 +275,23 @@ function renderNav(active = state.navActive) {
       <span class="nav-icon">${icon === 'fish' ? '<span class="fish-mark" aria-hidden="true"></span>' : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
+  fitNav();
 }
+
+// The phone tab bar: if a label doesn't fit (a narrow phone, or the phone's text made
+// bigger), the labels get a little smaller until every one fits whole.
+function fitNav() {
+  const nav = document.getElementById('nav');
+  if (!nav) return;
+  nav.style.removeProperty('--nav-fs');
+  if (innerWidth > 640) return;
+  const labels = [...nav.querySelectorAll('a > span:last-child')];
+  const fits = () => labels.every((s) => s.scrollWidth <= s.clientWidth + 0.5);
+  for (let size = 10.5; !fits() && size >= 7; size -= 0.5) nav.style.setProperty('--nav-fs', `${size}px`);
+}
+window.addEventListener('resize', fitNav);
+// Measured again once the app's font has loaded (it's wider than the stand-in).
+document.fonts?.ready.then(fitNav);
 
 async function route() {
   const [path] = location.hash.replace(/^#\/?/, '').split('?');
@@ -509,7 +532,7 @@ showOffline();
     const el = spin; spin = null;
     if (el.classList.contains('ready')) {
       el.classList.add('spinning');
-      try { navigator.vibrate?.(10); } catch { /* not on every phone */ }
+      buzz('light');
       try { await route(); } finally { el.remove(); }
     } else el.remove();
     startY = null;
