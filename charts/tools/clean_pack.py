@@ -1,6 +1,7 @@
 """The chart's clean tiles: the same contour tiles without their dark see-through shading
-(alpha about 100 to 114, made for the satellite), for the light ocean chart. Lines and depths
-stay, a little bolder; tiles with nothing left are left out (the server sends its empty tile).
+(alpha about 100 to 114), lines and depths kept a little bolder and made light (black to
+near-white, the blue depths to pale blue) to read on the satellite's dark sea. Tiles with
+nothing left are left out (the server sends its empty tile).
 
 Run from the repository root:  python3 charts/tools/clean_pack.py
 Needs Pillow. Writes charts/coast-clean.tiles and charts/coast-clean.index.json.
@@ -18,7 +19,8 @@ for k, (o, l) in idx.items():
     im = Image.open(io.BytesIO(data[o:o + l])).convert('RGBA')
     r, g, b, a = im.split()
     a = a.point(lambda v: 0 if v <= 114 else min(255, int((v - 108) * 3.2)))
-    im = Image.merge('RGBA', (r, g, b, a))
+    light = lambda v: int(v + (255 - v) * 0.78)
+    im = Image.merge('RGBA', (r.point(light), g.point(light), b.point(light), a))
     if a.getbbox() is None:
         continue
     buf = io.BytesIO()

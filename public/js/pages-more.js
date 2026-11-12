@@ -224,7 +224,7 @@ PAGE_GROUPS.push((view) => ({
     if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
-        contours = depthLayer(L, charts, { clean: true, light: true });
+        contours = depthLayer(L, charts, { clean: true });
         syncContours();
       }).catch(() => {});
     }

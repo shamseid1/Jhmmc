@@ -1378,7 +1378,6 @@ body.chart-mode main > div { animation: none; }
 .panel-switches label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .chart-top { padding-right: 70px; }
 .chart-bottom[hidden] { display: none; }
-.depth-tiles.light-lines { filter: invert(1) hue-rotate(180deg); }
 /* The layers sheet: three equal tiles a row, each an icon, its name and a thin strip of the
    colours it uses; the one showing is white. */
 .sq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

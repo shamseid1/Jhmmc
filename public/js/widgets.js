@@ -50,12 +50,12 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // The small map on a catch's page, on satellite imagery.
 // The depth charts as one map layer: map tiles (sharp at every zoom, only the
 // part in view is loaded) or, for an older chart, one picture.
-// With { clean }: the charts' dark see-through shading over the water is taken out, leaving
-// the contour lines and depths; with { light } too, drawn light for the dark satellite sea.
-const depthLayer = (L, charts, { clean = false, light = false } = {}) => L.layerGroup(charts.map((c) => {
+// With { clean }: the charts' dark see-through shading over the water taken out, the contour
+// lines and depths drawn light for the satellite's dark sea (made once, charts/tools/clean_pack.py).
+const depthLayer = (L, charts, { clean = false } = {}) => L.layerGroup(charts.map((c) => {
   const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
   // keepBuffer: the tiles just outside the screen are kept, so a pan doesn't show gaps.
-  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: `depth-tiles${light ? ' light-lines' : ''}`, keepBuffer: 4, updateWhenZooming: false };
+  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles', keepBuffer: 4, updateWhenZooming: false };
   if (!c.tiles) return L.imageOverlay(c.url, bounds, { opacity: 0.95 });
   // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
   // The clean tiles made once on the server; drawn here only for a chart without them.
