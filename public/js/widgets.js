@@ -360,7 +360,11 @@ function flowLayer(map, getField, getLand = () => null, bounds = null) {
   const PX_PER_KNOT_SECOND = 22;
   const MIN_PX_SECOND = 5;
   let last = 0;
+  // One animation loop at a time, and none while the map is being moved or pinched (the
+  // lines are in screen pixels, so they would be left behind or dragged across the map).
+  let running = false;
   const step = (now) => {
+    if (!running) return;
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
     last = now;
     const r = box.getBoundingClientRect();
@@ -395,15 +399,27 @@ function flowLayer(map, getField, getLand = () => null, bounds = null) {
     ctx.stroke();
     raf = requestAnimationFrame(step);
   };
-  size(); seed();
-  map.on('movestart zoomstart', () => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, cv.width, cv.height); });
-  map.on('moveend zoomend', () => { seed(); last = 0; if (!reduce) raf = requestAnimationFrame(step); });
-  map.on('resize', () => { size(); seed(); });
-  if (!reduce) raf = requestAnimationFrame(step);
+  const halt = () => { running = false; cancelAnimationFrame(raf); cv.style.visibility = 'hidden'; ctx.clearRect(0, 0, cv.width, cv.height); };
+  const start = () => {
+    halt();
+    seed(); last = 0;
+    cv.style.visibility = '';
+    if (reduce) return;
+    running = true;
+    raf = requestAnimationFrame(step);
+  };
+  // Restart a moment after the last move ends (a pinch fires several).
+  let timer = 0;
+  const later = () => { clearTimeout(timer); timer = setTimeout(start, 120); };
+  size();
+  map.on('movestart zoomstart move zoom', () => { clearTimeout(timer); halt(); });
+  map.on('moveend zoomend', later);
+  map.on('resize', () => { size(); later(); });
+  start();
   // Stop when the page is left.
-  const stop = () => { cancelAnimationFrame(raf); window.removeEventListener('hashchange', stop); };
+  const stop = () => { clearTimeout(timer); halt(); window.removeEventListener('hashchange', stop); };
   window.addEventListener('hashchange', stop);
-  return { reseed: seed };
+  return { reseed: () => (running ? start() : seed()) };
 }
 
 // ---- keeping it decent: community rules, reporting, blocking ----------------
