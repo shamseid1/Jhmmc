@@ -333,13 +333,13 @@ PAGE_GROUPS.push((view) => ({
     });
     window.addEventListener('hashchange', stopFollowing, { once: true });
     // From Marshall, and from you when the app knows where you are.
-    // From you, once the app knows where you are (the blue button).
-    const navRows = (to) => (myPos ? [['From you', navTxt(myPos, to)]] : []);
+    // The spot as a plotter shows it, and from you once the app knows where you are (the blue button).
+    const navRows = (to) => [['Position', fmtCoords(to[0], to[1])], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
     const earlyTap = (e) => {
       const rows = navRows([e.latlng.lat, e.latlng.lng]);
-      if (rows.length) L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
+      L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
         .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
     };
     map.on('click', earlyTap);
@@ -481,7 +481,7 @@ PAGE_GROUPS.push((view) => ({
         .bindPopup(() => {
           const div = document.createElement('div');
           div.innerHTML = `<dl><dt>${esc(w.name)}</dt><dd></dd>${w.addedBy ? `<dt>Saved by</dt><dd>${esc(w.addedBy)}</dd>` : ''}
-            <dt>Position</dt><dd>${esc(fmtCoords(w.lat, w.lng))}</dd>${navRows([w.lat, w.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+            ${navRows([w.lat, w.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
             ${w.canDelete ? '<button type="button" class="pop-link pop-del">Remove this spot</button>' : ''}`;
           div.querySelector('.pop-del')?.addEventListener('click', async () => {
             if (!confirm(`Remove "${w.name}"?`)) return;
