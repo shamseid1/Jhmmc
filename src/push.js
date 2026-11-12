@@ -5,6 +5,16 @@ const webpush = require('web-push');
 // The Android app gets its notifications from Firebase Cloud Messaging (HTTP v1 API).
 // FIREBASE_SERVICE_ACCOUNT holds the Firebase project's service account key (the JSON
 // file, as is or base64). Without it, phones on the Android app get no notifications.
+// A private key however it was pasted: line breaks lost or turned into spaces or "\n",
+// quotes around it. Rebuilt as a proper PEM (header, 64-character lines, footer).
+function normalizePem(raw) {
+  const text = String(raw).replace(/\\n/g, '\n');
+  const m = text.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return text;
+  const body = m[2].replace(/[^A-Za-z0-9+/=]/g, '');
+  return `-----BEGIN ${m[1]}-----\n${body.match(/.{1,64}/g).join('\n')}\n-----END ${m[1]}-----\n`;
+}
+
 // The key file as pasted into a dashboard from a phone: real line breaks inside the
 // private key (where the file has \n), curly quotes, or base64. Read all of them.
 function readServiceAccount(raw) {
@@ -21,7 +31,7 @@ function readServiceAccount(raw) {
     out += ch;
   }
   const account = JSON.parse(out);
-  if (typeof account.private_key === 'string') account.private_key = account.private_key.replace(/\\n/g, '\n');
+  if (typeof account.private_key === 'string') account.private_key = normalizePem(account.private_key);
   return account;
 }
 
@@ -37,7 +47,13 @@ function createFcm(env, fetchImpl = globalThis.fetch) {
     }
     const missing = account && ['project_id', 'client_email', 'private_key'].filter((k) => !account[k]);
     if (missing?.length) console.warn(`FIREBASE_SERVICE_ACCOUNT is missing ${missing.join(', ')}: paste the whole key file. Android app notifications are off.`);
-    else if (account) console.log(`Android app notifications on (Firebase project ${account.project_id}).`);
+    else if (account) {
+      try { crypto.createPrivateKey(account.private_key); } catch (err) {
+        console.warn(`FIREBASE_SERVICE_ACCOUNT's private key could not be read (${err.message}): Android app notifications are off.`);
+        account = null;
+      }
+      if (account) console.log(`Android app notifications on (Firebase project ${account.project_id}).`);
+    }
   }
   if (!account?.client_email || !account?.private_key || !account?.project_id) return null;
   let token = null;
@@ -90,8 +106,8 @@ function createApns(env, sendImpl) {
   let key = env.APNS_KEY;
   if (!key || !env.APNS_KEY_ID || !env.APNS_TEAM_ID) return null;
   if (!key.includes('BEGIN')) key = Buffer.from(key, 'base64').toString('utf8');
-  // Pasted with its line breaks lost: put them back around the key.
-  key = key.replace(/-----BEGIN PRIVATE KEY-----\s*/, '-----BEGIN PRIVATE KEY-----\n').replace(/\s*-----END PRIVATE KEY-----/, '\n-----END PRIVATE KEY-----');
+  // Pasted with its line breaks lost: rebuilt.
+  key = normalizePem(key);
   let privateKey;
   try { privateKey = crypto.createPrivateKey(key); } catch {
     console.warn('APNS_KEY could not be read: iPhone app notifications are off.');
@@ -179,4 +195,4 @@ function createPusher(db, { contact, env = process.env, fetchImpl, apnsSend } = 
   };
 }
 
-module.exports = { createPusher, readServiceAccount };
+module.exports = { createPusher, readServiceAccount, normalizePem };
