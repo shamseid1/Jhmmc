@@ -251,3 +251,36 @@ test('the iPhone app gets its notifications from Apple', async () => {
   // A deleted app's token is gone for good.
   assert.equal(await pusher.send({ endpoint: 'apns:dead' }, { title: 'x' }), false);
 });
+
+test('"Send a test" notifies the person\'s own phones and says what failed', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-pushtest-'));
+  const pusher = {
+    publicKey: 'k',
+    async send(sub) {
+      if (sub.endpoint.startsWith('fcm:bad')) throw new Error('Firebase 403: SENDER_ID_MISMATCH');
+      return true;
+    },
+  };
+  const app = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com', pusher });
+  const srv = app.listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const at = `http://127.0.0.1:${srv.address().port}/api`;
+  let cookie = '';
+  const call = async (method, url, body) => {
+    const res = await fetch(at + url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body && JSON.stringify(body) });
+    const set = res.headers.get('set-cookie');
+    if (set) cookie = set.split(';')[0];
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+  try {
+    assert.equal((await call('POST', '/auth/register', { name: 'Test Angler', email: 'angler@example.com', password: 'longenough1' })).status < 300, true);
+    assert.equal((await call('POST', '/push/test')).status, 404);
+    await call('POST', '/push/subscribe', { fcm: 'good-token-1234567890abcdef' });
+    await call('POST', '/push/subscribe', { fcm: 'bad-token-1234567890abcdefgh' });
+    const { body } = await call('POST', '/push/test');
+    assert.deepEqual(body.results.map((r) => r.ok).sort(), [false, true]);
+    assert.match(body.results.find((r) => !r.ok).error, /SENDER_ID_MISMATCH/);
+  } finally {
+    srv.close();
+  }
+});

@@ -209,7 +209,7 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
   // Re-send a live subscription, in case the server forgot it.
   if (sub) api('/push/subscribe', { method: 'POST', body: sub.toJSON() }).catch(() => {});
   el.innerHTML = sub
-    ? `<p class="small muted">${icon('check')} Notifications on for this phone · <button class="link" data-act="push-off">Turn off</button></p>`
+    ? `<p class="small muted">${icon('check')} Notifications on for this phone · <button class="link" data-act="push-test">Send a test</button> · <button class="link" data-act="push-off">Turn off</button></p>`
     : `<div class="notify-row"><span><b>Get notifications</b> on this phone for ${what}.</span><button class="primary" data-act="push-on">Turn on notifications</button></div>`;
   // Once on, it's a quiet line rather than a card.
   el.classList.toggle('card', !sub);
@@ -222,6 +222,14 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
     try {
       if (btn.dataset.act === 'push-on') {
         toast(await enablePush() ? 'Notifications are on' : 'Notifications were not allowed.');
+      } else if (btn.dataset.act === 'push-test') {
+        // Re-register first, so the test goes to this phone as it is now.
+        await api('/push/subscribe', { method: 'POST', body: sub.toJSON() });
+        const { results } = await api('/push/test', { method: 'POST' });
+        const bad = results.filter((r) => !r.ok);
+        toast(bad.length ? `Not sent (${bad[0].kind}): ${bad[0].error}` : 'Test sent. It should arrive in a few seconds.');
+        btn.disabled = false;
+        return;
       } else {
         await api('/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } });
         await sub.unsubscribe();

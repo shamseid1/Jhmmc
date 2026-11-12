@@ -41,6 +41,25 @@ module.exports = (ctx) => {
     res.status(201).json({ ok: true });
   });
 
+  // "Send a test": a notification to this person's own phones, now, with what went wrong if one fails.
+  api.post('/push/test', async (req, res) => {
+    const phones = db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?').all(req.user.id);
+    if (!phones.length) return res.status(404).json({ error: 'No phone is set up for notifications on this account. Turn them on first.' });
+    const payload = { title: 'Africa Sportfishing', body: 'Test notification: notifications work on this phone.', url: '/#/notifications' };
+    const results = await Promise.all(phones.map(async (p) => {
+      const kind = p.endpoint.startsWith('fcm:') ? 'Android app' : p.endpoint.startsWith('apns:') ? 'iPhone app' : 'browser';
+      try {
+        const alive = await pusher.send({ endpoint: p.endpoint, keys: { p256dh: p.p256dh, auth: p.auth } }, payload);
+        if (!alive) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(p.endpoint);
+        return { kind, ok: alive, error: alive ? null : 'This phone is no longer registered: turn notifications on again.' };
+      } catch (err) {
+        console.warn(`Test notification failed (${kind}): ${err.message}`);
+        return { kind, ok: false, error: err.message };
+      }
+    }));
+    res.json({ results });
+  });
+
   api.delete('/push/subscribe', (req, res) => {
     db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(String(req.body?.endpoint ?? ''), req.user.id);
     res.json({ ok: true });
