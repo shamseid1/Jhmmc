@@ -5,12 +5,12 @@
 
 // The maps: satellite imagery (Esri World Imagery) with borders and place
 // names (country, city, town) on top.
-function addSatellite(L, map) {
+function addSatellite(L, map, { fullScreen = false } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
   L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
   L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
-  twoFingers(map);
+  if (!fullScreen) twoFingers(map);
   // Places the club wants on every map.
   for (const p of MAP_PLACES) {
     L.circleMarker([p.lat, p.lng], { radius: 5, weight: 2, color: '#ffffff', fillColor: '#f5a524', fillOpacity: 1 })
@@ -245,6 +245,7 @@ const seaLine = (n, moonLit, depthM) => html`<span>${raw(icon('wave'))} ${[depth
 // and water temperature; null on land. Values between grid points are blended (bilinear).
 function sampler(g, f) {
   return (lat, lng, key) => {
+    if (!f[key]) return null; // a layer this grid doesn't have (the wind, if it couldn't be fetched)
     const x = (lng - g.west) / g.step;
     const y = (lat - g.south) / g.step;
     const i = Math.floor(x); const j = Math.floor(y);
@@ -264,6 +265,16 @@ const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'sout
 // temperature break of half a degree) still show as a change of colour.
 const PALETTE = [[0, [40, 70, 160]], [0.2, [40, 140, 200]], [0.4, [60, 190, 170]], [0.6, [240, 210, 80]], [0.8, [240, 130, 50]], [1, [200, 40, 60]]];
 const stretch = (lo, hi) => PALETTE.map(([t, c]) => [lo + t * (hi - lo), c]);
+// The wind (knots) and waves (metres) on fixed scales, like Windy's.
+const WIND_SCALE = [[0, [70, 90, 180]], [5, [50, 150, 200]], [10, [60, 180, 110]], [15, [230, 210, 70]], [20, [240, 140, 50]], [25, [210, 50, 60]], [35, [150, 40, 150]]];
+const WAVE_SCALE = [[0, [60, 70, 170]], [0.5, [50, 140, 200]], [1, [60, 180, 140]], [1.5, [230, 210, 70]], [2, [240, 140, 50]], [3, [210, 50, 60]], [4, [150, 40, 150]]];
+// Each colour layer's value at a spot, from a frame's sampler.
+const FIELD_VALUE = {
+  sst: (at, lat, lng) => at(lat, lng, 'sst'),
+  speed: (at, lat, lng) => { const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v'); return u == null || v == null ? null : Math.hypot(u, v); },
+  wind: (at, lat, lng) => { const u = at(lat, lng, 'wu'); const v = at(lat, lng, 'wv'); return u == null || v == null ? null : Math.hypot(u, v); },
+  wave: (at, lat, lng) => at(lat, lng, 'wh'),
+};
 const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
 function fieldRange(g, kind) {
   let lo = Infinity; let hi = -Infinity;
@@ -311,9 +322,7 @@ function fieldImage(L, g, f, kind, stops, land) {
     const lat = g.south + ((h - 1 - py) / S) * g.step; // north up
     for (let px = 0; px < w; px++) {
       const lng = g.west + (px / S) * g.step;
-      let v;
-      if (kind === 'sst') v = at(lat, lng, 'sst');
-      else { const u = at(lat, lng, 'u'); const vv = at(lat, lng, 'v'); v = u == null || vv == null ? null : Math.hypot(u, vv); }
+      const v = FIELD_VALUE[kind](at, lat, lng);
       if (v == null) continue;
       const [r, gg, b] = colourAt(stops, v);
       img.data.set([r, gg, b, 175], (py * w + px) * 4);

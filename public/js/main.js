@@ -13,6 +13,8 @@ const pagesFor = (view) => Object.assign({}, ...PAGE_GROUPS.map((group) => group
 
 // Icons from Lucide (lucide.dev, ISC licence), 24px grid, drawn with currentColor.
 const ICONS = {
+  back: '<path d="m15 18-6-6 6-6"/>',
+  map: '<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>',
   wave: '<path d="M2 6c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/><path d="M2 12c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/><path d="M2 18c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/>',
   flag: '<path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
@@ -286,7 +288,7 @@ function renderNav(active = state.navActive) {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
     records: 'leaderboard', points: 'leaderboard', join: 'more', weighmasters: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
-    clubs: 'more', club: 'more', profile: 'more', reports: 'more', community: 'more', sea: 'more', depth: 'more', currents: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
+    clubs: 'more', club: 'more', profile: 'more', reports: 'more', community: 'more', sea: 'more', depth: 'more', currents: 'more', chart: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
     // The officials' Tournament sheets live in More; the Tournaments tab in the Leaderboard.
     tournaments: /[?&]sheets=1/.test(location.hash) ? 'more' : 'leaderboard',
@@ -322,6 +324,9 @@ async function route() {
   let page = Object.hasOwn(pages, name) ? name : 'home';
   if (state.me && (page === 'login' || page === 'register') && !(page === 'login' && state.meta?.demo)) page = 'home';
   renderNav(page);
+  state.pagesSeen = (state.pagesSeen || 0) + 1; // so a page can tell whether "back" stays in the app
+  // The chart fills the screen: no header or tab bar.
+  document.body.classList.toggle('chart-mode', page === 'chart');
   refreshPending();
   // A photo or an explanation left open doesn't follow to the next page.
   for (const d of document.querySelectorAll('dialog[open]')) d.close();

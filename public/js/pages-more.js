@@ -126,25 +126,37 @@ PAGE_GROUPS.push((view) => ({
       <ul class="card sea-days">${s.days.map((d) => raw(html`<li><span class="d"><b>${day(d.date)}</b>${Number(d.date.slice(8))}</span>
         <span class="w">${[d.windKn != null && `${d.windDir || ''} ${d.windKn} kn`, d.waveM != null && `waves ${wavesTxt(d.waveM)}`, d.waterC != null && tempTxt(d.waterC)].filter(Boolean).join(' · ')}</span>
         ${d.rating ? raw(html`<span class="rating ${d.rating}">${d.rating[0].toUpperCase() + d.rating.slice(1)}</span>`) : ''}</li>`))}</ul>
-      <a class="card pad cur-link" href="#/currents">${raw(icon('wave'))}<span><b>Currents map</b><span class="small muted">The water's flow and temperature, now and the next 3 days</span></span><span aria-hidden="true">›</span></a>
+      <a class="card pad cur-link" href="#/chart">${raw(icon('map'))}<span><b>Chart</b><span class="small muted">Currents, water temperature, wind and waves on the map, now and the next 3 days</span></span><span aria-hidden="true">›</span></a>
       <p class="center"><a href="#/depth">Depth check: compare the seabed map with your chart ›</a></p>
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
   },
 
-  // The currents map: the water's flow as moving lines over water temperature (or current
-  // strength), every 3 hours for 3 days; crews see the depth contours and their own fish too.
-  async currents() {
-    view.innerHTML = html`<p class="back"><a href="#/sea">‹ Sea conditions</a></p>
-      <h1>Currents</h1>
-      <div class="cur-bar"><div class="seg" role="tablist">
-        <button type="button" role="tab" aria-selected="true" data-kind="sst">Water temperature</button>
-        <button type="button" role="tab" aria-selected="false" data-kind="speed">Current strength</button></div></div>
-      <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
-      <div class="cur-legend" id="cur-legend"></div>
-      <div id="cur-map" class="cur-map"><div class="card pad muted">Getting the currents…</div></div>
-      <p class="small muted">The lines move the way the surface water flows; longer, faster lines are stronger current. Warm and cool water
-      meeting (a temperature break) and the edges of a current are where bait, and the fish after it, often gather.
-      From the Copernicus ocean model through Open-Meteo, on a grid of about 30 km: the big picture, not every current line on the water.</p>`;
+  // The chart: full screen, like Windy. One layer at a time (currents, water temperature, wind
+  // or waves: colours, with moving lines), the depth contours and your own fish on top, and the
+  // time from now to 3 days ahead. Tap the sea for everything at that spot.
+  currents() { location.replace('#/chart'); },
+  async chart() {
+    const crew = !!(state.me?.teamId || state.me?.isAdmin);
+    const LAYERS = [
+      ['currents', 'Currents'], ['sst', 'Water'], ['wind', 'Wind'], ['wave', 'Waves'],
+    ];
+    view.innerHTML = html`<div class="chart">
+      <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
+      <div class="chart-top">
+        <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
+        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'currents'}">${label}</button>`))}</div>
+      </div>
+      <div class="chart-bottom">
+        <div class="chart-toggles">
+          ${crew ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label><label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
+        </div>
+        <div class="chart-legend" id="chart-legend"></div>
+        <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
+      </div>
+    </div>`;
+    // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
+    const cameFrom = state.pagesSeen > 1;
+    view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
     let data;
     let L;
     let land = null;
@@ -153,67 +165,98 @@ PAGE_GROUPS.push((view) => ({
     try {
       [data, L] = await Promise.all([api('/currents'), loadLeaflet()]);
     } catch (err) {
-      view.querySelector('#cur-map').innerHTML = html`<div class="card pad">${err.message || 'The currents map is not available right now.'}</div>`;
+      view.querySelector('#chart-map').innerHTML = html`<div class="chart-wait">${err.message || 'The chart is not available right now.'}</div>`;
       return;
     }
-    const box = view.querySelector('#cur-map');
+    const box = view.querySelector('#chart-map');
     box.innerHTML = '';
-    const map = L.map(box, { zoomControl: true, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
-    addSatellite(L, map);
-    const crew = !!(state.me?.teamId || state.me?.isAdmin);
+    const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
+    addSatellite(L, map, { fullScreen: true });
+    const overlays = {};
     if (crew) {
-      api('/charts').then(({ charts }) => { if (charts.length) depthLayer(L, charts).addTo(map); }).catch(() => {});
-      api('/me/spots').then(({ spots }) => {
-        for (const s of spots.filter((x) => x.lat != null)) {
-          L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 }).bindPopup(html`${s.species}, ${s.date}`).addTo(map);
-        }
+      api('/charts').then(({ charts }) => {
+        if (!charts.length) return;
+        overlays.contours = depthLayer(L, charts);
+        if (view.querySelector('[data-show=contours]')?.checked) overlays.contours.addTo(map);
       }).catch(() => {});
+      api('/me/spots').then(({ spots }) => {
+        overlays.fish = L.layerGroup(spots.filter((x) => x.lat != null).map((s) => L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 })
+          .bindPopup(html`${s.species}, ${s.date}`)));
+        if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
+      }).catch(() => {});
+      view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
+        const o = overlays[c.dataset.show];
+        if (o) { if (c.checked) o.addTo(map); else o.remove(); }
+      }));
     }
+    // The waves' direction as a vector (where they go), worked out once per frame.
+    for (const f of data.frames) {
+      if (!f.wh || f.xu) continue;
+      f.xu = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.sin(((d + 180) * Math.PI) / 180)));
+      f.xv = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
+    }
+    const hasWind = data.frames.some((f) => f.wu);
+    if (!hasWind) view.querySelector('[data-layer=wind]').disabled = true;
     const slider = view.querySelector('#cur-t');
     const when = view.querySelector('#cur-when');
     slider.max = String(data.frames.length - 1);
-    // Start at the frame nearest now.
     const nowIso = new Date().toISOString().slice(0, 13);
-    const start = Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso));
-    slider.value = String(start);
-    let kind = 'sst';
+    slider.value = String(Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso)));
+    // Each layer: its colours, the lines' field (and how fast they look), and its scale's ends.
+    const sstRange = fieldRange(data, 'sst');
+    const LAYER = {
+      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0].toFixed(1)} kn`] },
+      sst: { colour: 'sst', stops: stretch(...sstRange), lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
+      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
+      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.6], ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
+    };
+    let layer = 'currents';
     let image = null;
     let at = null;
-    const ranges = { sst: fieldRange(data, 'sst'), speed: fieldRange(data, 'speed') };
-    // Water: stretched over the day's temperatures, so breaks show. Current: a fixed knots scale.
-    const stopsFor = (k) => (k === 'sst' ? stretch(...ranges.sst) : SPEED_SCALE);
-    const legend = () => {
-      const stops = stopsFor(kind);
-      view.querySelector('#cur-legend').innerHTML = html`<span>${kind === 'sst' ? tempTxt(stops[0][0]) : `${stops[0][0]} kn`}</span>
-        <i style="background:linear-gradient(90deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})"></i>
-        <span>${kind === 'sst' ? tempTxt(stops.at(-1)[0]) : `${stops.at(-1)[0].toFixed(1)} kn`}</span>`;
-    };
+    let lines = null;
     const show = () => {
       const f = data.frames[Number(slider.value)];
+      const L1 = LAYER[layer];
       at = sampler(data, f);
+      const [ku, kv, k] = L1.lines;
+      lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
       image?.remove();
-      image = fieldImage(L, data, f, kind, stopsFor(kind), land).addTo(map);
+      image = fieldImage(L, data, f, L1.colour, L1.stops, land).addTo(map);
       const t = new Date(`${f.time}:00Z`);
       when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-      legend();
+      const [lo, hi] = L1.ends(L1.stops);
+      view.querySelector('#chart-legend').innerHTML = html`<span>${lo}</span><i style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})"></i><span>${hi}</span>`;
     };
-    const flow = flowLayer(map, () => at, () => land, [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]]);
+    const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
+    const flow = flowLayer(map, () => lines, () => land, bounds);
     redraw = () => { show(); flow.reseed(); };
     slider.addEventListener('input', show);
-    view.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => {
-      kind = b.dataset.kind;
-      view.querySelectorAll('[data-kind]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
+      layer = b.dataset.layer;
+      view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
       show();
+      flow.reseed();
     }));
-    // Tap the sea: that spot's current and water.
+    // Tap the sea: everything at that spot.
     map.on('click', (e) => {
       if (!at) return;
-      const u = at(e.latlng.lat, e.latlng.lng, 'u');
-      const v = at(e.latlng.lat, e.latlng.lng, 'v');
-      const t = at(e.latlng.lat, e.latlng.lng, 'sst');
-      if (u == null) return;
-      const deg = (Math.atan2(u, v) * 180) / Math.PI;
-      L.popup().setLatLng(e.latlng).setContent(html`<b>${Math.hypot(u, v).toFixed(1)} kn</b> to the ${compassName(deg)}${t != null ? ` · water ${tempTxt(t)}` : ''}`).openOn(map);
+      const { lat, lng } = e.latlng;
+      const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
+      const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
+      const t = at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
+      const f = data.frames[Number(slider.value)];
+      if (u == null && wu == null) return;
+      // The waves' direction: the nearest grid point's (directions don't blend).
+      const i = Math.round((lng - data.west) / data.step); const j = Math.round((lat - data.south) / data.step);
+      const wd = f.wd?.[j * data.nx + i];
+      const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
+      const rows = [
+        u != null && `<b>Current</b> ${Math.hypot(u, v).toFixed(1)} kn to the ${compassName(deg(u, v))}`,
+        t != null && `<b>Water</b> ${tempTxt(t)}`,
+        wu != null && `<b>Wind</b> ${Math.round(Math.hypot(wu, wv))} kn from the ${compassName(deg(wu, wv) + 180)}`,
+        wh != null && `<b>Waves</b> ${wavesTxt(wh)}${wd != null ? ` from the ${compassName(wd)}` : ''}`,
+      ].filter(Boolean);
+      L.popup().setLatLng(e.latlng).setContent(rows.join('<br>')).openOn(map);
     });
     show();
   },
@@ -335,7 +378,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <h2>Fishing</h2><div class="card menu">
         ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
-        ${item('#/currents', 'wave', 'Currents map', "The water's flow and temperature, like a weather map")}
+        ${item('#/chart', 'map', 'Chart', 'Currents, water temperature, wind and waves, full screen')}
         ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
