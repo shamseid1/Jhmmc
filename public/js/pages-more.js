@@ -171,13 +171,22 @@ PAGE_GROUPS.push((view) => ({
     let redraw = null; // set once the map is up
     let prefs = {};
     fetch('/land.json').then((r) => r.json()).then((x) => { land = x; redraw?.(); }).catch(() => {});
+    const box = view.querySelector('#chart-map');
     try {
-      [data, L, prefs] = await Promise.all([api('/currents'), loadLeaflet(), api('/chart/fishing').catch(() => ({}))]);
+      [L, prefs] = await Promise.all([loadLeaflet(), api('/chart/fishing').catch(() => ({}))]);
     } catch (err) {
-      view.querySelector('#chart-map').innerHTML = html`<div class="chart-wait">${err.message || 'The chart is not available right now.'}</div>`;
+      box.innerHTML = html`<div class="chart-wait">${err.message || 'The map couldn\'t load just now.'}</div>`;
       return;
     }
-    const box = view.querySelector('#chart-map');
+    // The chart's data: if the server can't be reached (no signal, or it's restarting after an
+    // update), it keeps trying quietly every 20 seconds while the page is open.
+    for (;;) {
+      try { data = await api('/currents'); break; } catch (err) {
+        box.innerHTML = html`<div class="chart-wait"><p><b>Can't get the chart just now.</b><br>${err.message}<br>Trying again by itself…</p></div>`;
+        await wait(20000);
+        if (!view.isConnected) return;
+      }
+    }
     // Just after an update the server is still fetching the forecast (a few minutes): say
     // so, and open the chart by itself as soon as it's ready.
     while (data.preparing) {
