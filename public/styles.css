@@ -1187,10 +1187,13 @@ button.link, .wq { white-space: normal; }
   #nav { flex-wrap: nowrap; }
   #nav a { min-width: 0; }
 }
-/* Kept / Released / Lost: words in the middle; with big text they take two rows, the
-   last one full width (not a lone half button). */
-.fates { display: flex; flex-wrap: wrap; }
-.fate { flex: 1 1 5.2em; justify-content: center; text-align: center; }
+/* Kept / Released / Lost: words in the middle, on one row. When they don't fit (big text,
+   small phone): Kept full width on top, Released and Lost side by side below. */
+.fates { display: flex; flex-wrap: wrap; container-type: inline-size; font-size: 17px; }
+.fate { flex: 1 1 0; min-width: 0; justify-content: center; text-align: center; }
+@container (max-width: 16.5em) {
+  .fates > .fate.kept { flex-basis: 100%; }
+}
 @media (max-width: 640px) {
   #nav a { font-size: var(--nav-fs, 11px); }
 }
