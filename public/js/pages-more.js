@@ -140,7 +140,13 @@ PAGE_GROUPS.push((view) => ({
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     // Opened from the old Catch map (or "See them on the map"): the catches on, the map on them.
     const hq = new URLSearchParams(location.hash.split('?')[1] || '');
-    const cf = { season: hq.get('season') || '', species: hq.get('species') || '', month: hq.get('month') || '' };
+    // How you left the chart, on this phone: the switches, the filters and the layer.
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('chart-prefs') || '{}') || {}; } catch { saved = {}; }
+    const regionalOn = hq.get('view') === 'regional' || !!saved.regional;
+    const fromLink = hq.has('season') || hq.has('species') || hq.has('month');
+    const cf = fromLink ? { season: hq.get('season') || '', species: hq.get('species') || '', month: hq.get('month') || '' }
+      : { season: '', species: '', month: '', ...(regionalOn ? saved.cf : {}) };
     // JHMMC seasons: from the secretary's season start (1 September) to the day before the next;
     // a season is named by the year it starts (2026 is 2026–27).
     const startMd = (state.meta?.season?.start || '2026-09-01').slice(5);
@@ -181,13 +187,13 @@ PAGE_GROUPS.push((view) => ({
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         ${state.me ? raw(html`<div class="panel-switches">
-          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label></div>
+          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" ${saved.contours === false ? '' : 'checked'}></label></div>
         <div class="panel-head"><b>Catches</b></div>
         <div class="panel-switches catches">
-          <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" checked></label>
-          <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${hq.get('view') === 'regional' ? 'checked' : ''}></label>
+          <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
+          <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
-        <div class="catch-filters" id="catch-filters" ${hq.get('view') === 'regional' ? '' : 'hidden'}></div>`) : ''}
+        <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
@@ -202,6 +208,14 @@ PAGE_GROUPS.push((view) => ({
     view.querySelectorAll('[data-open-layers]').forEach((b) => b.addEventListener('click', () => openLayers(panel.hidden)));
     view.querySelector('[data-close-layers]').addEventListener('click', () => openLayers(false));
     const titleFor = (k) => LAYERS.find(([x]) => x === k)?.[1];
+    const remember = () => {
+      const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
+      try {
+        localStorage.setItem('chart-prefs', JSON.stringify({ contours: on('contours'), fish: on('fish'), regional: on('regional'), cf,
+          layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
+      } catch { /* not kept on this phone */ }
+    };
+    panel.addEventListener('change', () => setTimeout(remember));
     // The name at the top: the map, and what's on it.
     let layer = 'none';
     // "Fishing chart", with the layer showing under it in small (so it fits a small phone).
@@ -592,6 +606,7 @@ PAGE_GROUPS.push((view) => ({
     });
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
+      setTimeout(remember);
       view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       setTitle();
       show();
@@ -628,6 +643,9 @@ PAGE_GROUPS.push((view) => ({
       L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
         .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
     });
+    // The layer you had on last time (if it's here now).
+    const again = saved.layer && view.querySelector(`[data-layer="${saved.layer}"]`);
+    if (again && !again.disabled && saved.layer !== 'none') again.click();
     show();
   },
 
