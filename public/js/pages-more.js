@@ -195,7 +195,7 @@ PAGE_GROUPS.push((view) => ({
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
-          <label><span>Saved spots<small>${state.me?.teamId ? 'Your crew\'s. ' : ''}Press and hold the map to save one.</small></span><input type="checkbox" class="switch" data-show="spots" ${saved.spots === false ? '' : 'checked'}></label>
+          <label><span>Saved spots<small>${state.me?.teamId ? 'Your crew\'s. ' : ''}Tap the map, then Mark, to save one.</small></span><input type="checkbox" class="switch" data-show="spots" ${saved.spots === false ? '' : 'checked'}></label>
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
         <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
@@ -333,15 +333,29 @@ PAGE_GROUPS.push((view) => ({
     });
     window.addEventListener('hashchange', stopFollowing, { once: true });
     // From Marshall, and from you when the app knows where you are.
-    // The spot as a plotter shows it, and from you once the app knows where you are (the blue button).
-    const navRows = (to) => [['Position', fmtCoords(to[0], to[1])], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
+    // From you, once the app knows where you are (the blue button).
+    const navRows = (to) => (myPos ? [['From you', navTxt(myPos, to)]] : []);
+    // A tap, as on a plotter: a ring on the spot, and a box with its position, what's known about
+    // it, and Mark (save it as a spot).
+    const ringIcon = L.divIcon({ className: 'tap-ring', iconSize: [44, 44], iconAnchor: [22, 22] });
+    let ring = null;
+    let markSpot = null; // set once saving spots is ready (signed in)
+    const tapBox = (latlng, rows) => {
+      const where0 = [latlng.lat, latlng.lng];
+      ring?.remove();
+      ring = L.marker(latlng, { pane: 'pins', icon: ringIcon, interactive: false, keyboard: false }).addTo(map);
+      const div = document.createElement('div');
+      div.innerHTML = `<div class="pop-pos">${esc(fmtCoords(where0[0], where0[1]))}</div>${rows.length ? `<dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>` : ''}
+        ${markSpot ? `<button type="button" class="pop-mark">${icon('pin')} Mark</button>` : ''}`;
+      div.querySelector('.pop-mark')?.addEventListener('click', () => { map.closePopup(); markSpot(where0); });
+      const pop = L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90], offset: [0, -16] }).setLatLng(latlng).setContent(div).openOn(map);
+      pop.once('remove', () => { if (ring && pop === lastPop) { ring.remove(); ring = null; } });
+      lastPop = pop;
+    };
+    let lastPop = null;
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
-    const earlyTap = (e) => {
-      const rows = navRows([e.latlng.lat, e.latlng.lng]);
-      L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
-        .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
-    };
+    const earlyTap = (e) => tapBox(e.latlng, navRows([e.latlng.lat, e.latlng.lng]));
     map.on('click', earlyTap);
     // ---- the catches: your fish (exact spots) and the region's (10 km circles) ----
     // One set of filters for both: year, species and month.
@@ -363,7 +377,7 @@ PAGE_GROUPS.push((view) => ({
           .bindPopup(() => `<dl><dt>${esc(x.species)}</dt><dd>${x.weightKg ? `${x.estimate ? '~' : ''}${esc(fmtWeight(x.weightKg))}` : ''}${x.released ? ' released' : ''}</dd>
             <dt>Date</dt><dd>${esc(fmtDate(x.date))}</dd>${x.boat ? `<dt>Boat</dt><dd>${esc(x.boat)}</dd>` : ''}
             ${x.depthM != null ? `<dt>Depth</dt><dd>${esc(estTxt(depthTxt(x.depthM)))}</dd>` : ''}${x.waterC != null ? `<dt>Water</dt><dd>${esc(estTxt(tempTxt(x.waterC)))}</dd>` : ''}
-            ${navRows([x.lat, x.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+            <dt>Position</dt><dd>${esc(fmtCoords(x.lat, x.lng))}</dd>${navRows([x.lat, x.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
             ${fishLink(x) ? `<a class="pop-link" href="${fishLink(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'} ›</a>` : ''}`, { className: 'chart-pop' });
         pins.set(x, pin);
         return pin;
@@ -481,7 +495,7 @@ PAGE_GROUPS.push((view) => ({
         .bindPopup(() => {
           const div = document.createElement('div');
           div.innerHTML = `<dl><dt>${esc(w.name)}</dt><dd></dd>${w.addedBy ? `<dt>Saved by</dt><dd>${esc(w.addedBy)}</dd>` : ''}
-            ${navRows([w.lat, w.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+            <dt>Position</dt><dd>${esc(fmtCoords(w.lat, w.lng))}</dd>${navRows([w.lat, w.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
             ${w.canDelete ? '<button type="button" class="pop-link pop-del">Remove this spot</button>' : ''}`;
           div.querySelector('.pop-del')?.addEventListener('click', async () => {
             if (!confirm(`Remove "${w.name}"?`)) return;
@@ -495,16 +509,18 @@ PAGE_GROUPS.push((view) => ({
       api('/me/waypoints').then(({ waypoints }) => { spots = waypoints; drawSpots(); }).catch(() => {});
       const form = view.querySelector('#spot-form');
       let where = null;
-      // Press and hold (a right click with a mouse): the spot under your finger.
-      map.on('contextmenu', (e) => {
-        where = [e.latlng.lat, e.latlng.lng];
+      // Mark (in a tap's box): name it (a number to start, as a plotter does) and save.
+      markSpot = (at0) => {
+        where = at0;
         openLayers(false);
         view.querySelector('#chart-list').hidden = true;
         view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])}${myPos ? ` · ${navTxt(myPos, where)} from you` : ''}`;
         form.reset();
+        form.name.value = `Spot ${String(spots.length + 1).padStart(3, '0')}`;
         form.hidden = false;
         form.name.focus();
-      });
+        form.name.select();
+      };
       view.querySelector('[data-close-spot]').addEventListener('click', () => { form.hidden = true; });
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -848,8 +864,7 @@ PAGE_GROUPS.push((view) => ({
         chlAt && chlAt(lat, lng, 'chl') != null && ['Water colour', `${chlWords(chlAt(lat, lng, 'chl'))} · ${chlAt(lat, lng, 'chl').toFixed(2)} mg/m³`],
         ...navRows([lat, lng]),
       ].filter(Boolean);
-      L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
-        .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+      tapBox(e.latlng, rows);
     });
     // The layer you had on last time (if it's here now).
     const again = saved.layer && view.querySelector(`[data-layer="${saved.layer}"]`);
