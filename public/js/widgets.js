@@ -45,7 +45,7 @@ function twoFingers(map) {
 // The chart's base: Esri's ocean map, drawn like a nautical chart with the seabed shaded (from
 // GEBCO and others); the club's depth contours go on top of it.
 const oceanBase = (L) => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom: 18, maxNativeZoom: 10, attribution: 'Chart © Esri, GEBCO, NOAA' });
+  { maxZoom: 18, maxNativeZoom: 10, attribution: 'Chart © Esri, GEBCO, NOAA', keepBuffer: 4, updateWhenZooming: false });
 // Each with its name and position.
 const MAP_PLACES = [
   { name: 'Marshall', lat: 6.15, lng: -10.3833 },
@@ -58,10 +58,13 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // water (made for the satellite) is taken out, leaving the contour lines and depths.
 const depthLayer = (L, charts, { clean = false } = {}) => L.layerGroup(charts.map((c) => {
   const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
-  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' };
+  // keepBuffer: the tiles just outside the screen are kept, so a pan doesn't show gaps.
+  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles', keepBuffer: 4, updateWhenZooming: false };
   if (!c.tiles) return L.imageOverlay(c.url, bounds, { opacity: 0.95 });
   // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
-  return clean ? new (cleanTiles(L))(c.tiles, opts) : L.tileLayer(c.tiles, opts);
+  // The clean tiles made once on the server; drawn here only for a chart without them.
+  if (clean) return c.cleanTiles ? L.tileLayer(c.cleanTiles, opts) : new (cleanTiles(L))(c.tiles, opts);
+  return L.tileLayer(c.tiles, opts);
 }));
 // Tiles redrawn without the shading: it's black at about 43% (alpha 100 to 114); the lines and
 // numbers are stronger, so they stay (made a little bolder).
@@ -594,7 +597,8 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
   let timer = 0;
   const later = () => { clearTimeout(timer); timer = setTimeout(start, 120); };
   size();
-  map.on('movestart zoomstart move zoom', () => { clearTimeout(timer); halt(); });
+  map.on('movestart zoomstart', () => { clearTimeout(timer); halt(); });
+  map.on('move zoom', () => { clearTimeout(timer); if (running) halt(); });
   map.on('moveend zoomend', later);
   map.on('resize', () => { size(); later(); });
   start();

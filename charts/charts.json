@@ -12,7 +12,11 @@
       "pack": "coast.tiles",
       "index": "coast.index.json",
       "minZoom": 7,
-      "maxZoom": 12
+      "maxZoom": 12,
+      "clean": {
+        "pack": "coast-clean.tiles",
+        "index": "coast-clean.index.json"
+      }
     }
   }
 ]

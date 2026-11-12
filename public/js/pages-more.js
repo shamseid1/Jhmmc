@@ -208,7 +208,13 @@ PAGE_GROUPS.push((view) => ({
     }
     box.innerHTML = '';
     // Opens close enough in for the depth contours (they show from zoom 8), off Marshall.
-    const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.05, -10.55], 8);
+    const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5 }).setView([6.05, -10.55], 8);
+    // The map's credit (Esri's terms): small, bottom left, just above the time strip.
+    L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
+    const bar = view.querySelector('.chart-bottom');
+    const lift = () => box.style.setProperty('--bar-h', `${bar.hidden ? 0 : bar.offsetHeight}px`);
+    new ResizeObserver(lift).observe(bar);
+    lift();
     const { imagery } = addSatellite(L, map, { fullScreen: true });
     // The base: the fishing chart (Esri's ocean map, the contours on it) or the satellite.
     const ocean = oceanBase(L);
@@ -269,6 +275,7 @@ PAGE_GROUPS.push((view) => ({
     const waiting = (on) => {
       tlRow.hidden = on;
       view.querySelector('.chart-bottom').hidden = on;
+      box.style.setProperty('--bar-h', on ? '0px' : `${view.querySelector('.chart-bottom').offsetHeight}px`);
       view.querySelectorAll('[data-layer]').forEach((b) => { if (b.dataset.layer !== 'none') b.disabled = on; });
       if (!on) note.hidden = true;
     };

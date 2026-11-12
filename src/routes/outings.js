@@ -569,7 +569,9 @@ module.exports = (ctx) => {
   api.get('/charts', auth.requireUser, (_req, res) => {
     res.json({ charts: chartList().map(({ id, name, bounds, tiles }) => (tiles
       // The version (the pack's size and date) changes with the chart, so phones fetch the new tiles instead of saved ones.
-      ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png?v=${chartVersion(tiles)}`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom }
+      ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png?v=${chartVersion(tiles)}`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom,
+        // The same lines without the shading, for the light ocean chart.
+        ...(tiles.clean ? { cleanTiles: `/api/charts/${id}/{z}/{x}/{y}.png?clean=1&v=${chartVersion(tiles.clean)}` } : {}) }
       : { id, name, bounds, url: `/api/charts/${id}` })) });
   });
   const chartVersion = (tiles) => {
@@ -582,18 +584,20 @@ module.exports = (ctx) => {
   };
   // A tiled chart is one packed file of map tiles and an index ("z/x/y": [offset, length]).
   const packs = new Map();
-  const packFor = (chart) => {
-    if (!packs.has(chart.id)) {
-      const index = JSON.parse(fs.readFileSync(path.join(CHART_DIR, path.basename(chart.tiles.index)), 'utf8'));
-      packs.set(chart.id, { index, file: path.join(CHART_DIR, path.basename(chart.tiles.pack)) });
+  const packFor = (chart, clean) => {
+    const t = clean && chart.tiles.clean ? chart.tiles.clean : chart.tiles;
+    const key = `${chart.id}${t === chart.tiles ? '' : ':clean'}`;
+    if (!packs.has(key)) {
+      const index = JSON.parse(fs.readFileSync(path.join(CHART_DIR, path.basename(t.index)), 'utf8'));
+      packs.set(key, { index, file: path.join(CHART_DIR, path.basename(t.pack)) });
     }
-    return packs.get(chart.id);
+    return packs.get(key);
   };
   const EMPTY_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==', 'base64') // fully see-through;
   api.get('/charts/:id/:z/:x/:y.png', auth.requireUser, (req, res) => {
     const chart = chartList().find((c) => c.id === req.params.id && c.tiles);
     if (!chart) return res.status(404).json({ error: 'Chart not found.' });
-    const { index, file } = packFor(chart);
+    const { index, file } = packFor(chart, req.query.clean === '1');
     const { z, x, y } = req.params;
     const at = [z, x, y].every((v) => /^\d{1,7}$/.test(v)) ? index[`${+z}/${+x}/${+y}`] : null;
     res.set('Cache-Control', 'private, max-age=604800');

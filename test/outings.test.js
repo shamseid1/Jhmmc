@@ -181,6 +181,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await visitor('GET', '/charts')).status, 200, 'not on a boat, but signed in');
     const { charts } = (await deckhand('GET', '/charts')).body;
     assert.ok(charts.length && charts[0].bounds.north > charts[0].bounds.south);
+    assert.match(charts[0].cleanTiles, /clean=1/, 'the clean tiles, for the light chart');
     const chart = charts[0];
     const tile = (chart.tiles || chart.url).replace('/api', '').replace('{z}', 7).replace('{x}', 58).replace('{y}', 61);
     assert.equal((await fetch(at + tile)).status, 401, 'the chart needs signing in too');
