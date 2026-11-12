@@ -304,15 +304,20 @@ function flowLayer(map, getField) {
   const seed = () => {
     const r = box.getBoundingClientRect();
     const n = Math.round(Math.min(2200, (r.width * r.height) / 140));
-    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.floor(Math.random() * 80) }));
+    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.random() * 10 }));
     ctx.clearRect(0, 0, r.width, r.height);
   };
-  const step = () => {
+  // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen).
+  const PX_PER_KNOT_SECOND = 8; // 1 knot of current: 8 pixels a second, a slow drift
+  let last = 0;
+  const step = (now) => {
+    const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
+    last = now;
     const r = box.getBoundingClientRect();
     const at = getField();
-    // Fade the old trails.
+    // Fade the old trails slowly (a few seconds), so even a slow drift draws a line.
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = 'rgba(0,0,0,0.95)';
+    ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.55, dt).toFixed(3)})`;
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';
     ctx.lineWidth = 1.3;
@@ -322,23 +327,23 @@ function flowLayer(map, getField) {
       const ll = map.containerPointToLatLng([p.x, p.y]);
       const u = at && at(ll.lat, ll.lng, 'u');
       const v = at && at(ll.lat, ll.lng, 'v');
-      if (u == null || v == null || p.age > 160) {
+      if (u == null || v == null || p.age > 10) {
         p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0;
         continue;
       }
-      // Pixels per frame: a gentle drift, faster where the current is stronger (the same at every zoom).
-      const nx = p.x + u * 0.5;
-      const ny = p.y - v * 0.5;
+      // A gentle drift, faster where the current is stronger (the same at every zoom).
+      const nx = p.x + u * PX_PER_KNOT_SECOND * dt;
+      const ny = p.y - v * PX_PER_KNOT_SECOND * dt;
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(nx, ny);
-      p.x = nx; p.y = ny; p.age += 1;
+      p.x = nx; p.y = ny; p.age += dt;
     }
     ctx.stroke();
     raf = requestAnimationFrame(step);
   };
   size(); seed();
   map.on('movestart zoomstart', () => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, cv.width, cv.height); });
-  map.on('moveend zoomend', () => { seed(); if (!reduce) raf = requestAnimationFrame(step); });
+  map.on('moveend zoomend', () => { seed(); last = 0; if (!reduce) raf = requestAnimationFrame(step); });
   map.on('resize', () => { size(); seed(); });
   if (!reduce) raf = requestAnimationFrame(step);
   // Stop when the page is left.
