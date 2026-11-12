@@ -7,6 +7,29 @@
 // weigh (crews), today's sea, what's biting, and the
 // offer of notifications.
 function homeCards(view) {
+    // The leaderboard: the tournament on today if there is one (its standings), else the
+    // season's points (the JHMMC season for members, all of West Africa for others); the top
+    // three, and your boat's place if it isn't among them.
+    {
+      const box = view.querySelector('#board');
+      const division = state.me?.division === 'river' ? 'river' : 'ocean';
+      const mine = state.me?.teamId;
+      const draw = (title, rows, href) => {
+        if (!box || !rows.length) return;
+        const at = rows.findIndex((r) => r.teamId === mine);
+        const line = (r, i) => html`<li class="${r.teamId === mine ? 'mine' : ''}"><span class="rk">${i + 1}</span><span class="nm">${r.teamName}</span><b>${r.points}</b></li>`;
+        box.innerHTML = html`<a class="home-tile wide board-card" href="${href}">${raw(icon('leaderboard'))}<span><b>${title}</b>
+          <ol>${raw(rows.slice(0, 3).map(line).join(''))}${at > 2 ? raw(html`<li class="gap">…</li>${raw(line(rows[at], at))}`) : ''}</ol></span><span class="go" aria-hidden="true">›</span></a>`;
+      };
+      const today0 = today();
+      api('/tournaments').then(({ tournaments }) => {
+        const on = tournaments.find((t) => t.date <= today0 && t.endDate >= today0);
+        if (on) return api(`/tournaments/${on.id}?division=${division}`).then((t) => draw(`${on.name} · live`, t.results, `#/tournament/${on.id}`));
+        const board = state.me?.jhmmc ? 'jhmmc' : 'all';
+        return api(`/points?division=${division}&scope=overall&board=${board}`).then(({ boats }) =>
+          draw(board === 'jhmmc' ? `JHMMC Season · ${division === 'river' ? 'River' : 'Ocean'}` : 'Leaderboard · West Africa', boats, '#/leaderboard'));
+      }).catch(() => {});
+    }
     // What's biting: every boat's fish in the last 14 days against the 14 before, the top few.
     api('/outings/trends').then((tr) => {
       const box = view.querySelector('#biting');
@@ -92,12 +115,12 @@ PAGE_GROUPS.push((view) => ({
       <div class="home-tiles">
         <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
         <div id="biting" class="home-wide-slot"></div>
+        <div id="board" class="home-wide-slot"></div>
         ${state.me?.canWeigh || state.me?.canApprove ? raw(html`<a class="home-tile wide" href="#/weigh">${raw(icon('weight'))}<span><b>Weigh-in</b><span>${
           state.me.canApprove && !state.me.teamId ? 'For any boat, any day' : state.me.weighmasterAt ? `You're the weighmaster at ${state.me.weighmasterAt}` : `Today's fish for ${state.me.teamName || 'your boat'}${state.me.weighStation ? ` at ${state.me.weighStation}` : ''}`}</span></span><span class="go" aria-hidden="true">›</span></a>`) : ''}
         <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
-        <a class="home-tile" href="#/leaderboard">${raw(icon('leaderboard'))}<b>Leaderboard</b><span>The season's points</span></a>
         <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
-        <a class="home-tile" href="#/sea">${raw(icon('wave'))}<b>Sea conditions</b><span>The week ahead</span></a>
+        <a class="home-tile wide" href="#/sea">${raw(icon('wave'))}<span><b>Sea conditions</b><span>The week ahead</span></span><span class="go" aria-hidden="true">›</span></a>
       </div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}`;
     homeCards(view);
