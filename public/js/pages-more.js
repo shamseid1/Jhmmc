@@ -215,7 +215,7 @@ PAGE_GROUPS.push((view) => ({
       currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0].toFixed(1)} kn`] },
       sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
-      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.6], ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
+      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
     };
     let layer = 'currents';
     let image = null;
@@ -235,7 +235,7 @@ PAGE_GROUPS.push((view) => ({
       view.querySelector('#chart-legend').innerHTML = html`<span>${lo}</span><i style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})"></i><span>${hi}</span>`;
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
-    const flow = flowLayer(map, () => lines, () => land, bounds);
+    const flow = flowLayer(map, () => lines, () => land, bounds, () => (layer === 'wave' ? 'crests' : 'lines'));
     redraw = () => { show(); flow.reseed(); };
     slider.addEventListener('input', show);
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {

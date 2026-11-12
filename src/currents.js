@@ -3,13 +3,14 @@
 // The chart's data: the ocean model's surface currents, water temperature and waves (Open-Meteo's
 // marine forecast, from Copernicus/Mercator) and the wind (its weather forecast) on a grid over
 // the fishing grounds, every 3 hours for 3 days. One grid for everyone, fetched every 6 hours, in
-// two halves to keep each request small; the wind, smooth over this distance, on every other
+// parts to keep each request small; the wind, smooth over this distance, on every other
 // point and filled in between (Open-Meteo counts each point, so this keeps well inside the
 // free allowance).
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
 const FORECAST = 'https://api.open-meteo.com/v1/forecast';
-// Guinea-Bissau's south to the Ivory Coast border, well out past the shelf (about 500 points).
-const REGION = { south: 2.4, north: 9.4, west: -16.1, east: -7.0, step: 0.35 };
+// Guinea-Bissau's south to the Ivory Coast border, well out past the shelf: about 1,100 points,
+// 0.25° (28 km) apart, close enough that the changes at the shelf show.
+const REGION = { south: 2.4, north: 9.4, west: -16.1, east: -7.0, step: 0.25 };
 const KN_PER_KMH = 1 / 1.852;
 
 function grid(r = REGION) {
@@ -105,8 +106,10 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
   let pending = null;
   async function load() {
     const g = grid(region);
-    const half = Math.ceil(g.pts.length / 2);
-    const parts = [g.pts.slice(0, half), g.pts.slice(half)];
+    // In parts of up to 400 points, to keep each request's address short.
+    const n = Math.ceil(g.pts.length / 400);
+    const size = Math.ceil(g.pts.length / n);
+    const parts = Array.from({ length: n }, (_, k) => g.pts.slice(k * size, (k + 1) * size));
     const results = [];
     for (const part of parts) {
       const url = `${MARINE}?latitude=${part.map((p) => p[0]).join(',')}&longitude=${part.map((p) => p[1]).join(',')}`

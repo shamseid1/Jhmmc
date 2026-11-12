@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createCurrents, grid } = require('../src/currents');
 
-test('the currents map: a grid in two halves, frames every 3 hours, u/v in knots, land empty', async () => {
+test('the chart grid: the sea in parts of up to 400 points and the wind, frames every 3 hours, u/v in knots, land empty', async () => {
   const region = { south: 5, north: 5.6, west: -11, east: -10.4, step: 0.3 };
   const urls = [];
   const time = Array.from({ length: 72 }, (_, h) => `2026-11-12T${String(h % 24).padStart(2, '0')}:00`);
@@ -21,8 +21,8 @@ test('the currents map: a grid in two halves, frames every 3 hours, u/v in knots
   const g = grid(region);
   assert.deepEqual([g.nx, g.ny, g.pts.length], [3, 3, 9]);
   const d = await currents.get();
-  assert.equal(urls.length, 3, 'two halves of the sea, and the wind');
-  assert.equal(new URL(urls[2]).searchParams.get('latitude').split(',').length, 4, 'the wind on every other point');
+  assert.equal(urls.length, 2, 'the sea (9 points, one part), and the wind');
+  assert.equal(new URL(urls[1]).searchParams.get('latitude').split(',').length, 4, 'the wind on every other point');
   assert.equal(d.frames.length, 24, 'every 3 hours for 3 days');
   const f = d.frames[0];
   assert.deepEqual([f.u[0], f.v[0], f.sst[0]], [null, null, null], 'land');
@@ -30,7 +30,7 @@ test('the currents map: a grid in two halves, frames every 3 hours, u/v in knots
   assert.deepEqual([f.wh[1], f.wd[1]], [1.3, 200], 'waves');
   assert.deepEqual([Math.abs(f.wu[4]), f.wv[4]], [0, -10], 'the wind filled in between: 10 kn blowing south');
   await currents.get();
-  assert.equal(urls.length, 3, 'shared and kept');
+  assert.equal(urls.length, 2, 'shared and kept');
 });
 
 test('the tide is averaged out: a steady current stays, the to-and-fro goes', () => {

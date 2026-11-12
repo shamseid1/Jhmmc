@@ -265,7 +265,8 @@ const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'sout
 // break of a degree or two still shows.
 const SST_SCALE = [[18, [175, 190, 60]], [22, [230, 200, 50]], [25, [245, 160, 40]], [27, [240, 125, 35]], [29, [228, 88, 35]], [31, [200, 52, 42]], [33, [150, 28, 48]]];
 const WIND_SCALE = [[0, [70, 90, 180]], [5, [50, 150, 200]], [10, [60, 180, 110]], [15, [230, 210, 70]], [20, [240, 140, 50]], [25, [210, 50, 60]], [35, [150, 40, 150]]];
-const WAVE_SCALE = [[0, [60, 70, 170]], [0.5, [50, 140, 200]], [1, [60, 180, 140]], [1.5, [230, 210, 70]], [2, [240, 140, 50]], [3, [210, 50, 60]], [4, [150, 40, 150]]];
+// Waves in Windy's colours: cyan for small, deepening blue to purple, red only for big seas.
+const WAVE_SCALE = [[0, [90, 200, 205]], [0.5, [70, 170, 210]], [1, [62, 125, 205]], [1.5, [62, 92, 192]], [2, [78, 66, 172]], [3, [125, 60, 160]], [4.5, [185, 70, 110]], [6, [205, 85, 85]]];
 // Each colour layer's value at a spot, from a frame's sampler.
 const FIELD_VALUE = {
   sst: (at, lat, lng) => at(lat, lng, 'sst'),
@@ -295,7 +296,7 @@ function fillLand(ctx, land, toXY) {
 // The colour layer for one frame, smoothed between grid points and cut at the coast.
 function fieldImage(L, g, f, kind, stops, land) {
   const at = sampler(g, f);
-  const S = 8; // pixels per grid step
+  const S = 12; // pixels per grid step (a sharper coast when zoomed in)
   const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
@@ -318,7 +319,9 @@ function fieldImage(L, g, f, kind, stops, land) {
     { opacity: 1, className: 'field-image', interactive: false });
 }
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
-function flowLayer(map, getField, getLand = () => null, bounds = null) {
+// style() can return 'crests' (waves: short crests across the way they travel, sparser and
+// slower, as Windy draws them) instead of the usual flowing lines.
+function flowLayer(map, getField, getLand = () => null, bounds = null, style = () => 'lines') {
   const box = map.getContainer();
   const cv = document.createElement('canvas');
   cv.className = 'flow-canvas';
@@ -367,7 +370,7 @@ function flowLayer(map, getField, getLand = () => null, bounds = null) {
       x0 = Math.max(0, b.x); x1 = Math.min(r.width, a.x); y0 = Math.max(0, a.y); y1 = Math.min(r.height, b.y);
     }
     area = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
-    const n = Math.round(Math.min(2200, (area.w * area.h) / 140));
+    const n = Math.round(Math.min(2200, (area.w * area.h) / (style() === 'crests' ? 900 : 140)));
     parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.life; return p; });
     ctx.clearRect(0, 0, r.width, r.height);
   };
@@ -390,10 +393,11 @@ function flowLayer(map, getField, getLand = () => null, bounds = null) {
     const zoomK = Math.min(1.6, Math.max(0.35, 2 ** ((map.getZoom() - 7) * 0.6)));
     // Fade the old trails within about a second: short streaks, as on Windy.
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.12, dt).toFixed(3)})`;
+    const crests = style() === 'crests';
+    ctx.fillStyle = `rgba(0,0,0,${Math.pow(crests ? 0.02 : 0.12, dt).toFixed(3)})`;
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = crests ? 2.2 : 1.3;
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath();
     for (const p of parts) {
@@ -409,8 +413,16 @@ function flowLayer(map, getField, getLand = () => null, bounds = null) {
       const k = kn > 0.001 ? (Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) * zoomK) / kn : 0;
       const nx = p.x + u * k * dt;
       const ny = p.y - v * k * dt;
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(nx, ny);
+      if (crests) {
+        // A crest about 12 px long, square to the way the wave travels, fading in and out.
+        const dx = nx - p.x; const dy = ny - p.y; const d = Math.hypot(dx, dy) || 1;
+        const half = 6 * Math.sin(Math.PI * Math.min(1, p.age / p.life));
+        ctx.moveTo(nx - (dy / d) * half, ny + (dx / d) * half);
+        ctx.lineTo(nx + (dy / d) * half, ny - (dx / d) * half);
+      } else {
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(nx, ny);
+      }
       p.x = nx; p.y = ny; p.age += dt;
     }
     ctx.stroke();
