@@ -71,13 +71,10 @@ PAGE_GROUPS.push((view) => ({
     }
     // Until this phone has notifications on, offer them here (announcements, reminders).
     if (state.me) renderNotify(view.querySelector('#notify'), { what: 'announcements from JHMMC, like tournament reminders', hideWhenOn: true });
-    // Today's sea and the fishing chart: the chart's link always (it opens without signal or a
-    // forecast too); today's sea above it, quietly, when the forecast can be had.
+    // Today's sea, quietly: nothing shows if the forecast can't be had.
     const seaBox = view.querySelector('#sea-card');
     const place = seaPlace();
-    const chartRow = html`<a class="sea-card-chart" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span class="small muted">Contours, hotspots, currents, water colour and your fish</span></span><span aria-hidden="true">›</span></a>`;
     if (seaBox) {
-      seaBox.innerHTML = html`<div class="card sea-card">${raw(chartRow)}</div>`;
       if (navigator.onLine !== false && place.key !== 'here') {
         seaFor(place).then((s) => {
           const n = s.now;
@@ -85,7 +82,7 @@ PAGE_GROUPS.push((view) => ({
           seaBox.innerHTML = html`<div class="card sea-card"><a class="sea-card-today" href="#/sea">
             <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
             <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
-            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a>${raw(chartRow)}</div>`;
+            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>`;
         }).catch(() => {});
       }
     }
