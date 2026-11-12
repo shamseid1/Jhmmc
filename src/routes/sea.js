@@ -1,7 +1,5 @@
 'use strict';
 
-const zlib = require('zlib');
-
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
@@ -23,20 +21,12 @@ module.exports = (ctx) => {
     res.set('Cache-Control', 'private, max-age=3600').json({ water: band(rows.map((r) => r.w)), depth: band(rows.map((r) => r.d)) });
   });
 
-  // The chart's data: the grid's currents, water temperature, waves and wind every 3 hours.
-  // Sent gzipped (about a tenth of the size), made once per new grid.
-  let packed = { data: null, json: null, gz: null };
-  api.get('/currents', async (req, res) => {
+  // The chart's data: the grid's currents, water temperature, waves and wind every 3 hours
+  // (Render compresses it on the way).
+  api.get('/currents', async (_req, res) => {
     if (!currents) return res.status(503).json({ error: 'The currents map is not available right now.' });
     try {
-      const data = await currents.get();
-      if (packed.data !== data) {
-        const json = Buffer.from(JSON.stringify(data));
-        packed = { data, json, gz: zlib.gzipSync(json) };
-      }
-      res.set({ 'Cache-Control': 'public, max-age=900', 'Content-Type': 'application/json; charset=utf-8', Vary: 'Accept-Encoding' });
-      if (/\bgzip\b/.test(req.get('accept-encoding') || '')) res.set('Content-Encoding', 'gzip').send(packed.gz);
-      else res.send(packed.json);
+      res.set('Cache-Control', 'public, max-age=900').json(await currents.get());
     } catch (err) {
       // Not ready yet (just after an update): said at once, and the page asks again by itself.
       if (err.preparing) return res.set('Cache-Control', 'no-store').json({ preparing: true, message: err.message });

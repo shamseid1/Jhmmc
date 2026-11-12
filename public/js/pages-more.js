@@ -189,7 +189,8 @@ PAGE_GROUPS.push((view) => ({
     }
     // Just after an update the server is still fetching the forecast (a few minutes): say
     // so, and open the chart by itself as soon as it's ready.
-    while (data.preparing) {
+    // (Anything without a chart in it counts as not ready yet.)
+    while (!Array.isArray(data?.frames)) {
       box.innerHTML = html`<div class="chart-wait"><p><b>Getting the latest sea forecast…</b><br>
         This takes a few minutes after an update. The chart opens by itself when it's ready.</p></div>`;
       await wait(20000);
