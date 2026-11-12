@@ -49,6 +49,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- To know when the signal is back (after opening at sea from the kept copy). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The spot of each fish logged at sea. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

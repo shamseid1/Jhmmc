@@ -2,11 +2,16 @@ package com.africasportfishing.app;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -15,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import com.getcapacitor.BridgeWebViewClient;
 import java.util.Arrays;
 import java.util.List;
 
@@ -25,6 +31,8 @@ import java.util.List;
  * - Photos: "from photos" buttons open Android's photo picker (the gallery), not a file browser.
  * - Notifications: Firebase Cloud Messaging, through the PushNotifications plugin.
  * - Back: goes back a page in the app, and closes it on the first page.
+ * - At sea (no signal): the app opens from the copy the phone kept the last time it
+ *   was online, so fish can still be logged; "No connection" only if there's no copy.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -34,6 +42,21 @@ public class MainActivity extends BridgeActivity {
         if (bridge == null) return;
         WebView webView = bridge.getWebView();
         webView.setWebChromeClient(new PhotoPickerChromeClient(bridge));
+        OfflineClient client = new OfflineClient(bridge);
+        bridge.setWebViewClient(client);
+        // Signal back: everything from the network again.
+        ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+        if (cm != null) {
+            cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    runOnUiThread(() -> {
+                        webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                        client.triedCopy = false;
+                    });
+                }
+            });
+        }
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -46,6 +69,26 @@ public class MainActivity extends BridgeActivity {
             NotificationChannel channel = new NotificationChannel("club", "Club notifications", NotificationManager.IMPORTANCE_HIGH);
             channel.setDescription("Weigh-ins, fish logged and club announcements");
             getSystemService(NotificationManager.class).createNotificationChannel(channel);
+        }
+    }
+
+    /** A page that can't load (no signal): once, the phone's kept copy instead; then "No connection". */
+    static class OfflineClient extends BridgeWebViewClient {
+        boolean triedCopy = false;
+
+        OfflineClient(Bridge bridge) {
+            super(bridge);
+        }
+
+        @Override
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            if (request.isForMainFrame() && !triedCopy && "africasportfishing.com".equals(request.getUrl().getHost())) {
+                triedCopy = true;
+                view.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                view.loadUrl(request.getUrl().toString());
+                return;
+            }
+            super.onReceivedError(view, request, error);
         }
     }
 
