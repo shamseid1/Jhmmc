@@ -1317,3 +1317,5 @@ body.chart-mode main > div { animation: none; }
 .chart-legend i { flex: 1; height: 10px; border-radius: 5px; }
 .chart .leaflet-control-attribution { margin-bottom: 0; }
 .chart .leaflet-bottom { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+.chart-play { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: #fff; color: #0a1a33; }
+.chart-play svg { width: 18px; height: 18px; }

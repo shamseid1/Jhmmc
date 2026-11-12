@@ -151,7 +151,7 @@ PAGE_GROUPS.push((view) => ({
           ${crew ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label><label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
         </div>
         <div class="chart-legend" id="chart-legend"></div>
-        <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
+        <div class="cur-time"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
       </div>
     </div>`;
     // The layer buttons a little smaller to fit (never too small to read; past that the row scrolls).
@@ -203,14 +203,6 @@ PAGE_GROUPS.push((view) => ({
       await wait(20000);
       if (!view.isConnected) return;
       try { data = await api('/currents'); } catch { /* try again in a moment */ }
-    }
-    // Only now and ahead: the hours already gone are dropped (the frame up to 3 hours ago stays,
-    // as "now").
-    const nowIso0 = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 13);
-    data.frames = data.frames.filter((f) => f.time.slice(0, 13) > nowIso0);
-    if (!data.frames.length) {
-      box.innerHTML = html`<div class="chart-wait"><p><b>No up-to-date forecast right now.</b><br>Try again in a little while.</p></div>`;
-      return;
     }
     box.innerHTML = '';
     const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
@@ -276,7 +268,23 @@ PAGE_GROUPS.push((view) => ({
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
     redraw = () => { show(); flow.reseed(); };
-    slider.addEventListener('input', show);
+    slider.addEventListener('input', () => { stopPlay(); show(); });
+    // Play: through the next 3 days, a step every second, round again from now; the slider or
+    // the button stops it.
+    const playBtn = view.querySelector('#cur-play');
+    let playing = 0;
+    const startAt = Number(slider.value);
+    const stopPlay = () => { clearInterval(playing); playing = 0; playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play'); };
+    playBtn.addEventListener('click', () => {
+      if (playing) return stopPlay();
+      playBtn.innerHTML = icon('pause'); playBtn.setAttribute('aria-label', 'Pause');
+      playing = setInterval(() => {
+        if (!view.isConnected) return stopPlay();
+        const next = Number(slider.value) + 1;
+        slider.value = String(next > Number(slider.max) ? startAt : next);
+        show();
+      }, 1000);
+    });
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
       view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
