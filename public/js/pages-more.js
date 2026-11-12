@@ -21,8 +21,7 @@ PAGE_GROUPS.push((view) => ({
       <form class="card menu notify-kinds" id="kinds">${kinds.map(([k, label, sub]) => raw(html`<label class="notify-kind">
         <span class="mi-text"><b>${label}</b><span>${sub}</span></span>
         <input type="checkbox" class="switch" name="${k}" ${me.notify?.[k] ? 'checked' : ''}></label>`))}</form>
-      <p class="small muted">You're not told about what you did yourself (your own fish, your own announcement): "Send a test" is for checking.</p>
-      <p class="small muted" id="notify-how">${NATIVE ? `${IOS_APP ? 'iPhone' : 'Android'} app: notifications from ${IOS_APP ? 'Apple' : 'Google (Firebase)'}.` : 'Browser: notifications from the browser.'}</p>
+      <p class="small muted">You're not told about what you did yourself, such as your own fish or announcement.</p>
 `;
     renderNotify(view.querySelector('#notify'), { what: 'the things you choose below' });
     view.querySelector('#kinds').addEventListener('change', async (e) => {
