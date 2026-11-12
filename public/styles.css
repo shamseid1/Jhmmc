@@ -1248,7 +1248,12 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .sea-days li:first-child { border-top: 0; }
 .sea-days .d b { display: block; }
 .sea-days .w { color: var(--muted); font-size: 13px; }
-.sea-card { display: grid; gap: 4px; text-decoration: none; color: inherit; margin-bottom: 12px; }
+.sea-card { display: grid; gap: 0; margin-bottom: 12px; padding: 0; overflow: hidden; }
+.sea-card-today { display: grid; gap: 4px; padding: 14px 16px 12px; text-decoration: none; color: inherit; }
+.sea-card-chart { display: flex; align-items: center; gap: 12px; padding: 12px 16px; text-decoration: none; color: inherit; }
+.sea-card-today + .sea-card-chart { border-top: 1px solid var(--line); }
+.sea-card-chart > span:nth-child(2) { display: grid; flex: 1; min-width: 0; }
+.sea-card-chart .icon { width: 22px; height: 22px; color: var(--accent); flex: none; }
 .sea-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .sea-card-top b { display: inline-flex; align-items: center; gap: 6px; }
 .sea-card .icon, .cond-line .icon { width: 17px; height: 17px; color: var(--accent); }
@@ -1450,3 +1455,10 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .spots-far .wp-icon, .spots-far .wp-label { display: none; }
 .spots-mid .wp-label { display: none; }
 .spots-mid .wp-icon { transform: rotate(45deg) scale(0.6); }
+/* The fishing chart's button in the header: one tap from any page. */
+.chart-link { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; color: var(--text); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.chart-link svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 640px) {
+  .topbar { position: sticky; }
+  .chart-link { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; }
+}
