@@ -7,13 +7,15 @@
 const URL_GEBCO = 'https://api.opentopodata.org/v1/gebco2020';
 const r3 = (n) => Math.round(n * 1000) / 1000; // 0.001°, about 100 m (the map's grid is about 450 m)
 
-function createDepth({ fetchImpl = globalThis.fetch, ttlMs = 30 * 864e5 } = {}) {
+function createDepth({ fetchImpl = globalThis.fetch, ttlMs = 30 * 864e5, gapMs = 1100 } = {}) {
   const cache = new Map();
   // Depths in metres (positive), or null on land; same order as the spots.
   async function at(spots) {
     const keys = spots.map(({ lat, lng }) => `${r3(lat)},${r3(lng)}`);
     const missing = [...new Set(keys.filter((k) => { const h = cache.get(k); return !h || Date.now() - h.at > ttlMs; }))];
     for (let i = 0; i < missing.length; i += 100) {
+      // Open Topo Data allows one request a second.
+      if (i) await new Promise((r) => setTimeout(r, gapMs));
       const part = missing.slice(i, i + 100);
       const res = await fetchImpl(`${URL_GEBCO}?locations=${part.join('|')}`, { signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`Depth ${res.status}`);

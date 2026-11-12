@@ -101,7 +101,7 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
   return { south: r.south, west: r.west, step: r.step, nx, ny, frames: out };
 }
 
-function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION } = {}) {
+function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null } = {}) {
   let cached = null;
   let pending = null;
   async function load() {
@@ -128,7 +128,12 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
       const res = await fetchImpl(url, { signal: AbortSignal.timeout(30000) });
       if (res.ok) { const body = await res.json(); wind = { results: Array.isArray(body) ? body : [body] }; }
     } catch { /* no wind this time */ }
-    return frames(results, region, g, wind);
+    const data = frames(results, region, g, wind);
+    // The seabed depth at each point (for the fishing chart's shelf), if the depth service answers.
+    if (depth) {
+      try { data.depth = await depth.at(g.pts.map(([lat, lng]) => ({ lat, lng }))); } catch { /* no depths this time */ }
+    }
+    return data;
   }
   return {
     async get() {

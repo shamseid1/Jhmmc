@@ -92,7 +92,7 @@ function createApp({
   // Sea conditions (Open-Meteo): none under the test runner, so tests never go online.
   if (sea === undefined) sea = process.env.NODE_TEST_CONTEXT ? null : createSea();
   if (depth === undefined) depth = process.env.NODE_TEST_CONTEXT ? null : createDepth();
-  if (currents === undefined) currents = process.env.NODE_TEST_CONTEXT ? null : createCurrents();
+  if (currents === undefined) currents = process.env.NODE_TEST_CONTEXT ? null : createCurrents({ depth });
   pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
   if (nightlyBackups) backups.start();

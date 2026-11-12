@@ -264,7 +264,11 @@ const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'sout
 // temperature in Windy's yellow-orange-red, with more steps over the tropical range so a
 // break of a degree or two still shows.
 const SST_SCALE = [[18, [175, 190, 60]], [22, [230, 200, 50]], [25, [245, 160, 40]], [27, [240, 125, 35]], [29, [228, 88, 35]], [31, [200, 52, 42]], [33, [150, 28, 48]]];
-const WIND_SCALE = [[0, [70, 90, 180]], [5, [50, 150, 200]], [10, [60, 180, 110]], [15, [230, 210, 70]], [20, [240, 140, 50]], [25, [210, 50, 60]], [35, [150, 40, 150]]];
+// Wind in Windy's own colours (knots): violet-blue when calm, teal, green, then gold and red.
+const WIND_SCALE = [[0, [98, 113, 183]], [2, [57, 97, 159]], [6, [74, 148, 169]], [10, [77, 141, 123]], [14, [83, 165, 83]], [17, [53, 159, 53]],
+  [21, [167, 157, 81]], [25, [159, 127, 58]], [29, [161, 108, 92]], [33, [129, 58, 78]], [37, [175, 80, 136]], [41, [117, 74, 147]]];
+// The fishing chart: how promising the water is (0 to 1), from deep blue to hot red.
+const FISH_SCALE = [[0, [25, 45, 105]], [0.3, [35, 90, 160]], [0.5, [45, 150, 160]], [0.65, [90, 190, 110]], [0.78, [235, 210, 70]], [0.9, [240, 130, 45]], [1, [215, 40, 45]]];
 // Waves in Windy's colours: cyan for small, deepening blue to purple, red only for big seas.
 const WAVE_SCALE = [[0, [90, 200, 205]], [0.5, [70, 170, 210]], [1, [62, 125, 205]], [1.5, [62, 92, 192]], [2, [78, 66, 172]], [3, [125, 60, 160]], [4.5, [185, 70, 110]], [6, [205, 85, 85]]];
 // Each colour layer's value at a spot, from a frame's sampler.
@@ -273,6 +277,7 @@ const FIELD_VALUE = {
   speed: (at, lat, lng) => { const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v'); return u == null || v == null ? null : Math.hypot(u, v); },
   wind: (at, lat, lng) => { const u = at(lat, lng, 'wu'); const v = at(lat, lng, 'wv'); return u == null || v == null ? null : Math.hypot(u, v); },
   wave: (at, lat, lng) => at(lat, lng, 'wh'),
+  fishing: (at, lat, lng) => at(lat, lng, 'fish'),
 };
 const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
 function colourAt(stops, v) {
@@ -318,10 +323,75 @@ function fieldImage(L, g, f, kind, stops, land) {
   return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
     { opacity: 1, className: 'field-image', interactive: false });
 }
+// The fishing chart: at each grid point, how promising the water looks, from what offshore
+// fishermen look for: a temperature break (warm and cool water meeting), the edge of a current
+// or an eddy (fast water by slow, or turning), the shelf break, and water at the temperature
+// (and depth) billfish have been landed in this season, every boat's fish together. Each is
+// 0 to 1; breaks and edges are ranked against the rest of the map that day, so the best of
+// the day always shows. f.fish is the score; f.why the reasons (1 break, 2 edge, 4 shelf, 8 water).
+function fishingField(g, prefs = {}) {
+  const { nx, ny } = g;
+  const depth = g.depth || null;
+  const rank = (vals) => {
+    const xs = vals.filter((v) => v != null).sort((a, b) => a - b);
+    return (v) => {
+      if (v == null || !xs.length) return 0;
+      let lo = 0; let hi = xs.length;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] < v) lo = m + 1; else hi = m; }
+      return lo / xs.length;
+    };
+  };
+  const shelf = (d) => {
+    if (d == null) return 0;
+    if (prefs.depth) { const { lo, hi } = prefs.depth; const pad = Math.max(50, (hi - lo) * 0.5); return d >= lo && d <= hi ? 1 : Math.max(0, 1 - Math.min(Math.abs(d - lo), Math.abs(d - hi)) / pad); }
+    // No catches to go by yet: the shelf break and its slope (about 100 to 1,200 m) first, then blue water.
+    if (d < 40) return 0;
+    if (d < 100) return (d - 40) / 60;
+    if (d <= 1200) return 1;
+    return Math.max(0.35, 1 - (d - 1200) / 2500);
+  };
+  const warm = (t) => {
+    if (t == null || !prefs.water) return 0.5;
+    const { lo, hi } = prefs.water;
+    return t >= lo && t <= hi ? 1 : Math.max(0, 1 - Math.min(Math.abs(t - lo), Math.abs(t - hi)));
+  };
+  for (const f of g.frames) {
+    if (f.fish) continue;
+    const at = (key, i, j) => (i < 0 || j < 0 || i >= nx || j >= ny ? null : f[key][j * nx + i]);
+    const grad = (val, i, j) => {
+      const c = val(i, j); if (c == null) return null;
+      const dx = [val(i + 1, j), val(i - 1, j)].filter((v) => v != null).map((v) => Math.abs(v - c));
+      const dy = [val(i, j + 1), val(i, j - 1)].filter((v) => v != null).map((v) => Math.abs(v - c));
+      if (!dx.length && !dy.length) return null;
+      return Math.hypot(dx.length ? Math.max(...dx) : 0, dy.length ? Math.max(...dy) : 0);
+    };
+    const speed = (i, j) => { const u = at('u', i, j); const v = at('v', i, j); return u == null || v == null ? null : Math.hypot(u, v); };
+    const tb = []; const ce = [];
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        tb.push(grad((a, b) => at('sst', a, b), i, j));
+        // The edge: the change in speed, plus the turning (an eddy's spin).
+        const sp = grad(speed, i, j);
+        const dv = (at('v', i + 1, j) ?? at('v', i, j)) - (at('v', i - 1, j) ?? at('v', i, j));
+        const du = (at('u', i, j + 1) ?? at('u', i, j)) - (at('u', i, j - 1) ?? at('u', i, j));
+        ce.push(sp == null || Number.isNaN(dv - du) ? null : sp + Math.abs(dv - du) / 2);
+      }
+    }
+    const rt = rank(tb); const rc = rank(ce);
+    f.fish = []; f.why = [];
+    for (let k = 0; k < nx * ny; k++) {
+      if (f.sst[k] == null && f.u[k] == null) { f.fish.push(null); f.why.push(0); continue; }
+      const b = rt(tb[k]) ** 2; const e = rc(ce[k]) ** 2; const sh = depth ? shelf(depth[k]) : 0.5; const w = warm(f.sst[k]);
+      f.fish.push(Math.round((0.3 * b + 0.25 * e + 0.3 * sh + 0.15 * w) * 100) / 100);
+      f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0));
+    }
+  }
+}
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
-// style() can return 'crests' (waves: short crests across the way they travel, sparser and
-// slower, as Windy draws them) instead of the usual flowing lines.
-function flowLayer(map, getField, getLand = () => null, bounds = null, style = () => 'lines') {
+// style() says how to draw: { crests } for waves (short crests across the way they travel,
+// as Windy draws them) instead of flowing lines, and { per }: screen area (px²) per line, so
+// each layer has Windy's density (the wind far sparser than the currents).
+function flowLayer(map, getField, getLand = () => null, bounds = null, style = () => ({})) {
   const box = map.getContainer();
   const cv = document.createElement('canvas');
   cv.className = 'flow-canvas';
@@ -370,7 +440,7 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
       x0 = Math.max(0, b.x); x1 = Math.min(r.width, a.x); y0 = Math.max(0, a.y); y1 = Math.min(r.height, b.y);
     }
     area = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
-    const n = Math.round(Math.min(2200, (area.w * area.h) / (style() === 'crests' ? 900 : 140)));
+    const n = Math.round(Math.min(2200, (area.w * area.h) / (style().per || 140)));
     parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.life; return p; });
     ctx.clearRect(0, 0, r.width, r.height);
   };
@@ -393,7 +463,7 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
     const zoomK = Math.min(1.6, Math.max(0.35, 2 ** ((map.getZoom() - 7) * 0.6)));
     // Fade the old trails within about a second: short streaks, as on Windy.
     ctx.globalCompositeOperation = 'destination-in';
-    const crests = style() === 'crests';
+    const crests = !!style().crests;
     ctx.fillStyle = `rgba(0,0,0,${Math.pow(crests ? 0.02 : 0.12, dt).toFixed(3)})`;
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';

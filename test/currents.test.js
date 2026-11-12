@@ -48,3 +48,20 @@ test('the tide is averaged out: a steady current stays, the to-and-fro goes', ()
   assert.ok(Math.abs(mid.u[0] - 0.5) < 0.05, `east stays: ${mid.u[0]}`);
   assert.ok(Math.abs(mid.v[0]) < 0.12, `tide gone: ${mid.v[0]}`);
 });
+
+test('the fishing chart: no preferences until there are billfish to go by', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { createApp } = require('../src/app');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-fishing-'));
+  const srv = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com' }).listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/chart/fishing`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { water: null, depth: null });
+  } finally {
+    srv.close();
+  }
+});

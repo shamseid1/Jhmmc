@@ -5,7 +5,23 @@ const zlib = require('zlib');
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
-  const { api, auth, currents, depth, sea } = ctx;
+  const { api, auth, currents, db, depth, sea } = ctx;
+
+  // The fishing chart's preferences: the water temperature and depth billfish have been
+  // landed in over the last two years, every boat's together (no spots, no boats), as the
+  // middle 80%. Null until there are 5 such fish.
+  api.get('/chart/fishing', (_req, res) => {
+    const rows = db.prepare(`SELECT json_extract(l.conditions, '$.waterC') AS w, json_extract(l.conditions, '$.depthM') AS d
+      FROM outing_landings l JOIN species s ON s.id = l.species_id
+      WHERE s.category = 'Billfish' AND l.fate <> 'lost' AND l.conditions IS NOT NULL AND l.landed_at >= date('now', '-2 years')`).all();
+    const band = (vals) => {
+      const xs = vals.filter((v) => typeof v === 'number').sort((a, b) => a - b);
+      if (xs.length < 5) return null;
+      const q = (p) => xs[Math.min(xs.length - 1, Math.max(0, Math.round(p * (xs.length - 1))))];
+      return { lo: q(0.1), hi: q(0.9), n: xs.length };
+    };
+    res.set('Cache-Control', 'private, max-age=3600').json({ water: band(rows.map((r) => r.w)), depth: band(rows.map((r) => r.d)) });
+  });
 
   // The chart's data: the grid's currents, water temperature, waves and wind every 3 hours.
   // Sent gzipped (about a tenth of the size), made once per new grid.

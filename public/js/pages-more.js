@@ -138,13 +138,13 @@ PAGE_GROUPS.push((view) => ({
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     const LAYERS = [
-      ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
+      ['fishing', 'Fishing chart'], ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
     ];
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
-        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'currents'}">${label}</button>`))}</div>
+        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'fishing'}">${label}</button>`))}</div>
       </div>
       <div class="chart-bottom">
         <div class="chart-toggles">
@@ -154,11 +154,11 @@ PAGE_GROUPS.push((view) => ({
         <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
       </div>
     </div>`;
-    // The layer buttons a little smaller until all four fit (a narrow phone, or bigger text).
+    // The layer buttons a little smaller to fit (never too small to read; past that the row scrolls).
     const chips = view.querySelector('.chart-layers');
     const fitChips = () => {
       chips.style.removeProperty('--chip-fs');
-      for (let size = 13.5; chips.scrollWidth > chips.clientWidth + 0.5 && size >= 10; size -= 0.5) chips.style.setProperty('--chip-fs', `${size}px`);
+      for (let size = 13.5; chips.scrollWidth > chips.clientWidth + 0.5 && size >= 12.5; size -= 0.5) chips.style.setProperty('--chip-fs', `${size}px`);
     };
     fitChips();
     document.fonts?.ready.then(fitChips);
@@ -169,9 +169,10 @@ PAGE_GROUPS.push((view) => ({
     let L;
     let land = null;
     let redraw = null; // set once the map is up
+    let prefs = {};
     fetch('/land.json').then((r) => r.json()).then((x) => { land = x; redraw?.(); }).catch(() => {});
     try {
-      [data, L] = await Promise.all([api('/currents'), loadLeaflet()]);
+      [data, L, prefs] = await Promise.all([api('/currents'), loadLeaflet(), api('/chart/fishing').catch(() => ({}))]);
     } catch (err) {
       view.querySelector('#chart-map').innerHTML = html`<div class="chart-wait">${err.message || 'The chart is not available right now.'}</div>`;
       return;
@@ -203,6 +204,7 @@ PAGE_GROUPS.push((view) => ({
       f.xu = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.sin(((d + 180) * Math.PI) / 180)));
       f.xv = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
     }
+    fishingField(data, prefs);
     const hasWind = data.frames.some((f) => f.wu);
     if (!hasWind) view.querySelector('[data-layer=wind]').disabled = true;
     const slider = view.querySelector('#cur-t');
@@ -211,13 +213,15 @@ PAGE_GROUPS.push((view) => ({
     const nowIso = new Date().toISOString().slice(0, 13);
     slider.value = String(Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso)));
     // Each layer: its colours, the lines' field (and how fast they look), and its scale's ends.
+    // per: screen area per line, Windy's density for each (the wind far sparser than the water).
     const LAYER = {
+      fishing: { colour: 'fishing', stops: FISH_SCALE, lines: ['u', 'v', 1], per: 260, ends: () => ['Less likely', 'Best'] },
       currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0].toFixed(1)} kn`] },
       sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
-      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
-      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
+      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
+      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
     };
-    let layer = 'currents';
+    let layer = 'fishing';
     let image = null;
     let at = null;
     let lines = null;
@@ -228,14 +232,15 @@ PAGE_GROUPS.push((view) => ({
       const [ku, kv, k] = L1.lines;
       lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
       image?.remove();
-      image = fieldImage(L, data, f, L1.colour, L1.stops, land).addTo(map);
+      // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
+      image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
       const t = new Date(`${f.time}:00Z`);
       when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
       const [lo, hi] = L1.ends(L1.stops);
       view.querySelector('#chart-legend').innerHTML = html`<span>${lo}</span><i style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})"></i><span>${hi}</span>`;
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
-    const flow = flowLayer(map, () => lines, () => land, bounds, () => (layer === 'wave' ? 'crests' : 'lines'));
+    const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
     redraw = () => { show(); flow.reseed(); };
     slider.addEventListener('input', show);
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
@@ -253,11 +258,17 @@ PAGE_GROUPS.push((view) => ({
       const t = at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
       const f = data.frames[Number(slider.value)];
       if (u == null && wu == null) return;
-      // The waves' direction: the nearest grid point's (directions don't blend).
-      const i = Math.round((lng - data.west) / data.step); const j = Math.round((lat - data.south) / data.step);
-      const wd = f.wd?.[j * data.nx + i];
+      // Directions and reasons: the nearest grid point's (they don't blend).
+      const i0 = Math.round((lng - data.west) / data.step); const j0 = Math.round((lat - data.south) / data.step);
+      const fish = at(lat, lng, 'fish');
+      const why = f.why?.[j0 * data.nx + i0] || 0;
+      const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
+      const d = data.depth?.[j0 * data.nx + i0];
+      const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
       const rows = [
+        fish != null && `<b>Fishing</b> ${fish >= 0.75 ? 'very promising' : fish >= 0.6 ? 'promising' : fish >= 0.45 ? 'fair' : 'quiet'}${reasons.length ? ` (${reasons.join(', ')})` : ''}`,
+        d != null && `<b>Depth</b> about ${depthTxt(d)}`,
         u != null && `<b>Current</b> ${Math.hypot(u, v).toFixed(1)} kn to the ${compassName(deg(u, v))}`,
         t != null && `<b>Water</b> ${tempTxt(t)}`,
         wu != null && `<b>Wind</b> ${Math.round(Math.hypot(wu, wv))} kn from the ${compassName(deg(wu, wv) + 180)}`,
