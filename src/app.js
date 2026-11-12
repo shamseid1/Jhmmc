@@ -12,6 +12,7 @@ const { createMailer } = require('./mail');
 const { createBackups } = require('./backup');
 const { createPusher } = require('./push');
 const { createSea } = require('./sea');
+const { createDepth } = require('./depth');
 const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -67,6 +68,7 @@ function createApp({
   // Sends phone notifications; made from the database's keys unless given (tests).
   pusher,
   sea,
+  depth,
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
   // Tests that still post open it.
   openPosts = false,
@@ -87,6 +89,7 @@ function createApp({
   const db = openDb(dbFile);
   // Sea conditions (Open-Meteo): none under the test runner, so tests never go online.
   if (sea === undefined) sea = process.env.NODE_TEST_CONTEXT ? null : createSea();
+  if (depth === undefined) depth = process.env.NODE_TEST_CONTEXT ? null : createDepth();
   pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
   if (nightlyBackups) backups.start();
@@ -398,6 +401,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     photoUrl,
     pusher,
     sea,
+    depth,
     removeUpload,
     requireApprove,
     requireMoney,

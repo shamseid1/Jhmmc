@@ -126,7 +126,66 @@ PAGE_GROUPS.push((view) => ({
       <ul class="card sea-days">${s.days.map((d) => raw(html`<li><span class="d"><b>${day(d.date)}</b>${Number(d.date.slice(8))}</span>
         <span class="w">${[d.windKn != null && `${d.windDir || ''} ${d.windKn} kn`, d.waveM != null && `waves ${wavesTxt(d.waveM)}`, d.waterC != null && tempTxt(d.waterC)].filter(Boolean).join(' · ')}</span>
         ${d.rating ? raw(html`<span class="rating ${d.rating}">${d.rating[0].toUpperCase() + d.rating.slice(1)}</span>`) : ''}</li>`))}</ul>
+      <p class="center"><a href="#/depth">Depth check: compare the seabed map with your chart ›</a></p>
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
+  },
+
+  // Depth check: the seabed map's depth (GEBCO) at positions typed as a chart plotter shows
+  // them, or at your own logged fish, to compare with your chart.
+  async depth() {
+    if (!state.me) return needLogin(view, 'check depths');
+    view.innerHTML = html`<p class="back"><a href="#/sea">‹ Sea conditions</a></p>
+      <h1>Depth check</h1>
+      <p class="small muted">Positions as your plotter shows them, one per line: <b>N 06° 18.740' W 010° 48.740'</b>, or <b>6.3123, -10.8123</b>.
+      Each gets the depth from GEBCO, the world's seabed map (a grid of about 450 m), to compare with your chart.</p>
+      <form class="card pad stack" id="dc">
+        <label>Positions <textarea name="pos" rows="5" placeholder="N 06° 18.740' W 010° 48.740'"></textarea></label>
+        <div class="row-buttons"><button type="submit" class="primary">Get depths</button><button type="button" data-mine>Use my last fish</button></div>
+        <p class="error"></p>
+      </form>
+      <div id="dc-out"></div>`;
+    const form = view.querySelector('#dc');
+    const out = view.querySelector('#dc-out');
+    // N/S and E/W with degrees and minutes (or seconds), or two plain numbers.
+    const parse = (line) => {
+      const hemi = [...line.matchAll(/([NSEW])\s*(\d+(?:\.\d+)?)(?:[°\s]+(\d+(?:\.\d+)?)['′]?)?(?:\s*(\d+(?:\.\d+)?)["″])?/gi)];
+      if (hemi.length >= 2) {
+        const v = ([, h, d, m, s]) => (Number(d) + (Number(m) || 0) / 60 + (Number(s) || 0) / 3600) * (/[SW]/i.test(h) ? -1 : 1);
+        const lat = hemi.find((x) => /[NS]/i.test(x[1]));
+        const lng = hemi.find((x) => /[EW]/i.test(x[1]));
+        return lat && lng ? { lat: v(lat), lng: v(lng) } : null;
+      }
+      const n = line.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+      return n ? { lat: Number(n[1]), lng: Number(n[2]) } : null;
+    };
+    view.querySelector('[data-mine]').onclick = async () => {
+      try {
+        const { spots } = await api('/me/spots');
+        const mine = spots.filter((x) => x.lat != null).slice(0, 15);
+        if (!mine.length) { toast('No fish with a spot yet.'); return; }
+        form.pos.value = mine.map((x) => `${fmtCoords(x.lat, x.lng)}  (${x.species}, ${x.date})`).join('\n');
+      } catch (err) { toast(err.message); }
+    };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const lines = form.pos.value.split('\n').map((l) => l.trim()).filter(Boolean);
+      const rows = lines.map((l) => ({ line: l, pos: parse(l) }));
+      const bad = rows.filter((r) => !r.pos || Math.abs(r.pos.lat) > 90 || Math.abs(r.pos.lng) > 180);
+      form.querySelector('.error').textContent = bad.length ? `Couldn't read: ${bad.map((r) => r.line).join('; ')}` : '';
+      const good = rows.filter((r) => !bad.includes(r));
+      if (!good.length) return;
+      out.innerHTML = '<div class="card pad muted">Getting depths…</div>';
+      try {
+        const { depths } = await api(`/depth?at=${good.map((r) => `${r.pos.lat.toFixed(5)},${r.pos.lng.toFixed(5)}`).join('|')}`);
+        out.innerHTML = html`<ul class="card depth-list">${good.map((r, i) => raw(html`<li><span>${fmtCoords(r.pos.lat, r.pos.lng)}
+          ${r.line.includes('(') ? raw(html`<small class="muted">${r.line.slice(r.line.indexOf('('))}</small>`) : ''}</span>
+          <b>${depths[i].depthM == null ? 'land' : `${Math.round(toUnit('depth', depths[i].depthM))} ${unit('depth')}`}</b></li>`))}</ul>
+          <p class="small muted">Compare with your chart at the same positions. GEBCO is approximate: close offshore where the bottom is
+          gentle, less so near reefs, wrecks and the shelf edge, where the depth changes within a few hundred metres.</p>`;
+      } catch (err) {
+        out.innerHTML = html`<div class="card pad">${err.message}</div>`;
+      }
+    });
   },
 
   // How to put the app on the home screen, for each kind of phone.

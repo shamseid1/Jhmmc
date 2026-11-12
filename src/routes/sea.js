@@ -3,7 +3,23 @@
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
-  const { api, sea } = ctx;
+  const { api, auth, depth, sea } = ctx;
+
+  // The depth (GEBCO) at up to 50 spots: "lat,lng|lat,lng". For the Depth check page.
+  api.get('/depth', auth.requireUser, async (req, res) => {
+    const spots = String(req.query.at ?? '').split('|').slice(0, 50).map((s) => s.split(',').map(Number))
+      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
+      .map(([lat, lng]) => ({ lat, lng }));
+    if (!spots.length) return res.status(400).json({ error: 'Give at least one position.' });
+    if (!depth) return res.status(503).json({ error: 'Depths are not available right now.' });
+    try {
+      const m = await depth.at(spots);
+      res.json({ depths: spots.map((s, i) => ({ ...s, depthM: m[i] })) });
+    } catch (err) {
+      console.warn(`Depth failed: ${err.message}`);
+      res.status(503).json({ error: 'Depths are not available right now. Try again in a minute.' });
+    }
+  });
   // Places to choose from: towns and ports by name.
   api.get('/sea/places', async (req, res) => {
     const q = String(req.query.q ?? '').trim().slice(0, 60);

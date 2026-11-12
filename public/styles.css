@@ -1258,3 +1258,8 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .sea-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .sea-results li button { display: grid; text-align: left; width: 100%; padding: 8px 0; text-decoration: none; white-space: normal; }
 #sea-search { margin: 10px 0; }
+.depth-list { list-style: none; margin: 0; padding: 0; }
+.depth-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.depth-list li:first-child { border-top: 0; }
+.depth-list li span { display: grid; min-width: 0; }
+.depth-list b { font-size: 18px; white-space: nowrap; }
