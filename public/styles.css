@@ -1351,3 +1351,6 @@ body.chart-mode main > div { animation: none; }
 .lg-key i { flex: none; width: 18px; height: 12px; border: 2px solid #ff4081; background: rgba(255, 64, 129, 0.3); border-radius: 3px; }
 .leaflet-tooltip.hot-label { background: rgba(10, 26, 51, 0.85); color: #fff; border: 1px solid #ff4081; border-radius: 8px; padding: 2px 8px; font-weight: 700; font-size: 11px; box-shadow: none; }
 .leaflet-tooltip.hot-label::before { display: none; }
+.chart-note { position: absolute; z-index: 1100; left: 12px; right: 12px; top: calc(66px + env(safe-area-inset-top, 0px)); padding: 10px 14px; border-radius: 14px;
+  background: rgba(10, 26, 51, 0.9); color: #fff; font-size: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+.chart-note[hidden], .tl-row[hidden] { display: none; }

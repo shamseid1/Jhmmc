@@ -143,6 +143,7 @@ PAGE_GROUPS.push((view) => ({
     ];
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
+      <div class="chart-note" id="chart-note" role="status" hidden></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
         <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'none'}">${label}</button>`))}</div>
@@ -182,32 +183,6 @@ PAGE_GROUPS.push((view) => ({
       box.innerHTML = html`<div class="chart-wait">${err.message || 'The map couldn\'t load just now.'}</div>`;
       return;
     }
-    // The chart's data: if the server can't be reached (no signal, or it's restarting after an
-    // update), it keeps trying quietly every 20 seconds while the page is open.
-    for (;;) {
-      try { data = await api('/currents'); break; } catch (err) {
-        box.innerHTML = html`<div class="chart-wait"><p><b>Can't get the chart just now.</b><br>${err.message}<br>Trying again by itself…</p></div>`;
-        await wait(20000);
-        if (!view.isConnected) return;
-      }
-    }
-    // Just after an update the server is still fetching the forecast (a few minutes): say
-    // so, and open the chart by itself as soon as it's ready.
-    // (Anything without a chart in it counts as not ready yet.)
-    while (!Array.isArray(data?.frames)) {
-      // If the forecast service turned the server away, say why and when it tries again.
-      const r = data?.refused;
-      const again = r && new Date(r.retryAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      box.innerHTML = r && !data.fetching
-        ? html`<div class="chart-wait"><p><b>The forecast service is busy.</b><br>
-          ${r.daily ? 'Its free daily allowance has run out for today.' : r.hourly ? 'Its free allowance for this hour has run out.' : `It said: ${r.reason}`}<br>
-          The chart will try again at ${again} and open by itself.</p></div>`
-        : html`<div class="chart-wait"><p><b>Getting the latest sea forecast…</b><br>
-          This takes a few minutes after an update. The chart opens by itself when it's ready.</p></div>`;
-      await wait(20000);
-      if (!view.isConnected) return;
-      try { data = await api('/currents'); } catch { /* try again in a moment */ }
-    }
     box.innerHTML = '';
     // Opens close enough in for the depth contours (they show from zoom 8), off Marshall.
     const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.05, -10.55], 8);
@@ -215,11 +190,12 @@ PAGE_GROUPS.push((view) => ({
     // The base: the fishing chart (Esri's ocean map, the contours on it) or the satellite.
     const ocean = oceanBase(L);
     let base = 'chart';
+    let onBase = null; // redraws the layer on top, once there is one
     const setBase = (b) => {
       base = b;
       if (b === 'chart') { imagery.remove(); ocean.addTo(map).bringToBack(); } else { ocean.remove(); imagery.addTo(map).bringToBack(); }
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.base === b)));
-      if (at) show();
+      onBase?.();
     };
     const overlays = {};
     if (state.me) {
@@ -241,6 +217,42 @@ PAGE_GROUPS.push((view) => ({
         if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
       }).catch(() => {});
     }
+    setBase('chart');
+    // Until the forecast is here: the chart alone (with its contours), a note on top, and the
+    // forecast's layers and time strip waiting.
+    const note = view.querySelector('#chart-note');
+    const tlRow = view.querySelector('.tl-row');
+    const waiting = (on) => {
+      tlRow.hidden = on;
+      view.querySelectorAll('[data-layer]').forEach((b) => { if (b.dataset.layer !== 'none') b.disabled = on; });
+      if (!on) note.hidden = true;
+    };
+    const say = (h) => { note.innerHTML = h; note.hidden = false; };
+    waiting(true);
+    // The chart's data: if the server can't be reached (no signal, or it's restarting after an
+    // update), it keeps trying quietly every 20 seconds while the page is open.
+    for (;;) {
+      try { data = await api('/currents'); break; } catch (err) {
+        say(html`<b>Can't get the forecast just now.</b> ${err.message} Trying again by itself…`);
+        await wait(20000);
+        if (!view.isConnected) return;
+      }
+    }
+    // Just after an update the server is still fetching the forecast (a few minutes): say
+    // so, and open the chart by itself as soon as it's ready.
+    // (Anything without a chart in it counts as not ready yet.)
+    while (!Array.isArray(data?.frames)) {
+      // If the forecast service turned the server away, say why and when it tries again.
+      const r = data?.refused;
+      const again = r && new Date(r.retryAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      say(r && !data.fetching
+        ? html`<b>No forecast layers until ${again}.</b> ${r.daily ? 'The forecast service\'s free daily allowance has run out.' : r.hourly ? 'The forecast service\'s free allowance for this hour has run out.' : `The forecast service said: ${r.reason}`} They come back by themselves.`
+        : html`<b>Getting the latest sea forecast…</b> The layers come on by themselves in a few minutes.`);
+      await wait(20000);
+      if (!view.isConnected) return;
+      try { data = await api('/currents'); } catch { /* try again in a moment */ }
+    }
+    waiting(false);
     // The waves' direction as a vector (where they go), worked out once per frame.
     for (const f of data.frames) {
       if (!f.wh || f.xu) continue;
@@ -328,7 +340,7 @@ PAGE_GROUPS.push((view) => ({
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
-    setBase('chart');
+    onBase = () => show();
     redraw = () => { show(); flow.reseed(); };
     // The time strip, like Windy's: the days as blocks with a mark for each hour, swiped under
     // a fixed pointer; it settles on whole hours and the bubble says which.
