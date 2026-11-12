@@ -233,8 +233,25 @@ function sampler(g, f) {
 }
 const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 // Colour scales: water temperature (cool blue to warm red), current strength (calm to strong).
-const SST_STOPS = [[24, [40, 70, 160]], [26, [40, 140, 200]], [27.5, [60, 190, 170]], [28.5, [240, 210, 80]], [29.5, [240, 130, 50]], [31, [200, 40, 60]]];
-const SPEED_STOPS = [[0, [30, 60, 120]], [0.3, [40, 130, 190]], [0.6, [60, 190, 160]], [1, [240, 200, 70]], [1.5, [240, 110, 50]], [2.2, [190, 30, 80]]];
+// Each palette is stretched over the values actually on the map, so small differences (a
+// temperature break of half a degree) still show as a change of colour.
+const PALETTE = [[0, [40, 70, 160]], [0.2, [40, 140, 200]], [0.4, [60, 190, 170]], [0.6, [240, 210, 80]], [0.8, [240, 130, 50]], [1, [200, 40, 60]]];
+const stretch = (lo, hi) => PALETTE.map(([t, c]) => [lo + t * (hi - lo), c]);
+function fieldRange(g, kind) {
+  let lo = Infinity; let hi = -Infinity;
+  for (const f of g.frames) {
+    for (let k = 0; k < f.u.length; k++) {
+      const v = kind === 'sst' ? f.sst[k] : (f.u[k] == null ? null : Math.hypot(f.u[k], f.v[k]));
+      if (v == null) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  if (!Number.isFinite(lo)) return kind === 'sst' ? [26, 30] : [0, 2];
+  // Round outwards: half degrees, or tenths of a knot from zero.
+  if (kind === 'sst') { lo = Math.floor(lo * 2) / 2; hi = Math.max(lo + 1, Math.ceil(hi * 2) / 2); } else { lo = 0; hi = Math.max(0.5, Math.ceil(hi * 10) / 10); }
+  return [lo, hi];
+}
 function colourAt(stops, v) {
   if (v <= stops[0][0]) return stops[0][1];
   for (let k = 1; k < stops.length; k++) {
@@ -247,7 +264,7 @@ function colourAt(stops, v) {
   return stops.at(-1)[1];
 }
 // The colour layer for one frame: one pixel per grid point, smoothed by the browser.
-function fieldImage(L, g, f, kind) {
+function fieldImage(L, g, f, kind, stops) {
   const cv = document.createElement('canvas');
   cv.width = g.nx; cv.height = g.ny;
   const ctx = cv.getContext('2d');
@@ -258,7 +275,7 @@ function fieldImage(L, g, f, kind) {
       const v = kind === 'sst' ? f.sst[k] : (f.u[k] == null ? null : Math.hypot(f.u[k], f.v[k]));
       const p = ((g.ny - 1 - j) * g.nx + i) * 4; // north up
       if (v == null) continue;
-      const [r, gg, b] = colourAt(kind === 'sst' ? SST_STOPS : SPEED_STOPS, v);
+      const [r, gg, b] = colourAt(stops, v);
       img.data.set([r, gg, b, 170], p);
     }
   }
@@ -295,7 +312,7 @@ function flowLayer(map, getField) {
     const at = getField();
     // Fade the old trails.
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.fillStyle = 'rgba(0,0,0,0.95)';
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';
     ctx.lineWidth = 1.3;
@@ -305,13 +322,13 @@ function flowLayer(map, getField) {
       const ll = map.containerPointToLatLng([p.x, p.y]);
       const u = at && at(ll.lat, ll.lng, 'u');
       const v = at && at(ll.lat, ll.lng, 'v');
-      if (u == null || v == null || p.age > 90) {
+      if (u == null || v == null || p.age > 160) {
         p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0;
         continue;
       }
-      // Pixels per frame: faster current, longer stroke (the same at every zoom).
-      const nx = p.x + u * 1.6;
-      const ny = p.y - v * 1.6;
+      // Pixels per frame: a gentle drift, faster where the current is stronger (the same at every zoom).
+      const nx = p.x + u * 0.5;
+      const ny = p.y - v * 0.5;
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(nx, ny);
       p.x = nx; p.y = ny; p.age += 1;

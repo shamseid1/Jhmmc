@@ -5,8 +5,8 @@
 // for 3 days. One grid for everyone, fetched every 3 hours (a few hundred points per fetch,
 // well inside the free allowance), in two halves to keep each request small.
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
-// Sierra Leone to the Ivory Coast border, out past the shelf.
-const REGION = { south: 3.6, north: 9.0, west: -15.0, east: -7.2, step: 0.3 };
+// Guinea-Bissau's south to the Ivory Coast border, well out past the shelf (about 500 points).
+const REGION = { south: 2.4, north: 9.4, west: -16.1, east: -7.0, step: 0.35 };
 const KN_PER_KMH = 1 / 1.852;
 
 function grid(r = REGION) {

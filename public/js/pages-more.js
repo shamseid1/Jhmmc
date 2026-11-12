@@ -176,17 +176,19 @@ PAGE_GROUPS.push((view) => ({
     let kind = 'sst';
     let image = null;
     let at = null;
+    const ranges = { sst: fieldRange(data, 'sst'), speed: fieldRange(data, 'speed') };
+    const stopsFor = (k) => stretch(...ranges[k]);
     const legend = () => {
-      const stops = kind === 'sst' ? SST_STOPS : SPEED_STOPS;
+      const stops = stopsFor(kind);
       view.querySelector('#cur-legend').innerHTML = html`<span>${kind === 'sst' ? tempTxt(stops[0][0]) : `${stops[0][0]} kn`}</span>
         <i style="background:linear-gradient(90deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})"></i>
-        <span>${kind === 'sst' ? tempTxt(stops.at(-1)[0]) : `${stops.at(-1)[0]} kn`}</span>`;
+        <span>${kind === 'sst' ? tempTxt(stops.at(-1)[0]) : `${stops.at(-1)[0].toFixed(1)} kn`}</span>`;
     };
     const show = () => {
       const f = data.frames[Number(slider.value)];
       at = sampler(data, f);
       image?.remove();
-      image = fieldImage(L, data, f, kind).addTo(map);
+      image = fieldImage(L, data, f, kind, stopsFor(kind)).addTo(map);
       const t = new Date(`${f.time}:00Z`);
       when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
       legend();
