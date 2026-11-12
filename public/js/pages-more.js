@@ -150,9 +150,9 @@ PAGE_GROUPS.push((view) => ({
         <div class="chart-toggles">
           ${crew ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label><label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
         </div>
-        <div class="chart-legend" id="chart-legend"></div>
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
           <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span></div></div>
+        <div class="chart-legend" id="chart-legend"></div>
       </div>
     </div>`;
     // The layer buttons a little smaller to fit (never too small to read; past that the row scrolls).
