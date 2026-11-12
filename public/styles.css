@@ -1479,7 +1479,8 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .home-tile.wide .go { font-size: 24px; color: var(--muted); }
 .home-tile.wide b { color: var(--text); }
 /* Home: today's tides, sun, moon and best times; what's biting. */
-.day-card { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px 8px; text-decoration: none; color: inherit; margin: -4px 0 12px; font-size: 13px; }
+.sea-card { text-decoration: none; color: inherit; }
+.day-card { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px 8px; padding: 12px 16px 14px; border-top: 1px solid var(--line); font-size: 13px; }
 .day-col { display: grid; align-content: start; gap: 2px; min-width: 0; }
 .day-col .k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 2px; }
 .day-col b { font-variant-numeric: tabular-nums; }

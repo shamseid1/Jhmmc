@@ -71,16 +71,15 @@ function homeCards(view) {
       if (navigator.onLine !== false) {
         seaFor(place).then((s) => {
           const n = s.now;
-          const next = s.solunar.major.find((p) => p.to > Number(s.localTime.slice(11, 13)) * 60 + Number(s.localTime.slice(14, 16)));
-          seaBox.innerHTML = html`<div class="card sea-card"><a class="sea-card-today" href="#/sea">
+          // One box: the sea now, then the sun, the moon and the day's best times.
+          seaBox.innerHTML = html`<a class="card sea-card" href="#/sea"><span class="sea-card-today">
             <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
-            <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
-            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>
-            <a class="card pad day-card" href="#/sea">
+            <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span></span>
+            <span class="day-card">
               <span class="day-col"><span class="k">Sun</span><span>Rise <b>${s.sun.rise || '—'}</b></span><span>Set <b>${s.sun.set || '—'}</b></span></span>
               <span class="day-col"><span class="k">Moon</span><span><b>${s.moon.lit}%</b></span><span class="muted">${s.moon.name}</span></span>
               <span class="day-col"><span class="k">Best times</span>${raw(s.solunar.major.map((p) => html`<span class="nowrap"><b>${hhmm(p.from)}</b>–${hhmm(p.to)}</span>`).join(''))}</span>
-            </a>`;
+            </span></a>`;
         }).catch(() => {});
       }
     }
