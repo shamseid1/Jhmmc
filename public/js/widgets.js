@@ -230,12 +230,25 @@ const SEA_PLACES = [
 const SEA_KEY = 'sea-place';
 const SEA_RECENT = 'sea-recent';
 // The place chosen last: one of the list, or one found by search (kept with its position).
+// Before a place is chosen on this phone: off the main port of the member's country (Liberia
+// and anywhere inland: off Monrovia).
+const COUNTRY_SEA = {
+  'Sierra Leone': ['Off Freetown', 8.45, -13.35], Guinea: ['Off Conakry', 9.45, -13.85], 'Guinea-Bissau': ['Off Bissau', 11.75, -15.8],
+  "Côte d'Ivoire": ['Off Abidjan', 5.2, -4.0], Ghana: ['Off Accra', 5.45, -0.15], Togo: ['Off Lomé', 6.05, 1.25], Benin: ['Off Cotonou', 6.25, 2.4],
+  Nigeria: ['Off Lagos', 6.3, 3.35], Cameroon: ['Off Limbe', 3.9, 9.15], 'Equatorial Guinea': ['Off Malabo', 3.85, 8.7], Gabon: ['Off Libreville', 0.4, 9.3],
+  'São Tomé and Príncipe': ['Off São Tomé', 0.35, 6.8], Senegal: ['Off Dakar', 14.6, -17.55], 'The Gambia': ['Off Banjul', 13.5, -16.7],
+  Mauritania: ['Off Nouakchott', 18.1, -16.1], 'Cabo Verde': ['Off Praia', 14.85, -23.5],
+};
 function seaPlace() {
+  const start = () => {
+    const c = COUNTRY_SEA[state.me?.country];
+    return c ? { key: `country-${state.me.country}`, name: c[0], lat: c[1], lng: c[2] } : SEA_PLACES[0];
+  };
   try {
     const v = localStorage.getItem(SEA_KEY);
     if (v?.startsWith('{')) { const p = JSON.parse(v); if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) return p; }
-    return SEA_PLACES.find((p) => p.key === v) || SEA_PLACES[0];
-  } catch { return SEA_PLACES[0]; }
+    return SEA_PLACES.find((p) => p.key === v) || start();
+  } catch { return start(); }
 }
 const seaRecent = () => { try { return JSON.parse(localStorage.getItem(SEA_RECENT) || '[]').filter((p) => Number.isFinite(p.lat)); } catch { return []; } };
 function setSeaPlace(p) {

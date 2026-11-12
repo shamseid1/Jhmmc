@@ -67,7 +67,8 @@ function homeCards(view) {
     const seaBox = view.querySelector('#sea-card');
     const place = seaPlace();
     if (seaBox) {
-      if (navigator.onLine !== false && place.key !== 'here') {
+      // "Where I am" uses the phone's position (asked for when it was chosen); without it, no card.
+      if (navigator.onLine !== false) {
         seaFor(place).then((s) => {
           const n = s.now;
           const next = s.solunar.major.find((p) => p.to > Number(s.localTime.slice(11, 13)) * 60 + Number(s.localTime.slice(14, 16)));

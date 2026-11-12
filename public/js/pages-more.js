@@ -42,6 +42,7 @@ PAGE_GROUPS.push((view) => ({
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Sea conditions</h1>
       <div class="sea-place"><select id="sea-where" aria-label="Place">
+          ${place.key?.startsWith('country-') ? raw(html`<option value="${place.key}" selected>${place.name}</option>`) : ''}
           ${SEA_PLACES.filter((p) => p.key !== 'here').map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}
           ${seaRecent().length ? raw(html`<optgroup label="Recent">${seaRecent().map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}</optgroup>`) : ''}
           <option value="here" ${place.key === 'here' ? 'selected' : ''}>Where I am</option>
@@ -62,7 +63,7 @@ PAGE_GROUPS.push((view) => ({
         search.q.focus();
         return;
       }
-      setSeaPlace([...SEA_PLACES, ...seaRecent()].find((p) => p.key === where.value) || SEA_PLACES[0]);
+      setSeaPlace([place, ...SEA_PLACES, ...seaRecent()].find((p) => p.key === where.value) || SEA_PLACES[0]);
       route();
     });
     search.querySelector('[data-cancel]').onclick = () => { search.hidden = true; where.value = place.key; };
