@@ -10,9 +10,10 @@ const fs = require('fs');
 // free allowance).
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
 const FORECAST = 'https://api.open-meteo.com/v1/forecast';
-// Guinea-Bissau's south to the Ivory Coast border, well out past the shelf: about 1,100 points,
-// 0.25° (28 km) apart, close enough that the changes at the shelf show.
-const REGION = { south: 2.4, north: 9.4, west: -16.1, east: -7.0, step: 0.25 };
+// From Guinea-Bissau and the Bissagos (12°N) past Conakry and Freetown to the Ivory Coast border,
+// well out past the shelf (1.5°N): about 1,300 points 0.3° (33 km) apart, with the wind on
+// every other one, about 1,700 a fetch, four times a day, inside the free 10,000 a day.
+const REGION = { south: 1.5, north: 12.0, west: -17.8, east: -7.0, step: 0.3 };
 const KN_PER_KMH = 1 / 1.852;
 
 function grid(r = REGION) {
