@@ -1293,15 +1293,15 @@ body.chart-mode main > div { animation: none; }
 .chart { position: fixed; inset: 0; z-index: 25; background: #0a1a33; isolation: isolate; }
 .chart-map { position: absolute; inset: 0; }
 .chart-wait { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; padding: 20px; text-align: center; }
-.chart-top { position: absolute; z-index: 1100; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: center;
+.chart-top { position: absolute; z-index: 1100; left: 0; right: 0; top: 0; display: flex; gap: 6px; align-items: center;
   padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; pointer-events: none; }
 .chart-top > * { pointer-events: auto; }
 .chart-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; padding: 0;
   background: rgba(10, 26, 51, 0.85); color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .chart-btn .icon, .chart-btn svg { width: 24px; height: 24px; }
-.chart-layers { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.chart-layers { display: flex; gap: 5px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; padding: 2px; }
 .chart-layers::-webkit-scrollbar { display: none; }
-.chart-layers button { flex: none; border: 0; border-radius: 999px; padding: 10px 12px; font-size: 15px; font-weight: 700; white-space: nowrap;
+.chart-layers button { flex: none; border: 0; border-radius: 999px; padding: 0.72em 0.8em; font-size: var(--chip-fs, 14px); font-weight: 700; white-space: nowrap;
   background: rgba(10, 26, 51, 0.85); color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .chart-layers button[aria-selected="true"] { background: #fff; color: #0a1a33; }
 .chart-layers button:disabled { opacity: 0.45; }

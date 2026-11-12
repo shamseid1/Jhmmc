@@ -138,7 +138,7 @@ PAGE_GROUPS.push((view) => ({
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     const LAYERS = [
-      ['currents', 'Currents'], ['sst', 'Water'], ['wind', 'Wind'], ['wave', 'Waves'],
+      ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
     ];
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
@@ -154,6 +154,14 @@ PAGE_GROUPS.push((view) => ({
         <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
       </div>
     </div>`;
+    // The layer buttons a little smaller until all four fit (a narrow phone, or bigger text).
+    const chips = view.querySelector('.chart-layers');
+    const fitChips = () => {
+      chips.style.removeProperty('--chip-fs');
+      for (let size = 13.5; chips.scrollWidth > chips.clientWidth + 0.5 && size >= 10; size -= 0.5) chips.style.setProperty('--chip-fs', `${size}px`);
+    };
+    fitChips();
+    document.fonts?.ready.then(fitChips);
     // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
