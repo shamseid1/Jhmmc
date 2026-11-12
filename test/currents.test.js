@@ -77,3 +77,20 @@ test('the fishing chart: no preferences until there are billfish to go by', asyn
     srv.close();
   }
 });
+
+test('turned away for the day: the chart says so and waits until after midnight GMT', async () => {
+  const region = { south: 5, north: 5.3, west: -11, east: -10.7, step: 0.3 };
+  let asked = 0;
+  const currents = createCurrents({ region, gapMs: 0, fetchImpl: async () => {
+    asked += 1;
+    return new Response(JSON.stringify({ error: true, reason: 'Daily API request limit exceeded. Please try again tomorrow.' }), { status: 429 });
+  } });
+  await currents.get({ wait: true }).catch(() => {});
+  const err = await currents.get().catch((e) => e);
+  assert.ok(err.preparing);
+  assert.match(err.lastError.message, /Daily API request limit/);
+  assert.ok(new Date(err.lastError.retryAt).getUTCHours() === 0, 'tries again just after midnight GMT');
+  const before = asked;
+  await currents.get().catch(() => {});
+  assert.equal(asked, before, 'no knocking again before then');
+});

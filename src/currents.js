@@ -116,6 +116,15 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
   if (cached && (!cached.data?.frames || cached.data.step !== region.step)) cached = null; // another grid
   let pending = null;
   let failedAt = 0;
+  let retryAt = 0; // when to try again after a refusal
+  let lastError = null; // what went wrong last, for the waiting page
+  // When to ask again after a refusal: Open-Meteo says which allowance ran out.
+  const nextTry = (msg) => {
+    const now = new Date();
+    if (/daily/i.test(msg)) return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 5);
+    if (/hourly/i.test(msg)) return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1, 2);
+    return Date.now() + retryMs;
+  };
   const pause = () => new Promise((r) => setTimeout(r, gapMs));
   async function load() {
     const g = grid(region);
@@ -134,7 +143,12 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
         if (res.status !== 429 || tries >= 2) break;
         await pause();
       }
-      if (!res.ok) throw new Error(`Currents ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        let reason = text;
+        try { reason = JSON.parse(text).reason || text; } catch { /* not JSON */ }
+        throw new Error(`Currents ${res.status}: ${String(reason).slice(0, 120)}`);
+      }
       const body = await res.json();
       results.push(...(Array.isArray(body) ? body : [body]));
     }
@@ -158,14 +172,17 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     return data;
   }
   function refresh() {
-    if (pending || Date.now() - failedAt < retryMs) return pending;
+    if (pending || Date.now() < retryAt) return pending;
     pending = load().then((data) => {
       cached = { at: Date.now(), data };
+      lastError = null;
       if (file) fs.promises.writeFile(file, JSON.stringify(cached)).catch((err) => console.warn(`Chart not saved: ${err.message}`));
       return data;
     }).catch((err) => {
       failedAt = Date.now();
-      console.warn(`Chart refresh failed: ${err.message}`);
+      retryAt = nextTry(err.message);
+      lastError = { message: err.message, at: failedAt, retryAt };
+      console.warn(`Chart refresh failed: ${err.message} (next try ${new Date(retryAt).toISOString()})`);
     }).finally(() => { pending = null; });
     return pending;
   }
@@ -178,7 +195,7 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
         if (wait) await p;
       }
       if (cached) return cached.data;
-      throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true });
+      throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true, lastError, fetching: !!pending });
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).
     warm: () => { if (!cached || Date.now() - cached.at >= ttlMs) refresh(); },

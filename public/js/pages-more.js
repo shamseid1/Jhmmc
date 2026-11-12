@@ -191,8 +191,15 @@ PAGE_GROUPS.push((view) => ({
     // so, and open the chart by itself as soon as it's ready.
     // (Anything without a chart in it counts as not ready yet.)
     while (!Array.isArray(data?.frames)) {
-      box.innerHTML = html`<div class="chart-wait"><p><b>Getting the latest sea forecast…</b><br>
-        This takes a few minutes after an update. The chart opens by itself when it's ready.</p></div>`;
+      // If the forecast service turned the server away, say why and when it tries again.
+      const r = data?.refused;
+      const again = r && new Date(r.retryAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      box.innerHTML = r && !data.fetching
+        ? html`<div class="chart-wait"><p><b>The forecast service is busy.</b><br>
+          ${r.daily ? 'Its free daily allowance has run out for today.' : r.hourly ? 'Its free allowance for this hour has run out.' : `It said: ${r.reason}`}<br>
+          The chart will try again at ${again} and open by itself.</p></div>`
+        : html`<div class="chart-wait"><p><b>Getting the latest sea forecast…</b><br>
+          This takes a few minutes after an update. The chart opens by itself when it's ready.</p></div>`;
       await wait(20000);
       if (!view.isConnected) return;
       try { data = await api('/currents'); } catch { /* try again in a moment */ }

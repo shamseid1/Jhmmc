@@ -29,7 +29,11 @@ module.exports = (ctx) => {
       res.set('Cache-Control', 'public, max-age=900').json(await currents.get());
     } catch (err) {
       // Not ready yet (just after an update): said at once, and the page asks again by itself.
-      if (err.preparing) return res.set('Cache-Control', 'no-store').json({ preparing: true, message: err.message });
+      if (err.preparing) {
+        const e = err.lastError;
+        return res.set('Cache-Control', 'no-store').json({ preparing: true, message: err.message, fetching: err.fetching,
+          refused: e ? { daily: /daily/i.test(e.message), hourly: /hourly/i.test(e.message), reason: e.message.replace(/^Currents \d+: /, ''), retryAt: new Date(e.retryAt).toISOString() } : null });
+      }
       console.warn(`Currents failed: ${err.message}`);
       res.status(503).json({ error: 'The currents map is not available right now. Try again in a few minutes.' });
     }
