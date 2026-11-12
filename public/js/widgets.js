@@ -464,16 +464,15 @@ function hotspotCanvas(g, f, land) {
   fillLand(ctx, land, R.toXY);
   return cv;
 }
-// The patches' outlines: where the score crosses the hotspot line, found on a grid four times
-// finer than the forecast's (marching squares), as short line pieces; none over land.
-function hotspotLines(g, f, land) {
+// Lines where a value crosses a level (marching squares), traced on a grid k times finer than
+// the forecast's, as short line pieces; none over land. For the hotspots' outlines and the
+// temperature lines.
+function levelLines(g, f, key, level, land, k = 4, onLand = landTest(land)) {
   const at = sampler(g, f);
-  const lim = hotspotLimit(f);
-  const k = 4; const step = g.step / k;
+  const step = g.step / k;
   const nx = (g.nx - 1) * k + 1; const ny = (g.ny - 1) * k + 1;
   const val = new Float32Array(nx * ny);
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = at(g.south + j * step, g.west + i * step, 'fish'); val[j * nx + i] = v == null ? NaN : v - lim; }
-  const onLand = landTest(land);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = at(g.south + j * step, g.west + i * step, key); val[j * nx + i] = v == null ? NaN : v - level; }
   const segs = [];
   const cross = (i0, j0, i1, j1) => { const a = val[j0 * nx + i0]; const b = val[j1 * nx + i1]; const t = a / (a - b); return [g.south + (j0 + (j1 - j0) * t) * step, g.west + (i0 + (i1 - i0) * t) * step]; };
   for (let j = 0; j < ny - 1; j++) {
@@ -493,6 +492,36 @@ function hotspotLines(g, f, land) {
   }
   return segs;
 }
+const hotspotLines = (g, f, land) => levelLines(g, f, 'fish', hotspotLimit(f), land);
+// The water temperature's lines (isotherms): every half degree (or every degree Fahrenheit),
+// each with its temperature; the whole degrees bolder.
+function isotherms(g, f, land) {
+  const xs = f.sst.filter((v) => v != null);
+  if (!xs.length) return [];
+  const F = unit('temp') !== '°C';
+  const toLevel = (n) => (F ? ((n - 32) * 5) / 9 : n);
+  const lo = F ? Math.ceil((Math.min(...xs) * 9) / 5 + 32) : Math.ceil(Math.min(...xs) * 2) / 2;
+  const hi = F ? Math.floor((Math.max(...xs) * 9) / 5 + 32) : Math.floor(Math.max(...xs) * 2) / 2;
+  const onLand = landTest(land);
+  const out = [];
+  for (let n = lo; n <= hi + 1e-9; n += F ? 1 : 0.5) {
+    const segs = levelLines(g, f, 'sst', toLevel(n), land, 3, onLand);
+    if (segs.length) out.push({ label: F ? `${n}°` : `${n.toFixed(1)}°`, bold: F ? n % 2 === 0 : n % 1 === 0, segs });
+  }
+  return out;
+}
+// Distance (nautical miles) and bearing (degrees true) from one spot to another.
+function navTo([lat1, lng1], [lat2, lng2]) {
+  const r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r; const dLng = (lng2 - lng1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLng / 2) ** 2;
+  const nm = 2 * 3440.065 * Math.asin(Math.sqrt(a));
+  const y = Math.sin(dLng) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos(dLng);
+  const deg = ((Math.atan2(y, x) / r) + 360) % 360;
+  return { nm, deg };
+}
+const navTxt = (from, to) => { const { nm, deg } = navTo(from, to); return `${nm < 10 ? nm.toFixed(1) : Math.round(nm)} nm · ${String(Math.round(deg) % 360).padStart(3, '0')}°`; };
 // Whether a point is on land (the coastline's rings; each ring's box checked first).
 function landTest(land) {
   const rings = (land || []).map((r) => {

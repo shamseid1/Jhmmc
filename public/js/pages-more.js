@@ -179,6 +179,12 @@ PAGE_GROUPS.push((view) => ({
         <button type="button" class="chart-tool" data-zoom="-1" aria-label="Zoom out">${raw(icon('minus'))}</button>
         <button type="button" class="chart-tool" data-locate aria-label="My position">${raw(icon('locate'))}</button>
       </div>
+      <form class="chart-panel spot-form" id="spot-form" hidden>
+        <div class="panel-head"><b>Save this spot</b><button type="button" class="chart-x" data-close-spot aria-label="Close">${raw(icon('close'))}</button></div>
+        <p class="spot-where" id="spot-where"></p>
+        <input name="name" maxlength="60" placeholder="A name, e.g. The drop-off" autocomplete="off" required>
+        <button type="submit" class="spot-save">Save</button>
+      </form>
       <div class="chart-panel" id="chart-list" hidden>
         <div class="panel-head"><b>Your fish</b><button type="button" class="chart-x" data-close-list aria-label="Close">${raw(icon('close'))}</button></div>
         <ul class="catch-list" id="catch-list"></ul>
@@ -189,9 +195,14 @@ PAGE_GROUPS.push((view) => ({
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
+          <label><span>Saved spots<small>${state.me?.teamId ? 'Your crew\'s. ' : ''}Press and hold the map to save one.</small></span><input type="checkbox" class="switch" data-show="spots" ${saved.spots === false ? '' : 'checked'}></label>
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
         <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
+        <div class="panel-head catches-head"><b>No signal at sea</b></div>
+        <p class="offline-note">The forecast, your fish and spots, and the contours you've looked at are kept on this phone each time.
+          Save all the contours now (about 10 MB), before going out:</p>
+        <button type="button" class="spot-save" data-save-offline>Save the chart for no signal</button>
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
@@ -209,7 +220,7 @@ PAGE_GROUPS.push((view) => ({
     const remember = () => {
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
-        localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), regional: on('regional'), cf,
+        localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -240,6 +251,14 @@ PAGE_GROUPS.push((view) => ({
     // empty grey around the map), and the map stays around West Africa.
     const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, bounceAtZoomLimits: false,
       maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 8);
+    // The map's layers, bottom to top over the sea's colours (400): the hotspot outlines and
+    // temperature lines (420), the moving lines (450), today's track (605), your fish, spots and
+    // position (610). Made at once, so nothing is put on a layer that isn't there yet.
+    for (const [name, z] of [['outlines', 420], ['track', 605], ['pins', 610]]) {
+      const pane = map.createPane(name);
+      pane.style.zIndex = z;
+      if (name !== 'pins') pane.style.pointerEvents = 'none';
+    }
     // The map's credit (Esri's terms): small, bottom left, just above the time strip.
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
     const bar = view.querySelector('.chart-bottom');
@@ -268,16 +287,54 @@ PAGE_GROUPS.push((view) => ({
     }));
     // The buttons down the side, as on a plotter: zoom, and the map on where you are.
     view.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => map.setZoom(map.getZoom() + Number(b.dataset.zoom))));
+    // ---- where you are, and today's track ----
+    // The blue button follows you (the dot moves with the boat) and draws today's track; tap it
+    // again to stop. The track is kept on this phone for the day.
+    const HOME = [MAP_PLACES[0].lat, MAP_PLACES[0].lng]; // Marshall: distances are from here too
+    let myPos = null;
     let me = null;
-    view.querySelector('[data-locate]').addEventListener('click', () => {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const at0 = [pos.coords.latitude, pos.coords.longitude];
-        me?.remove();
-        me = L.circleMarker(at0, { radius: 7, weight: 3, color: '#fff', fillColor: '#1a73e8', fillOpacity: 1 }).addTo(map);
-        map.setView(at0, Math.max(map.getZoom(), 10));
-      }, () => toast('Your position isn\'t available. Check that location is on for the app.'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    let watch = null;
+    const today = () => new Date().toISOString().slice(0, 10);
+    let track = { date: today(), pts: [] };
+    try { const t = JSON.parse(localStorage.getItem('chart-track') || 'null'); if (t?.date === today()) track = t; } catch { /* none */ }
+    // Drawn once it has two points (an empty line upsets the map).
+    const trackLine = L.polyline(track.pts, { pane: 'track', color: '#00e5ff', weight: 3, opacity: 0.9, interactive: false });
+    const showTrack = () => { if (track.pts.length > 1 && !map.hasLayer(trackLine)) trackLine.addTo(map); };
+    showTrack();
+    const locBtn = view.querySelector('[data-locate]');
+    const place = (pos, centre) => {
+      myPos = [pos.coords.latitude, pos.coords.longitude];
+      if (!me) me = L.circleMarker(myPos, { pane: 'pins', radius: 8, weight: 3, color: '#fff', fillColor: '#1a73e8', fillOpacity: 1, interactive: false }).addTo(map);
+      else me.setLatLng(myPos);
+      if (centre) map.setView(myPos, Math.max(map.getZoom(), 10));
+      // A point on the track every 25 m or so (not every small wobble of the GPS).
+      const last = track.pts.at(-1);
+      if (track.date !== today()) track = { date: today(), pts: [] };
+      if (!last || navTo(last, myPos).nm > 0.0135) {
+        track.pts.push([+myPos[0].toFixed(5), +myPos[1].toFixed(5)]);
+        trackLine.setLatLngs(track.pts);
+        showTrack();
+        try { localStorage.setItem('chart-track', JSON.stringify(track)); } catch { /* not kept */ }
+      }
+    };
+    const stopFollowing = () => { if (watch != null) navigator.geolocation.clearWatch(watch); watch = null; locBtn.classList.remove('on'); };
+    locBtn.addEventListener('click', () => {
+      if (watch != null) return stopFollowing();
+      locBtn.classList.add('on');
+      let first = true;
+      watch = navigator.geolocation.watchPosition((pos) => { place(pos, first); first = false; },
+        // A slow fix (common at sea) isn't a reason to stop; only location being refused is.
+        (err) => { if (err?.code === 1) { stopFollowing(); toast('Your position isn\'t available. Check that location is on for the app.'); } },
+        { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 });
     });
+    window.addEventListener('hashchange', stopFollowing, { once: true });
+    // From Marshall, and from you when the app knows where you are.
+    const navRows = (to) => [['From Marshall', navTxt(HOME, to)], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
     map.on('click', () => openLayers(false));
+    // Before the forecast is in (or without it), a tap still gives the distances.
+    const earlyTap = (e) => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
+      .setContent(`<dl>${navRows([e.latlng.lat, e.latlng.lng]).map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+    map.on('click', earlyTap);
     // ---- the catches: your fish (exact spots) and the region's (10 km circles) ----
     // One set of filters for both: year, species and month.
     let mySpots = [];
@@ -289,16 +346,16 @@ PAGE_GROUPS.push((view) => ({
     const shownFish = () => mySpots.filter((x) => (!cf.season || seasonOf(x.date) === cf.season) && (!cf.species || x.species === cf.species)
       && (!cf.month || Number(x.date.slice(5, 7)) === Number(cf.month)));
     // Your fish over everything on the sea (the region's circles, the moving lines, outlines).
-    if (!map.getPane('pins')) map.createPane('pins').style.zIndex = 610;
     const drawFish = () => {
       overlays.fish?.remove();
       pins.clear();
       const list = shownFish();
       overlays.fish = L.layerGroup(list.map((x) => {
-        const pin = L.circleMarker([x.lat, x.lng], { pane: 'pins', radius: 6, weight: 2, color: '#fff', fillColor: x.released ? '#3fcf8e' : '#1a73e8', fillOpacity: 1 })
-          .bindPopup(`<dl><dt>${esc(x.species)}</dt><dd>${x.weightKg ? `${x.estimate ? '~' : ''}${esc(fmtWeight(x.weightKg))}` : ''}${x.released ? ' released' : ''}</dd>
+        const pin = L.circleMarker([x.lat, x.lng], { pane: 'pins', bubblingMouseEvents: false, radius: 6, weight: 2, color: '#fff', fillColor: x.released ? '#3fcf8e' : '#1a73e8', fillOpacity: 1 })
+          .bindPopup(() => `<dl><dt>${esc(x.species)}</dt><dd>${x.weightKg ? `${x.estimate ? '~' : ''}${esc(fmtWeight(x.weightKg))}` : ''}${x.released ? ' released' : ''}</dd>
             <dt>Date</dt><dd>${esc(fmtDate(x.date))}</dd>${x.boat ? `<dt>Boat</dt><dd>${esc(x.boat)}</dd>` : ''}
-            ${x.depthM != null ? `<dt>Depth</dt><dd>${esc(estTxt(depthTxt(x.depthM)))}</dd>` : ''}${x.waterC != null ? `<dt>Water</dt><dd>${esc(estTxt(tempTxt(x.waterC)))}</dd>` : ''}</dl>
+            ${x.depthM != null ? `<dt>Depth</dt><dd>${esc(estTxt(depthTxt(x.depthM)))}</dd>` : ''}${x.waterC != null ? `<dt>Water</dt><dd>${esc(estTxt(tempTxt(x.waterC)))}</dd>` : ''}
+            ${navRows([x.lat, x.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
             ${fishLink(x) ? `<a class="pop-link" href="${fishLink(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'} ›</a>` : ''}`, { className: 'chart-pop' });
         pins.set(x, pin);
         return pin;
@@ -332,7 +389,7 @@ PAGE_GROUPS.push((view) => ({
       const most = Math.max(1, ...grid.cells.map((c) => c.fish));
       overlays.regional?.remove();
       overlays.regional = L.layerGroup(grid.cells.map((c) => L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2],
-        { radius: 11000, color: '#fff', weight: 1, fillColor: '#ffd166', fillOpacity: 0.2 + 0.5 * (c.fish / most) })
+        { radius: 11000, bubblingMouseEvents: false, color: '#fff', weight: 1, fillColor: '#ffd166', fillOpacity: 0.2 + 0.5 * (c.fish / most) })
         .bindPopup(`<dl><dt>Fish</dt><dd>${c.fish}</dd><dt>Boats</dt><dd>${c.boats}</dd></dl>`, { className: 'chart-pop' }))).addTo(map);
       filters();
     };
@@ -381,6 +438,81 @@ PAGE_GROUPS.push((view) => ({
       // The filters' choices, whether or not the region's circles are on.
       api('/outings/grid?season=all&month=all').then((g) => { choices = g; filters(); }).catch(() => {});
     }
+    // ---- save the chart for no signal: every contour tile to zoom 10 (the zooms used at sea),
+    // with the forecast and your fish (kept by the app as they load) ----
+    view.querySelector('[data-save-offline]')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      try {
+        const { charts } = await api('/charts');
+        const urls = [];
+        const tileXY = (lat, lng, z) => { const n = 2 ** z; const r = (lat * Math.PI) / 180; return [Math.floor(((lng + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)]; };
+        for (const c of charts.filter((x) => x.cleanTiles)) {
+          for (let z = 8; z <= Math.min(10, c.maxZoom ?? 10); z++) {
+            const [x0, y0] = tileXY(c.bounds.north, c.bounds.west, z); const [x1, y1] = tileXY(c.bounds.south, c.bounds.east, z);
+            for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.push(c.cleanTiles.replace('{z}', z).replace('{x}', x).replace('{y}', y));
+          }
+        }
+        urls.push('/api/currents', '/api/me/spots', '/api/me/waypoints', '/api/chart/fishing', `/api/sea?lat=${HOME[0]}&lng=${HOME[1]}`);
+        btn.disabled = true;
+        let done = 0;
+        const next = async () => { while (urls.length) { const u = urls.shift(); await fetch(u, { credentials: 'same-origin' }).catch(() => {}); done += 1; if (done % 20 === 0) btn.textContent = `Saving… ${done}`; } };
+        const total = urls.length;
+        await Promise.all([next(), next(), next(), next(), next(), next()]);
+        btn.textContent = `Saved for no signal (${total} pieces)`;
+        try { localStorage.setItem('chart-saved-at', String(Date.now())); } catch { /* fine */ }
+      } catch (err) {
+        btn.disabled = false;
+        toast(err.message || 'Couldn\'t save just now. Try again with signal.');
+      }
+    });
+    // ---- saved spots: press and hold the map to save one; your crew's are shown ----
+    let spots = [];
+    const spotIcon = L.divIcon({ className: 'wp-icon', iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -8] });
+    const drawSpots = () => {
+      overlays.spots?.remove();
+      overlays.spots = L.layerGroup(spots.map((w) => L.marker([w.lat, w.lng], { pane: 'pins', icon: spotIcon, bubblingMouseEvents: false, keyboard: false })
+        .bindTooltip(w.name, { permanent: true, direction: 'right', className: 'wp-label', offset: [8, 0] })
+        .bindPopup(() => {
+          const div = document.createElement('div');
+          div.innerHTML = `<dl><dt>${esc(w.name)}</dt><dd></dd>${w.addedBy ? `<dt>Saved by</dt><dd>${esc(w.addedBy)}</dd>` : ''}
+            <dt>Position</dt><dd>${esc(fmtCoords(w.lat, w.lng))}</dd>${navRows([w.lat, w.lng]).map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+            ${w.canDelete ? '<button type="button" class="pop-link pop-del">Remove this spot</button>' : ''}`;
+          div.querySelector('.pop-del')?.addEventListener('click', async () => {
+            if (!confirm(`Remove "${w.name}"?`)) return;
+            try { await api(`/me/waypoints/${w.id}`, { method: 'DELETE' }); spots = spots.filter((x) => x !== w); drawSpots(); map.closePopup(); } catch (err) { toast(err.message); }
+          });
+          return div;
+        }, { className: 'chart-pop' })));
+      if (view.querySelector('[data-show=spots]')?.checked) overlays.spots.addTo(map);
+    };
+    if (state.me) {
+      api('/me/waypoints').then(({ waypoints }) => { spots = waypoints; drawSpots(); }).catch(() => {});
+      const form = view.querySelector('#spot-form');
+      let where = null;
+      // Press and hold (a right click with a mouse): the spot under your finger.
+      map.on('contextmenu', (e) => {
+        where = [e.latlng.lat, e.latlng.lng];
+        openLayers(false);
+        view.querySelector('#chart-list').hidden = true;
+        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt(HOME, where)} from Marshall`;
+        form.reset();
+        form.hidden = false;
+        form.name.focus();
+      });
+      view.querySelector('[data-close-spot]').addEventListener('click', () => { form.hidden = true; });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const { waypoint } = await api('/me/waypoints', { method: 'POST', body: { name: form.name.value, lat: where[0], lng: where[1] } });
+          spots.unshift({ ...waypoint, addedBy: state.me.nickname || state.me.name });
+          const sw = view.querySelector('[data-show=spots]');
+          if (!sw.checked) { sw.checked = true; remember(); }
+          drawSpots();
+          form.hidden = true;
+          buzz('light');
+        } catch (err) { toast(err.message); }
+      });
+    }
     syncContours();
     // Until the forecast is here: the chart alone (with its contours), a note on top, and the
     // forecast's layers and time strip waiting.
@@ -418,6 +550,11 @@ PAGE_GROUPS.push((view) => ({
       try { data = await api('/currents'); } catch { /* try again in a moment */ }
     }
     waiting(false);
+    // Without signal, the saved forecast is shown: say from when.
+    if (data.updatedAt && (!navigator.onLine || Date.now() - data.updatedAt > 7 * 3600e3)) {
+      say(html`<b>${navigator.onLine ? 'Forecast' : 'No signal: the forecast'} from ${new Date(data.updatedAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.</b> It updates when there's signal.`);
+      setTimeout(() => { note.hidden = true; }, 8000);
+    }
     // The waves' direction as a vector (where they go), worked out once per frame.
     for (const f of data.frames) {
       if (!f.wh || f.xu) continue;
@@ -496,6 +633,8 @@ PAGE_GROUPS.push((view) => ({
     };
     let outline = null;
     const outlines = new Map(); // hour -> the hotspots' line pieces
+    let isoLayer = null;
+    const isoCache = new Map(); // hour -> the temperature lines
     let isPlaying = false;
     // While playing, the next hour's picture is drawn ahead, so each step is ready when it comes.
     const ahead = (h) => {
@@ -514,13 +653,13 @@ PAGE_GROUPS.push((view) => ({
       } else lines = null;
       labels?.remove(); labels = null;
       outline?.remove(); outline = null;
+      isoLayer?.remove(); isoLayer = null;
       const coast = L1.overLand ? null : land;
       const key = `${layer}|${hour}|${coast ? 'cut' : 'whole'}`;
       if (L1.hot) {
         putPic(key, () => hotspotCanvas(data, f, land), 1, 'hot-image');
         const lk = `${hour}|${land ? 1 : 0}`;
         if (!outlines.has(lk)) outlines.set(lk, hotspotLines(data, f, land));
-        if (!map.getPane('outlines')) { map.createPane('outlines').style.zIndex = 420; map.getPane('outlines').style.pointerEvents = 'none'; }
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
@@ -528,6 +667,17 @@ PAGE_GROUPS.push((view) => ({
         // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
         // A little see-through, so the contours show under the colours.
         putPic(key, () => fieldCanvas(data, f, L1.colour, L1.stops, coast), 0.85, 'field-image');
+        // On the water temperature: its lines every half degree, like a fishing chart's isotherms.
+        if (layer === 'sst') {
+          const ik = `${hour}|${land ? 1 : 0}|${unit('temp')}`;
+          if (!isoCache.has(ik)) isoCache.set(ik, isotherms(data, f, land));
+          isoLayer = L.layerGroup(isoCache.get(ik).flatMap(({ label, bold, segs }) => {
+            const line = L.polyline(segs, { pane: 'outlines', color: '#fff', weight: bold ? 2.2 : 1.2, opacity: bold ? 0.95 : 0.7, interactive: false, smoothFactor: 0 });
+            if (!bold || !segs.length) return [line];
+            const [p, q] = segs[Math.floor(segs.length / 2)];
+            return [line, L.tooltip({ permanent: true, direction: 'center', className: 'iso-label', interactive: false }).setLatLng([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]).setContent(label)];
+          })).addTo(map);
+        }
       } else putPic(null);
       if (isPlaying && hour + 1 < HOURS) setTimeout(() => ahead(hour + 1), 30);
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -559,9 +709,26 @@ PAGE_GROUPS.push((view) => ({
       if (days.at(-1)?.key !== key) days.push({ key, d, hours: [] });
       days.at(-1).hours.push({ h: d.getHours(), label: d.toLocaleTimeString(undefined, { hour: 'numeric' }) });
     }
-    tl.innerHTML = html`<span class="tl-pad"></span>${days.map((day, n) => raw(html`<div class="tl-day${n % 2 ? ' alt' : ''}" style="width:${day.hours.length * PX}px">
-      <b>${day.d.toLocaleDateString(undefined, { weekday: 'long' })} ${day.d.getDate()}</b>
-      <span class="tl-hours">${day.hours.map(({ h, label }) => raw(h % 3 ? '<i></i>' : html`<i class="big"><em>${label}</em></i>`))}</span></div>`))}<span class="tl-pad"></span>`;
+    tl.innerHTML = html`<span class="tl-pad"></span><div class="tl-track">${days.map((day, n) => raw(html`<div class="tl-day${n % 2 ? ' alt' : ''}" style="width:${day.hours.length * PX}px" data-day="${day.key}">
+      <b>${day.d.toLocaleDateString(undefined, { weekday: 'long' })} ${day.d.getDate()}<span class="tl-moon"></span></b>
+      <span class="tl-hours">${day.hours.map(({ h, label }) => raw(h % 3 ? '<i></i>' : html`<i class="big"><em>${label}</em></i>`))}</span></div>`))}<div class="tl-marks"></div></div><span class="tl-pad"></span>`;
+    // On the strip, off Marshall: high and low water (▲ ▼), sunrise and sunset (the sun, half
+    // up or down), and each day's moon. From Sea conditions' forecast for Marshall.
+    const MOONS = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+    api(`/sea?lat=${HOME[0]}&lng=${HOME[1]}`).then((sea) => {
+      const st = sea?.strip;
+      if (!st || !view.isConnected) return;
+      const hourOf = (local) => (Date.parse(`${local}:00Z`) - st.utcOffset * 1000 - t0) / 3600e3;
+      const marks = [
+        ...st.turns.map((t) => ({ h: hourOf(t.time), cls: t.type === 'high' ? 'hi' : 'lo', text: t.type === 'high' ? '▲' : '▼', title: `${t.type === 'high' ? 'High' : 'Low'} water ${t.time.slice(11, 16)}` })),
+        ...st.days.flatMap((d) => [d.rise && { h: hourOf(d.rise), cls: 'sun', text: '◓', title: `Sunrise ${d.rise.slice(11, 16)}` }, d.set && { h: hourOf(d.set), cls: 'sun', text: '◒', title: `Sunset ${d.set.slice(11, 16)}` }]),
+      ].filter((m) => m && m.h >= 0 && m.h <= HOURS - 1);
+      view.querySelector('.tl-marks').innerHTML = marks.map((m) => html`<i class="${m.cls}" style="left:${m.h * PX + PX / 2}px" title="${m.title}">${m.text}</i>`).join('');
+      for (const d of st.days) {
+        const el = [...view.querySelectorAll('.tl-day')].find((x) => new Date(`${d.date}T12:00:00`).toDateString() === x.dataset.day);
+        if (el && d.moon) el.querySelector('.tl-moon').textContent = ` ${MOONS[Math.round((d.moon.age / 29.53) * 8) % 8]} ${d.moon.lit}%`;
+      }
+    }).catch(() => {});
     const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
     pads();
     tl.scrollLeft = hour * PX;
@@ -608,14 +775,17 @@ PAGE_GROUPS.push((view) => ({
       flow.reseed();
     }));
     // Tap the sea: everything at that spot.
+    map.off('click', earlyTap);
     map.on('click', (e) => {
-      if (!at) return;
       const { lat, lng } = e.latlng;
+      const navOnly = () => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
+        .setContent(`<dl>${navRows([lat, lng]).map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+      if (!at) return navOnly();
       const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
       const t = at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
       const f = cur;
-      if (u == null && wu == null) return;
+      if (u == null && wu == null) return navOnly();
       // Directions and reasons: the nearest grid point's (they don't blend).
       const i0 = Math.round((lng - data.west) / data.step); const j0 = Math.round((lat - data.south) / data.step);
       const fish = at(lat, lng, 'fish');
@@ -634,6 +804,7 @@ PAGE_GROUPS.push((view) => ({
         t != null && ['Water', estTxt(tempTxt(t))],
         wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn from ${pt(deg(wu, wv) + 180)}`],
         wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` from ${pt(wd)}` : ''}`],
+        ...navRows([lat, lng]),
       ].filter(Boolean);
       L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
         .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);

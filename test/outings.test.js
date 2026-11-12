@@ -201,3 +201,38 @@ test('the regional log: one line per outing, blank days too, and the season at a
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('saved spots on the fishing chart: the crew\'s together, never anyone else\'s', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const { createApp } = require('../src/app');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-wp-'));
+  const srv = createApp({ dbFile: ':memory:', uploadDir: path.join(tmp, 'up'), adminEmail: 'boss@example.com' }).listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const at = `http://127.0.0.1:${srv.address().port}/api`;
+  const as = () => {
+    let cookie = '';
+    return async (method, url, body) => {
+      const res = await fetch(at + url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body && JSON.stringify(body) });
+      const set = res.headers.get('set-cookie');
+      if (set) cookie = set.split(';')[0];
+      return { status: res.status, body: await res.json().catch(() => ({})) };
+    };
+  };
+  try {
+    const ana = as(); const ben = as();
+    await ana('POST', '/auth/register', { acceptRules: true, firstName: 'Ana', lastName: 'K', email: 'ana@example.com', password: 'password1' });
+    await ben('POST', '/auth/register', { acceptRules: true, firstName: 'Ben', lastName: 'L', email: 'ben@example.com', password: 'password1' });
+    assert.equal((await as()('GET', '/me/waypoints')).status, 401);
+    assert.equal((await ana('POST', '/me/waypoints', { name: '', lat: 6, lng: -10.5 })).status, 400, 'a name');
+    assert.equal((await ana('POST', '/me/waypoints', { name: 'Reef', lat: 200, lng: -10.5 })).status, 400, 'on the map');
+    const w = (await ana('POST', '/me/waypoints', { name: 'The drop-off', lat: 6.12345678, lng: -10.5 })).body.waypoint;
+    assert.equal(w.name, 'The drop-off');
+    assert.deepEqual((await ana('GET', '/me/waypoints')).body.waypoints.map((x) => [x.name, x.lat, x.canDelete]), [['The drop-off', 6.12346, true]]);
+    assert.equal((await ben('GET', '/me/waypoints')).body.waypoints.length, 0, 'not someone else\'s');
+    assert.equal((await ben('DELETE', `/me/waypoints/${w.id}`)).status, 404);
+    assert.equal((await ana('DELETE', `/me/waypoints/${w.id}`)).status, 200);
+    assert.equal((await ana('GET', '/me/waypoints')).body.waypoints.length, 0);
+  } finally {
+    srv.close();
+  }
+});

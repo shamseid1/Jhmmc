@@ -1330,7 +1330,7 @@ body.chart-mode main > div { animation: none; }
 .tl { display: flex; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; outline-offset: -2px; }
 .tl::-webkit-scrollbar { display: none; }
 .tl-pad { flex: none; }
-.tl-day { flex: none; position: relative; height: 48px; background: rgba(255, 255, 255, 0.10); box-shadow: inset 1px 0 rgba(255, 255, 255, 0.3); }
+.tl-day { flex: none; position: relative; height: 56px; background: rgba(255, 255, 255, 0.10); box-shadow: inset 1px 0 rgba(255, 255, 255, 0.3); }
 .tl-day.alt { background: rgba(255, 255, 255, 0.04); }
 .tl-day b { position: sticky; left: 0; display: inline-block; padding: 3px 8px 0; font-size: 12px; white-space: nowrap; }
 .tl-hours { position: absolute; left: 0; right: 0; bottom: 0; display: flex; height: 26px; align-items: flex-end; }
@@ -1418,3 +1418,24 @@ body.chart-mode main > div { animation: none; }
 .chart .leaflet-container { background: #0b2340; } /* the sea's colour wherever a tile isn't drawn yet */
 .catch-filters[hidden] { display: none; }
 .catches-head { border-top: 1px solid rgba(255, 255, 255, 0.12); margin-top: 14px; padding-top: 4px; }
+/* The time strip's tides (▲ high, ▼ low), sunrise and sunset, and moon. */
+.tl-track { position: relative; display: flex; flex: none; }
+.tl-marks { position: absolute; left: 0; right: 0; top: 18px; height: 12px; pointer-events: none; }
+.tl-marks i { position: absolute; transform: translateX(-50%); font-style: normal; font-size: 10px; line-height: 12px; }
+.tl-marks .hi, .tl-marks .lo { color: #7cc7ff; }
+.tl-marks .sun { color: #ffd166; font-size: 11px; }
+.tl-moon { font-weight: 600; opacity: 0.85; margin-left: 2px; }
+.offline-note { margin: 2px 0 10px; font-size: 13px; color: rgba(255, 255, 255, 0.7); }
+.spot-save { width: 100%; padding: 12px; border: 0; border-radius: 12px; background: #fff; color: #0a1a33; font: inherit; font-weight: 800; justify-content: center; }
+.spot-save:disabled { opacity: 0.7; }
+.spot-form { display: grid; gap: 10px; }
+.spot-form input { padding: 12px; border-radius: 10px; border: 0; font: inherit; font-size: 16px; }
+.spot-where { margin: 0; font-size: 13px; color: rgba(255, 255, 255, 0.7); }
+.wp-icon { width: 16px; height: 16px; background: #ffd166; border: 2px solid #0a1a33; transform: rotate(45deg); border-radius: 3px; box-shadow: 0 0 0 2px #fff; }
+.leaflet-tooltip.wp-label { background: rgba(10, 26, 51, 0.85); color: #fff; border: 0; border-radius: 6px; padding: 1px 6px; font-weight: 700; font-size: 11px; box-shadow: none; }
+.leaflet-tooltip.wp-label::before { display: none; }
+.leaflet-tooltip.iso-label { background: none; border: 0; box-shadow: none; color: #fff; font-weight: 800; font-size: 10px; padding: 0; text-shadow: 0 0 3px rgba(0, 0, 0, 0.9); }
+.leaflet-tooltip.iso-label::before { display: none; }
+.chart-tool.on { background: #fff; color: #1a73e8; }
+button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
+.pop-del { color: #ff8a8a !important; }

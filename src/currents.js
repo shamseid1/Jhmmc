@@ -207,7 +207,7 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
         if (wait) await p;
       }
       // Never an old forecast: past two missed refreshes, none at all (the page says why).
-      if (cached && Date.now() - cached.at < maxAgeMs) return cached.data;
+      if (cached && Date.now() - cached.at < maxAgeMs) return { ...cached.data, updatedAt: cached.at }; // when it was fetched (for a phone without signal)
       throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true, lastError, fetching: !!pending });
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).

@@ -132,6 +132,14 @@ function summarize(w, m, now = new Date()) {
     solunar: solunar(noon, mo.age),
     tide: { turns, curve: tideCurve },
     days,
+    // For the fishing chart's time strip: every high and low water from today on, each day's
+    // sunrise and sunset, and the moon at noon each day (the place's local times; utcOffset in
+    // seconds turns them into the time anywhere).
+    strip: {
+      utcOffset: w.utc_offset_seconds || 0,
+      turns: tideTurns(m.hourly.time || [], sl).filter((t) => t.time.slice(0, 10) >= today),
+      days: d.time.map((day, k) => ({ date: day, rise: d.sunrise?.[k] ?? null, set: d.sunset?.[k] ?? null, moon: moon(new Date(`${day}T12:00:00Z`)) })),
+    },
   };
 }
 

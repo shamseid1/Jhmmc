@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v206';
+const CACHE = 'app-v208';
 const APP_FILES = [
   '/', '/index.html', '/styles.css',
   '/js/core.js', '/js/exports.js', '/js/widgets.js', '/js/cards.js', '/js/pages-feed.js', '/js/pages-board.js', '/js/pages-weigh.js', '/js/pages-log.js', '/js/pages-more.js', '/js/pages-officers.js', '/js/pages-account.js', '/js/main.js',
@@ -19,7 +19,8 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
+    // The fishing chart's own copies (its data and contour tiles) stay across app updates.
+    for (const key of await caches.keys()) if (key !== CACHE && key !== CHART_DATA && key !== CHART_TILES) await caches.delete(key);
     await self.clients.claim();
   })());
 });
@@ -30,10 +31,45 @@ self.addEventListener('activate', (event) => {
 // way, so the app (and Fish on) still opens at sea. Everything else (the API,
 // photos) goes straight through.
 const KEEP_API = ['/api/meta', '/api/me'];
+// The fishing chart at sea, without signal: its forecast, your fish, saved spots, the region's
+// catches and the tides are kept each time they come (the newest copy used when there's no
+// signal); its contour tiles are kept as they're seen (or all at once with "Save for no
+// signal"), from the copy first, as they don't change.
+const CHART_DATA = 'chart-data-v1';
+const CHART_TILES = 'chart-tiles-v1';
+const CHART_API = ['/api/currents', '/api/chart/fishing', '/api/charts', '/api/me/spots', '/api/me/waypoints', '/api/outings/grid', '/api/sea'];
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (/^\/api\/charts\/[^/]+\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CHART_TILES);
+      const copy = await cache.match(req, { ignoreSearch: false });
+      if (copy) return copy;
+      const res = await fetch(req);
+      if (res.ok) cache.put(req, res.clone()).catch(() => {});
+      return res;
+    })());
+    return;
+  }
+  if (CHART_API.includes(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CHART_DATA);
+      try {
+        const res = await fetch(req);
+        // Only a real forecast is kept (not "still being prepared"), so it never replaces one.
+        const keep = res.ok && (url.pathname !== '/api/currents' || Array.isArray((await res.clone().json().catch(() => null))?.frames));
+        if (keep) cache.put(req, res.clone()).catch(() => {});
+        return res;
+      } catch (err) {
+        const copy = await cache.match(req);
+        if (copy) return copy;
+        throw err;
+      }
+    })());
+    return;
+  }
   // Standalone pages (the privacy policy) aren't the app: straight through, never kept as it.
   if (url.pathname.startsWith('/privacy') || url.pathname.startsWith('/support') || url.pathname.startsWith('/help') || url.pathname.startsWith('/.well-known')) return;
   const page = req.mode === 'navigate';

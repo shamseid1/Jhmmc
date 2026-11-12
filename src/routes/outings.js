@@ -669,5 +669,38 @@ module.exports = (ctx) => {
     res.json({ years, year, spots: year ? spots.filter((x) => x.date.startsWith(year)) : spots });
   });
 
+  // ---- saved spots (the fishing chart's waypoints) ---------------------------
+  // The crew's together (anyone on the boat adds; whoever added it, the captain or an admin
+  // removes), or your own if you're not on a boat. Only they see them.
+  const mineOrCrew = (u) => (u.teamId ? { sql: 'w.team_id = ?', arg: u.teamId } : { sql: 'w.team_id IS NULL AND w.user_id = ?', arg: u.id });
+  api.get('/me/waypoints', auth.requireUser, (req, res) => {
+    const who = mineOrCrew(req.user);
+    const rows = db.prepare(`SELECT w.id, w.name, w.lat, w.lng, w.created_at AS createdAt, w.user_id AS userId,
+        COALESCE(NULLIF(u.nickname, ''), u.name) AS addedBy
+      FROM waypoints w LEFT JOIN users u ON u.id = w.user_id WHERE ${who.sql} ORDER BY w.created_at DESC`).all(who.arg);
+    const captain = req.user.teamId && db.prepare('SELECT 1 FROM teams WHERE id = ? AND captain_id = ?').get(req.user.teamId, req.user.id);
+    res.json({ waypoints: rows.map(({ userId, ...w }) => ({ ...w, canDelete: userId === req.user.id || !!captain || isAdminUser(req.user) })) });
+  });
+  api.post('/me/waypoints', auth.requireUser, (req, res) => {
+    const name = str(req.body?.name, 60);
+    const lat = Number(req.body?.lat); const lng = Number(req.body?.lng);
+    if (!name) return res.status(400).json({ error: 'Give the spot a name.' });
+    if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || req.body?.lat == null || req.body?.lng == null) return res.status(400).json({ error: 'That spot is not on the map.' });
+    const count = db.prepare(`SELECT COUNT(*) AS n FROM waypoints w WHERE ${mineOrCrew(req.user).sql}`).get(mineOrCrew(req.user).arg).n;
+    if (count >= 500) return res.status(400).json({ error: 'That\'s 500 saved spots: remove some first.' });
+    const id = db.prepare('INSERT INTO waypoints (team_id, user_id, name, lat, lng) VALUES (?, ?, ?, ?, ?)')
+      .run(req.user.teamId ?? null, req.user.id, name, Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5).lastInsertRowid;
+    res.status(201).json({ waypoint: { id: Number(id), name, lat, lng, canDelete: true } });
+  });
+  api.delete('/me/waypoints/:id', auth.requireUser, (req, res) => {
+    const w = db.prepare('SELECT * FROM waypoints WHERE id = ?').get(req.params.id);
+    const crew = w && (w.team_id ? w.team_id === req.user.teamId : w.user_id === req.user.id);
+    if (!crew) return res.status(404).json({ error: 'Spot not found.' });
+    const captain = w.team_id && db.prepare('SELECT 1 FROM teams WHERE id = ? AND captain_id = ?').get(w.team_id, req.user.id);
+    if (w.user_id !== req.user.id && !captain && !isAdminUser(req.user)) return res.status(403).json({ error: 'Only whoever saved it, or the captain, can remove it.' });
+    db.prepare('DELETE FROM waypoints WHERE id = ?').run(w.id);
+    res.json({ ok: true });
+  });
+
   return { bump };
 };
