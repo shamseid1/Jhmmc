@@ -208,7 +208,8 @@ PAGE_GROUPS.push((view) => ({
     // The map's credit (Esri's terms): small, bottom left, just above the time strip.
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
     const bar = view.querySelector('.chart-bottom');
-    const lift = () => box.style.setProperty('--bar-h', `${bar.hidden ? 0 : bar.offsetHeight}px`);
+    const chartEl = view.querySelector('.chart');
+    const lift = () => chartEl.style.setProperty('--bar-h', `${bar.hidden ? 0 : bar.offsetHeight}px`);
     new ResizeObserver(lift).observe(bar);
     lift();
     addSatellite(L, map, { fullScreen: true });
@@ -259,7 +260,7 @@ PAGE_GROUPS.push((view) => ({
     const waiting = (on) => {
       tlRow.hidden = on;
       view.querySelector('.chart-bottom').hidden = on;
-      box.style.setProperty('--bar-h', on ? '0px' : `${view.querySelector('.chart-bottom').offsetHeight}px`);
+      view.querySelector('.chart').style.setProperty('--bar-h', on ? '0px' : `${view.querySelector('.chart-bottom').offsetHeight}px`);
       view.querySelectorAll('[data-layer]').forEach((b) => { if (b.dataset.layer !== 'none') b.disabled = on; });
       if (!on) note.hidden = true;
     };
@@ -334,9 +335,45 @@ PAGE_GROUPS.push((view) => ({
     };
 
     let labels = null;
-    let image = null;
     let at = null;
     let lines = null;
+    // The pictures: each hour's drawn once (off to the side, made into a file without holding the
+    // screen up), kept for the hours seen, and put on the map only when it's ready, over the one
+    // before, which goes then: no blank moment and no flicker while the time moves.
+    const pics = new Map(); // key -> Promise of a picture URL
+    const picFor = (key, draw) => {
+      if (!pics.has(key)) {
+        pics.set(key, new Promise((ok) => draw().toBlob((b) => ok(b ? URL.createObjectURL(b) : null))));
+        if (pics.size > 150) { const [old] = pics.keys(); pics.get(old).then((u) => u && URL.revokeObjectURL(u)); pics.delete(old); }
+      }
+      return pics.get(key);
+    };
+    window.addEventListener('hashchange', () => { for (const p of pics.values()) p.then((u) => u && URL.revokeObjectURL(u)); pics.clear(); }, { once: true });
+    const imgBounds = raster(data, 1).bounds;
+    let shown = null; // the picture on the map
+    let ticket = 0;
+    const putPic = async (key, draw, opacity, className) => {
+      const mine = ++ticket;
+      if (!key) { shown?.remove(); shown = null; return; }
+      const url = await picFor(key, draw);
+      if (mine !== ticket || !url) return;
+      const next = L.imageOverlay(url, imgBounds, { opacity, className, interactive: false });
+      next.once('load', () => {
+        if (mine !== ticket) { next.remove(); return; }
+        shown?.remove();
+        shown = next;
+      });
+      next.addTo(map);
+    };
+    let outline = null;
+    const outlines = new Map(); // hour -> the hotspots' line pieces
+    let isPlaying = false;
+    // While playing, the next hour's picture is drawn ahead, so each step is ready when it comes.
+    const ahead = (h) => {
+      const L1 = LAYER[layer]; const f = frameAt(h); const coast = L1.overLand ? null : land;
+      if (L1.hot) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => hotspotCanvas(data, f, land));
+      else if (L1.colour) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(data, f, L1.colour, L1.stops, coast));
+    };
     const show = () => {
       const f = frameAt(hour);
       cur = f;
@@ -346,18 +383,24 @@ PAGE_GROUPS.push((view) => ({
         const [ku, kv, k] = L1.lines;
         lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
       } else lines = null;
-      image?.remove(); image = null;
       labels?.remove(); labels = null;
+      outline?.remove(); outline = null;
+      const coast = L1.overLand ? null : land;
+      const key = `${layer}|${hour}|${coast ? 'cut' : 'whole'}`;
       if (L1.hot) {
-        image = hotspotImage(L, data, f, land).addTo(map);
+        putPic(key, () => hotspotCanvas(data, f, land), 1, 'hot-image');
+        const lk = `${hour}|${land ? 1 : 0}`;
+        if (!outlines.has(lk)) outlines.set(lk, hotspotLines(data, f, land));
+        if (!map.getPane('outlines')) { map.createPane('outlines').style.zIndex = 420; map.getPane('outlines').style.pointerEvents = 'none'; }
+        outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
       } else if (L1.colour) {
-        // The wind blows over the land too (as on Windy); the sea's layers stop at the shore. On
-        // the chart the colours are see-through, so the contours show under them.
-        image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
-        image.setOpacity(0.85); // the contours still show through
-      }
+        // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
+        // A little see-through, so the contours show under the colours.
+        putPic(key, () => fieldCanvas(data, f, L1.colour, L1.stops, coast), 0.85, 'field-image');
+      } else putPic(null);
+      if (isPlaying && hour + 1 < HOURS) setTimeout(() => ahead(hour + 1), 30);
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       // The scale like Windy's: the unit, then each colour's value where it sits (every other
       // one when there are many).
@@ -407,12 +450,14 @@ PAGE_GROUPS.push((view) => ({
     // Play: hour by hour to 3 days ahead, round again from now; touching the strip stops it.
     const playBtn = view.querySelector('#cur-play');
     let playing = 0;
-    const stopPlay = () => { clearInterval(playing); playing = 0; playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play'); };
+    const stopPlay = () => { clearInterval(playing); playing = 0; isPlaying = false; playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play'); };
     tl.addEventListener('pointerdown', stopPlay);
     tl.addEventListener('wheel', stopPlay, { passive: true });
     playBtn.addEventListener('click', () => {
       if (playing) return stopPlay();
       playBtn.innerHTML = icon('pause'); playBtn.setAttribute('aria-label', 'Pause');
+      isPlaying = true;
+      ahead(hour + 1);
       playing = setInterval(() => {
         if (!view.isConnected) return stopPlay();
         const next = hour + 1 >= HOURS ? nowHour : hour + 1;

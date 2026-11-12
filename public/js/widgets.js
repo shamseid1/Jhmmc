@@ -328,30 +328,45 @@ function fillLand(ctx, land, toXY) {
   for (const ring of land || []) ring.forEach(([lat, lng], k) => { const [x, y] = toXY(lat, lng); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
   ctx.fill();
 }
-// The colour layer for one frame, smoothed between grid points and cut at the coast.
-function fieldImage(L, g, f, kind, stops, land) {
-  const at = sampler(g, f);
-  const S = 12; // pixels per grid step (a sharper coast when zoomed in)
+// A picture laid over the grid's area, pixel for pixel where the map puts it: columns evenly
+// spaced in longitude, rows evenly spaced as the map draws latitude (Web Mercator), each pixel
+// sampled at its centre. toXY places a point on the picture (for the coastline cut).
+const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+const mercLat = (y) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI;
+function raster(g, S) {
+  const north = g.south + (g.ny - 1) * g.step; const east = g.west + (g.nx - 1) * g.step;
   const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
+  const yN = mercY(north); const yS = mercY(g.south);
+  return {
+    w, h, bounds: [[g.south, g.west], [north, east]],
+    lngAt: (px) => g.west + ((px + 0.5) / w) * (east - g.west),
+    latAt: (py) => mercLat(yN - ((py + 0.5) / h) * (yN - yS)),
+    toXY: (lat, lng) => [((lng - g.west) / (east - g.west)) * w, ((yN - mercY(lat)) / (yN - yS)) * h],
+  };
+}
+// The colour layer for one hour as a canvas: smoothed between grid points, cut at the coast.
+function fieldCanvas(g, f, kind, stops, land) {
+  const at = sampler(g, f);
+  const R = raster(g, 12); // 12 pixels per grid step: a sharp coast when zoomed in
   const cv = document.createElement('canvas');
-  cv.width = w; cv.height = h;
+  cv.width = R.w; cv.height = R.h;
   const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(w, h);
-  for (let py = 0; py < h; py++) {
-    const lat = g.south + ((h - 1 - py) / S) * g.step; // north up
-    for (let px = 0; px < w; px++) {
-      const lng = g.west + (px / S) * g.step;
-      const v = FIELD_VALUE[kind](at, lat, lng);
+  const img = ctx.createImageData(R.w, R.h);
+  const lngs = Array.from({ length: R.w }, (_, px) => R.lngAt(px));
+  for (let py = 0; py < R.h; py++) {
+    const lat = R.latAt(py);
+    for (let px = 0; px < R.w; px++) {
+      const v = FIELD_VALUE[kind](at, lat, lngs[px]);
       if (v == null) continue;
       const [r, gg, b] = colourAt(stops, v);
-      img.data.set([r, gg, b, 235], (py * w + px) * 4);
+      const k = (py * R.w + px) * 4;
+      img.data[k] = r; img.data[k + 1] = gg; img.data[k + 2] = b; img.data[k + 3] = 235;
     }
   }
   ctx.putImageData(img, 0, 0);
   ctx.globalCompositeOperation = 'destination-out';
-  fillLand(ctx, land, (lat, lng) => [((lng - g.west) / g.step) * S, h - 1 - ((lat - g.south) / g.step) * S]);
-  return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
-    { opacity: 1, className: 'field-image', interactive: false });
+  fillLand(ctx, land, R.toXY);
+  return cv;
 }
 // The fishing chart: at each grid point, how promising the water looks, from what offshore
 // fishermen look for: a temperature break (warm and cool water meeting), the edge of a current
@@ -424,33 +439,74 @@ function hotspotLimit(f) {
   const xs = (f.fish || []).filter((v) => v != null).sort((a, b) => a - b);
   return xs.length ? Math.max(0.55, xs[Math.floor(xs.length * 0.88)]) : Infinity;
 }
-function hotspotImage(L, g, f, land) {
+// The patches' fill, a light see-through pink (the outline is drawn as lines, sharp at any zoom).
+function hotspotCanvas(g, f, land) {
   const at = sampler(g, f);
   const lim = hotspotLimit(f);
-  const S = 28; // finer than the colour layers: the outline is what you read
-  const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
-  const inside = new Uint8Array(w * h);
-  for (let py = 0; py < h; py++) {
-    const lat = g.south + ((h - 1 - py) / S) * g.step;
-    for (let px = 0; px < w; px++) { const v = at(lat, g.west + (px / S) * g.step, 'fish'); inside[py * w + px] = v != null && v >= lim ? 1 : 0; }
-  }
+  const R = raster(g, 8);
   const cv = document.createElement('canvas');
-  cv.width = w; cv.height = h;
+  cv.width = R.w; cv.height = R.h;
   const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(w, h);
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const k = py * w + px;
-      if (!inside[k]) continue;
-      const edge = px === 0 || py === 0 || px === w - 1 || py === h - 1 || !inside[k - 1] || !inside[k + 1] || !inside[k - w] || !inside[k + w];
-      img.data.set(edge ? [255, 64, 129, 255] : [255, 64, 129, 70], k * 4);
+  const img = ctx.createImageData(R.w, R.h);
+  const lngs = Array.from({ length: R.w }, (_, px) => R.lngAt(px));
+  for (let py = 0; py < R.h; py++) {
+    const lat = R.latAt(py);
+    for (let px = 0; px < R.w; px++) {
+      const v = at(lat, lngs[px], 'fish');
+      if (v == null || v < lim) continue;
+      img.data.set([255, 64, 129, 75], (py * R.w + px) * 4);
     }
   }
   ctx.putImageData(img, 0, 0);
   ctx.globalCompositeOperation = 'destination-out';
-  fillLand(ctx, land, (lat, lng) => [((lng - g.west) / g.step) * S, h - 1 - ((lat - g.south) / g.step) * S]);
-  return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
-    { opacity: 1, className: 'hot-image', interactive: false });
+  fillLand(ctx, land, R.toXY);
+  return cv;
+}
+// The patches' outlines: where the score crosses the hotspot line, found on a grid four times
+// finer than the forecast's (marching squares), as short line pieces; none over land.
+function hotspotLines(g, f, land) {
+  const at = sampler(g, f);
+  const lim = hotspotLimit(f);
+  const k = 4; const step = g.step / k;
+  const nx = (g.nx - 1) * k + 1; const ny = (g.ny - 1) * k + 1;
+  const val = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = at(g.south + j * step, g.west + i * step, 'fish'); val[j * nx + i] = v == null ? NaN : v - lim; }
+  const onLand = landTest(land);
+  const segs = [];
+  const cross = (i0, j0, i1, j1) => { const a = val[j0 * nx + i0]; const b = val[j1 * nx + i1]; const t = a / (a - b); return [g.south + (j0 + (j1 - j0) * t) * step, g.west + (i0 + (i1 - i0) * t) * step]; };
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const c = [val[j * nx + i], val[j * nx + i + 1], val[(j + 1) * nx + i + 1], val[(j + 1) * nx + i]]; // SW SE NE NW
+      if (c.some((v) => Number.isNaN(v))) continue;
+      const edges = [];
+      if ((c[0] >= 0) !== (c[1] >= 0)) edges.push(cross(i, j, i + 1, j));
+      if ((c[1] >= 0) !== (c[2] >= 0)) edges.push(cross(i + 1, j, i + 1, j + 1));
+      if ((c[3] >= 0) !== (c[2] >= 0)) edges.push(cross(i, j + 1, i + 1, j + 1));
+      if ((c[0] >= 0) !== (c[3] >= 0)) edges.push(cross(i, j, i, j + 1));
+      for (let e = 0; e + 1 < edges.length; e += 2) {
+        const [p, q] = [edges[e], edges[e + 1]];
+        if (!onLand((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)) segs.push([p, q]);
+      }
+    }
+  }
+  return segs;
+}
+// Whether a point is on land (the coastline's rings; each ring's box checked first).
+function landTest(land) {
+  const rings = (land || []).map((r) => {
+    let s0 = 90; let n0 = -90; let w0 = 180; let e0 = -180;
+    for (const [la, ln] of r) { s0 = Math.min(s0, la); n0 = Math.max(n0, la); w0 = Math.min(w0, ln); e0 = Math.max(e0, ln); }
+    return { r, s0, n0, w0, e0 };
+  });
+  return (lat, lng) => rings.some(({ r, s0, n0, w0, e0 }) => {
+    if (lat < s0 || lat > n0 || lng < w0 || lng > e0) return false;
+    let inside = false;
+    for (let a = 0, b = r.length - 1; a < r.length; b = a++) {
+      const [ya, xa] = r[a]; const [yb, xb] = r[b];
+      if ((ya > lat) !== (yb > lat) && lng < ((xb - xa) * (lat - ya)) / (yb - ya) + xa) inside = !inside;
+    }
+    return inside;
+  });
 }
 // Each hotspot's name: why it's promising, at its best point (the few best, well apart).
 function hotspotLabels(g, f) {
