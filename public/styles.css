@@ -1374,15 +1374,19 @@ body.chart-mode main > div { animation: none; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 40px; margin-top: 6px; font-size: 15px; }
 .chart-x { width: 40px; height: 40px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center; background: rgba(255, 255, 255, 0.12); color: #fff; }
 .chart-x svg { width: 22px; height: 22px; }
-.sq-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.chart-sq { display: grid; gap: 5px; justify-items: center; min-width: 0; border: 0; padding: 0; background: none; color: #fff; font-weight: 700; font-size: 13px; }
-.chart-sq .sq-pic { width: 100%; aspect-ratio: 1; border-radius: 12px; display: grid; place-items: center; border: 3px solid transparent; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
-.chart-sq .sq-pic svg { width: 30px; height: 30px; color: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
-.chart-sq[aria-pressed="true"] .sq-pic { border-color: #fff; box-shadow: 0 0 0 2px #1a73e8; }
-.chart-sq:disabled { opacity: 0.4; }
-.sq-name { max-width: 100%; text-align: center; line-height: 1.2; font-size: min(13px, 3.2vw); overflow-wrap: anywhere; }
 .panel-switches { display: grid; gap: 10px; margin-top: 14px; font-size: 15px; }
 .panel-switches label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .chart-top { padding-right: 70px; }
 .chart-bottom[hidden] { display: none; }
 .depth-tiles.light-lines { filter: invert(1) hue-rotate(180deg); }
+/* The layers sheet: three equal tiles a row, each an icon, its name and a thin strip of the
+   colours it uses; the one showing is white. */
+.sq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.chart-sq { display: grid; justify-items: center; gap: 6px; min-width: 0; padding: 12px 6px 10px; border: 0; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07); color: #fff; font: inherit; font-weight: 700; font-size: 13px; transition: background 0.15s, color 0.15s; }
+.chart-sq svg { width: 24px; height: 24px; }
+.sq-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-strip { width: 70%; height: 4px; border-radius: 2px; }
+.chart-sq[aria-pressed="true"] { background: #fff; color: #0a1a33; }
+.chart-sq:disabled { opacity: 0.35; }
+.panel-switches { border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 12px; }

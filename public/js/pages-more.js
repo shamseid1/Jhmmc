@@ -141,14 +141,14 @@ PAGE_GROUPS.push((view) => ({
     const LAYERS = [
       ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
     ];
-    // Each square's little picture: its colours, as on the map.
-    const grad = (stops) => `linear-gradient(135deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})`;
+    // Each tile's thin strip: the colours that layer uses on the map.
+    const grad = (stops) => `linear-gradient(90deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})`;
     const PREVIEW = {
-      none: 'linear-gradient(135deg,#3d6b3a,#2a4d2f 40%,#1d3b5c 50%,#163150)', hotspots: 'radial-gradient(ellipse 60% 40% at 55% 55%,rgba(255,64,129,.35) 0 85%,#ff4081 87% 95%,transparent 97%),#163150',
+      none: 'transparent', hotspots: '#ff4081',
       currents: grad(SPEED_SCALE), sst: grad(SST_SCALE), wind: grad(WIND_SCALE), wave: grad(WAVE_SCALE),
     };
     const square = (attr, key, label, ic, on) => raw(html`<button type="button" class="chart-sq" ${raw(attr)}="${key}" aria-pressed="${on}">
-      <span class="sq-pic" style="background:${PREVIEW[key]}">${raw(icon(ic))}</span><span class="sq-name">${label}</span></button>`);
+      ${raw(icon(ic))}<span class="sq-name">${label}</span><i class="sq-strip" style="background:${PREVIEW[key]}"></i></button>`);
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
       <div class="chart-note" id="chart-note" role="status" hidden></div>
@@ -164,7 +164,7 @@ PAGE_GROUPS.push((view) => ({
         <button type="button" class="chart-tool" data-locate aria-label="My position">${raw(icon('locate'))}</button>
       </div>
       <div class="chart-panel" id="chart-panel" hidden>
-        <div class="panel-head"><b>On the map</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
+        <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         ${state.me ? raw(html`<div class="panel-switches">
           <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label>
