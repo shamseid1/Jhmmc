@@ -126,7 +126,7 @@ PAGE_GROUPS.push((view) => ({
       <ul class="card sea-days">${s.days.map((d) => raw(html`<li><span class="d"><b>${day(d.date)}</b>${Number(d.date.slice(8))}</span>
         <span class="w">${[d.windKn != null && `${d.windDir || ''} ${d.windKn} kn`, d.waveM != null && `waves ${wavesTxt(d.waveM)}`, d.waterC != null && tempTxt(d.waterC)].filter(Boolean).join(' · ')}</span>
         ${d.rating ? raw(html`<span class="rating ${d.rating}">${d.rating[0].toUpperCase() + d.rating.slice(1)}</span>`) : ''}</li>`))}</ul>
-      <a class="card pad cur-link" href="#/chart">${raw(icon('map'))}<span><b>Chart</b><span class="small muted">Currents, water temperature, wind and waves on the map, now and the next 3 days</span></span><span aria-hidden="true">›</span></a>
+      <a class="card pad cur-link" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span class="small muted">Depth contours, hotspots, currents, water temperature, wind, waves and your fish</span></span><span aria-hidden="true">›</span></a>
       <p class="center"><a href="#/depth">Depth check: compare the seabed map with your chart ›</a></p>
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
   },
@@ -158,7 +158,7 @@ PAGE_GROUPS.push((view) => ({
       <div class="chart-note" id="chart-note" role="status" hidden></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
-        <button type="button" class="chart-title" id="chart-title" data-open-layers>Chart</button>
+        <button type="button" class="chart-title" id="chart-title" data-open-layers>Fishing chart</button>
       </div>
       <div class="chart-tools">
         <button type="button" class="chart-tool" data-open-layers aria-label="Layers">${raw(icon('layers'))}</button>
@@ -199,7 +199,8 @@ PAGE_GROUPS.push((view) => ({
     const titleFor = (k) => LAYERS.find(([x]) => x === k)?.[1];
     // The name at the top: the map, and what's on it.
     let layer = 'none';
-    const setTitle = () => { view.querySelector('#chart-title').textContent = ['Chart', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
+    // "Fishing chart", with the layer showing under it in small (so it fits a small phone).
+    const setTitle = () => { view.querySelector('#chart-title').innerHTML = layer === 'none' ? 'Fishing chart' : html`<small>Fishing chart</small>${titleFor(layer)}`; };
     // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
@@ -727,7 +728,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <h2>Fishing</h2><div class="card menu">
         ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
-        ${item('#/chart', 'map', 'Chart', 'Currents, water temperature, wind and waves, full screen')}
+        ${item('#/chart', 'map', 'Fishing chart', 'Contours, hotspots, currents, wind, waves and your catches')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
       ${me.canWeigh && !me.canApprove ? `<h2>Weigh-in &amp; points</h2><div class="card menu">

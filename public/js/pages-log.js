@@ -54,7 +54,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <h2>The fish</h2>
       <div class="card"><ul class="list" id="fo-list"></ul></div>
-      <p><a class="btn" href="#/chart?catches=1">${raw(icon('pin'))} See them on the chart</a></p>
+      <p><a class="btn" href="#/chart?catches=1">${raw(icon('pin'))} See them on the fishing chart</a></p>
 `;
     const list = view.querySelector('#fo-list');
     const QUEUE = 'fishon-queue';
@@ -434,7 +434,7 @@ PAGE_GROUPS.push((view) => ({
             <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, ${scope === 'mine' ? 'your boat' : 'all boats'}.</span>`)
             : raw('<span class="muted">Once billfish are logged at sea, the water temperature they came aboard in shows here.</span>')}
         </div>
-        ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/chart?catches=1&year=${sz.year}">${raw(icon('pin'))} See them on the chart</a></p>`) : ''}
+        ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/chart?catches=1&year=${sz.year}">${raw(icon('pin'))} See them on the fishing chart</a></p>`) : ''}
         <p class="log-buttons"><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One line per trip</a>
           <a class="btn" href="/api/outings/fish.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One row per fish</a></p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
