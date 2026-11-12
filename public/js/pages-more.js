@@ -138,6 +138,7 @@ PAGE_GROUPS.push((view) => ({
   currents() { location.replace('#/chart'); },
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
+    const PORT_NAMES = ['Marshall', 'Monrovia', 'Robertsport', 'Buchanan', 'Greenville', 'Harper', 'Freetown', 'Conakry', 'Bissau'];
     // Opened from the old Catch map (or "See them on the map"): the catches on, the map on them.
     const hq = new URLSearchParams(location.hash.split('?')[1] || '');
     // How you left the chart, on this phone: the switches, the filters and the layer.
@@ -154,13 +155,13 @@ PAGE_GROUPS.push((view) => ({
     const seasonName = (y) => `${y}–${String(Number(y) + 1).slice(2)}`;
     const fromCatches = hq.has('catches') || hq.has('season') || hq.get('view') === 'regional';
     const LAYERS = [
-      ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
+      ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['chl', 'Water colour', 'droplet'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
     ];
     // Each tile's thin strip: the colours that layer uses on the map.
     const grad = (stops) => `linear-gradient(90deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})`;
     const PREVIEW = {
       none: 'transparent', hotspots: '#ff4081',
-      currents: grad(SPEED_SCALE), sst: grad(SST_SCALE), wind: grad(WIND_SCALE), wave: grad(WAVE_SCALE),
+      currents: grad(SPEED_SCALE), sst: grad(SST_SCALE), chl: grad(CHL_SCALE), wind: grad(WIND_SCALE), wave: grad(WAVE_SCALE),
     };
     const square = (attr, key, label, ic, on) => raw(html`<button type="button" class="chart-sq" ${raw(attr)}="${key}" aria-pressed="${on}">
       ${raw(icon(ic))}<span class="sq-name">${label}</span><i class="sq-strip" style="background:${PREVIEW[key]}"></i></button>`);
@@ -199,6 +200,8 @@ PAGE_GROUPS.push((view) => ({
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
         <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
+        <div class="panel-head catches-head"><b>Home port</b></div>
+        <label class="port-pick"><span>Distances and tides from</span><select data-port aria-label="Home port">${raw(PORT_NAMES.map((n) => html`<option${n === (saved.port || 'Marshall') ? ' selected' : ''}>${n}</option>`).join(''))}</select></label>
 
       </div>
       <div class="chart-bottom">
@@ -217,7 +220,7 @@ PAGE_GROUPS.push((view) => ({
     const remember = () => {
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
-        localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
+        localStorage.setItem('chart-prefs', JSON.stringify({ port: view.querySelector('[data-port]')?.value, fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -230,6 +233,7 @@ PAGE_GROUPS.push((view) => ({
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
     let data;
+    let chlP = null; // the water colour, fetched alongside
     let L;
     let land = null;
     let redraw = null; // set once the map is up
@@ -287,7 +291,20 @@ PAGE_GROUPS.push((view) => ({
     // ---- where you are, and today's track ----
     // The blue button follows you (the dot moves with the boat) and draws today's track; tap it
     // again to stop. The track is kept on this phone for the day.
-    const HOME = [MAP_PLACES[0].lat, MAP_PLACES[0].lng]; // Marshall: distances are from here too
+    // Your home port (chosen in the layers panel, kept on this phone): distances on a tap and the
+    // tides on the time strip are from there.
+    const PORTS = [['Marshall', 6.15, -10.3833], ['Monrovia', 6.33, -10.8], ['Robertsport', 6.753, -11.367], ['Buchanan', 5.877, -10.047],
+      ['Greenville', 5.011, -9.039], ['Harper', 4.375, -7.717], ['Freetown', 8.484, -13.234], ['Conakry', 9.509, -13.712], ['Bissau', 11.863, -15.598]];
+    let port = PORTS.find(([n]) => n === saved.port) || PORTS[0];
+    let HOME = [port[1], port[2]];
+    let portPin = null;
+    const markPort = () => {
+      portPin?.remove(); portPin = null;
+      if (port[0] === MAP_PLACES[0].name) return; // Marshall is on the map already
+      portPin = L.circleMarker(HOME, { radius: 5, weight: 2, color: '#fff', fillColor: '#f5a524', fillOpacity: 1, interactive: false })
+        .bindTooltip(port[0], { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] }).addTo(map);
+    };
+    markPort();
     let myPos = null;
     let me = null;
     let watch = null;
@@ -326,7 +343,7 @@ PAGE_GROUPS.push((view) => ({
     });
     window.addEventListener('hashchange', stopFollowing, { once: true });
     // From Marshall, and from you when the app knows where you are.
-    const navRows = (to) => [['From Marshall', navTxt(HOME, to)], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
+    const navRows = (to) => [[`From ${port[0]}`, navTxt(HOME, to)], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
     const earlyTap = (e) => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
@@ -489,7 +506,7 @@ PAGE_GROUPS.push((view) => ({
         where = [e.latlng.lat, e.latlng.lng];
         openLayers(false);
         view.querySelector('#chart-list').hidden = true;
-        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt(HOME, where)} from Marshall`;
+        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt(HOME, where)} from ${port[0]}`;
         form.reset();
         form.hidden = false;
         form.name.focus();
@@ -525,6 +542,7 @@ PAGE_GROUPS.push((view) => ({
     // The chart's data: if the server can't be reached (no signal, or it's restarting after an
     // update), it keeps trying quietly every 20 seconds while the page is open.
     for (;;) {
+      chlP ??= api('/chlorophyll').then((x) => (x?.values ? x : null)).catch(() => null);
       try { data = await api('/currents'); break; } catch (err) {
         say(html`<b>Can't get the forecast just now.</b> ${err.message} Trying again by itself…`);
         await wait(20000);
@@ -556,9 +574,27 @@ PAGE_GROUPS.push((view) => ({
       f.xu = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.sin(((d + 180) * Math.PI) / 180)));
       f.xv = f.wd.map((d, k) => (d == null || f.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
     }
-    fishingField(data, prefs);
+    // The water colour (a week's clear views), if it comes in time: a layer of its own, and its
+    // edges count for the hotspots.
+    let chlGrid = await Promise.race([chlP, wait(5000).then(() => null)]);
+    fishingField(data, prefs, chlGrid);
     const hasWind = data.frames.some((f) => f.wu);
     if (!hasWind) view.querySelector('[data-layer=wind]').disabled = true;
+    // The water colour: its own picture's area and its value at a spot; the tile on once it's in.
+    let chlBounds = null;
+    let chlAt = null;
+    const useChl = (g, late = false) => {
+      chlGrid = g;
+      chlBounds = raster(g, 1).bounds;
+      chlAt = sampler(g, { chl: g.values });
+      view.querySelector('[data-layer=chl]').disabled = false;
+      // It was the layer you had on last time, and it's come in late: on now.
+      if (late && saved.layer === 'chl' && layer === 'none') view.querySelector('[data-layer=chl]').click();
+    };
+    view.querySelector('[data-layer=chl]').disabled = true;
+    if (chlGrid) useChl(chlGrid);
+    else chlP?.then((g) => { if (g && view.isConnected) useChl(g, true); });
+    const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
     // Every hour, from the first of the forecast's 3-hour steps to the last; the hours between
     // two steps are blended from them (as Windy does between its model's steps).
     const t0 = Date.parse(`${data.frames[0].time}:00Z`);
@@ -592,6 +628,7 @@ PAGE_GROUPS.push((view) => ({
       currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], unit: () => 'kn', label: num1 },
       sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
+      chl: { colour: 'chl', stops: CHL_SCALE, lines: ['u', 'v', 1], per: 260, unit: () => 'mg/m³', label: (v) => String(v) },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
 
@@ -613,12 +650,12 @@ PAGE_GROUPS.push((view) => ({
     const imgBounds = raster(data, 1).bounds;
     let shown = null; // the picture on the map
     let ticket = 0;
-    const putPic = async (key, draw, opacity, className) => {
+    const putPic = async (key, draw, opacity, className, bounds = imgBounds) => {
       const mine = ++ticket;
       if (!key) { shown?.remove(); shown = null; return; }
       const url = await picFor(key, draw);
       if (mine !== ticket || !url) return;
-      const next = L.imageOverlay(url, imgBounds, { opacity, className, interactive: false });
+      const next = L.imageOverlay(url, bounds, { opacity, className, interactive: false });
       next.once('load', () => {
         if (mine !== ticket) { next.remove(); return; }
         shown?.remove();
@@ -658,6 +695,9 @@ PAGE_GROUPS.push((view) => ({
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
+      } else if (layer === 'chl' && chlGrid) {
+        // The water colour doesn't change with the hour (a week's clear views): one picture.
+        putPic(`chl|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(chlGrid, { chl: chlGrid.values }, 'chl', CHL_SCALE, coast, 4), 0.85, 'field-image', chlBounds);
       } else if (L1.colour) {
         // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
         // A little see-through, so the contours show under the colours.
@@ -710,7 +750,7 @@ PAGE_GROUPS.push((view) => ({
     // On the strip, off Marshall: high and low water (▲ ▼), sunrise and sunset (the sun, half
     // up or down), and each day's moon. From Sea conditions' forecast for Marshall.
     const MOONS = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
-    api(`/sea?lat=${HOME[0]}&lng=${HOME[1]}`).then((sea) => {
+    const loadStrip = () => api(`/sea?lat=${HOME[0]}&lng=${HOME[1]}`).then((sea) => {
       const st = sea?.strip;
       if (!st || !view.isConnected) return;
       const hourOf = (local) => (Date.parse(`${local}:00Z`) - st.utcOffset * 1000 - t0) / 3600e3;
@@ -724,6 +764,16 @@ PAGE_GROUPS.push((view) => ({
         if (el && d.moon) el.querySelector('.tl-moon').textContent = ` ${MOONS[Math.round((d.moon.age / 29.53) * 8) % 8]} ${d.moon.lit}%`;
       }
     }).catch(() => {});
+    loadStrip();
+    // A new home port: its tides on the strip, its name on the map and in the distances.
+    view.querySelector('[data-port]')?.addEventListener('change', (e) => {
+      port = PORTS.find(([n]) => n === e.target.value) || PORTS[0];
+      HOME = [port[1], port[2]];
+      markPort();
+      view.querySelector('.tl-marks').innerHTML = '';
+      view.querySelectorAll('.tl-moon').forEach((m) => { m.textContent = ''; });
+      loadStrip();
+    });
     const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
     pads();
     tl.scrollLeft = hour * PX;
@@ -764,6 +814,7 @@ PAGE_GROUPS.push((view) => ({
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
       setTimeout(remember);
+      if (layer === 'chl') { chlNote(); setTimeout(() => { note.hidden = true; }, 7000); } else if (!note.hidden && note.textContent.startsWith('Water colour')) note.hidden = true;
       view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       setTitle();
       show();
@@ -786,7 +837,7 @@ PAGE_GROUPS.push((view) => ({
       const fish = at(lat, lng, 'fish');
       const hot = fish != null && fish >= hotspotLimit(f);
       const why = f.why?.[j0 * data.nx + i0] || 0;
-      const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
+      const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 16 && 'colour edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
       const d = data.depth?.[j0 * data.nx + i0];
       const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
@@ -799,6 +850,7 @@ PAGE_GROUPS.push((view) => ({
         t != null && ['Water', estTxt(tempTxt(t))],
         wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn from ${pt(deg(wu, wv) + 180)}`],
         wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` from ${pt(wd)}` : ''}`],
+        chlAt && chlAt(lat, lng, 'chl') != null && ['Water colour', `${chlWords(chlAt(lat, lng, 'chl'))} · ${chlAt(lat, lng, 'chl').toFixed(2)} mg/m³`],
         ...navRows([lat, lng]),
       ].filter(Boolean);
       L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)

@@ -304,12 +304,18 @@ const WIND_SCALE = [[0, [98, 113, 183]], [2, [57, 97, 159]], [6, [74, 148, 169]]
   [21, [167, 157, 81]], [25, [159, 127, 58]], [29, [161, 108, 92]], [33, [129, 58, 78]], [37, [175, 80, 136]], [41, [117, 74, 147]]];
 // Waves in Windy's colours: cyan for small, deepening blue to purple, red only for big seas.
 const WAVE_SCALE = [[0, [90, 200, 205]], [0.5, [70, 170, 210]], [1, [62, 125, 205]], [1.5, [62, 92, 192]], [2, [78, 66, 172]], [3, [125, 60, 160]], [4.5, [185, 70, 110]], [6, [205, 85, 85]]];
+// Water colour (chlorophyll, mg/m³): deep blue for clear ocean water, through blue-green to
+// green where plankton (and bait) are rich, and brown-green in coastal water.
+const CHL_SCALE = [[0.03, [25, 35, 115]], [0.07, [35, 75, 175]], [0.12, [40, 120, 205]], [0.2, [40, 160, 190]], [0.35, [45, 170, 140]],
+  [0.6, [70, 175, 90]], [1, [135, 185, 60]], [2, [195, 180, 55]], [5, [170, 120, 40]], [10, [120, 80, 30]]];
+const chlWords = (v) => (v < 0.15 ? 'blue' : v < 0.35 ? 'blue-green' : v < 1 ? 'green' : 'brown-green');
 // Each colour layer's value at a spot, from a frame's sampler.
 const FIELD_VALUE = {
   sst: (at, lat, lng) => at(lat, lng, 'sst'),
   speed: (at, lat, lng) => { const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v'); return u == null || v == null ? null : Math.hypot(u, v); },
   wind: (at, lat, lng) => { const u = at(lat, lng, 'wu'); const v = at(lat, lng, 'wv'); return u == null || v == null ? null : Math.hypot(u, v); },
   wave: (at, lat, lng) => at(lat, lng, 'wh'),
+  chl: (at, lat, lng) => at(lat, lng, 'chl'),
 };
 const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
 function colourAt(stops, v) {
@@ -347,9 +353,9 @@ function raster(g, S) {
   };
 }
 // The colour layer for one hour as a canvas: smoothed between grid points, cut at the coast.
-function fieldCanvas(g, f, kind, stops, land) {
+function fieldCanvas(g, f, kind, stops, land, S = 12) {
   const at = sampler(g, f);
-  const R = raster(g, 12); // 12 pixels per grid step: a sharp coast when zoomed in
+  const R = raster(g, S); // 12 pixels per grid step (forecast): a sharp coast when zoomed in
   const cv = document.createElement('canvas');
   cv.width = R.w; cv.height = R.h;
   const ctx = cv.getContext('2d');
@@ -376,9 +382,25 @@ function fieldCanvas(g, f, kind, stops, land) {
 // (and depth) billfish have been landed in this season, every boat's fish together. Each is
 // 0 to 1; breaks and edges are ranked against the rest of the map that day, so the best of
 // the day always shows. f.fish is the score; f.why the reasons (1 break, 2 edge, 4 shelf, 8 water).
-function fishingField(g, prefs = {}) {
+function fishingField(g, prefs = {}, chl = null) {
   const { nx, ny } = g;
   const depth = g.depth || null;
+  // The water colour's edges (green water meeting blue) at each forecast point: the change of
+  // its logarithm to the next points (it doesn't change with the hour here: a week's views).
+  let colourEdge = null;
+  if (chl?.values) {
+    const at = sampler(chl, { chl: chl.values });
+    const lg = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = at(g.south + j * g.step, g.west + i * g.step, 'chl'); lg.push(v > 0 ? Math.log10(v) : null); }
+    const get = (i, j) => (i < 0 || j < 0 || i >= nx || j >= ny ? null : lg[j * nx + i]);
+    const raw0 = lg.map((v, k) => {
+      if (v == null) return null;
+      const i = k % nx; const j = Math.floor(k / nx);
+      const d = [get(i + 1, j), get(i - 1, j), get(i, j + 1), get(i, j - 1)].filter((x) => x != null).map((x) => Math.abs(x - v));
+      return d.length ? Math.max(...d) : null;
+    });
+    colourEdge = raw0;
+  }
   const rank = (vals) => {
     const xs = vals.filter((v) => v != null).sort((a, b) => a - b);
     return (v) => {
@@ -424,13 +446,16 @@ function fishingField(g, prefs = {}) {
         ce.push(sp == null || Number.isNaN(dv - du) ? null : sp + Math.abs(dv - du) / 2);
       }
     }
-    const rt = rank(tb); const rc = rank(ce);
+    const rt = rank(tb); const rc = rank(ce); const rg = colourEdge && rank(colourEdge);
     f.fish = []; f.why = [];
     for (let k = 0; k < nx * ny; k++) {
       if (f.sst[k] == null && f.u[k] == null) { f.fish.push(null); f.why.push(0); continue; }
       const b = rt(tb[k]) ** 2; const e = rc(ce[k]) ** 2; const sh = depth ? shelf(depth[k]) : 0.5; const w = warm(f.sst[k]);
-      f.fish.push(Math.round((0.3 * b + 0.25 * e + 0.3 * sh + 0.15 * w) * 100) / 100);
-      f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0));
+      // With the water colour, its edges count too (green water meeting blue: bait).
+      const ge = rg && colourEdge[k] != null ? rg(colourEdge[k]) ** 2 : null;
+      const score = ge == null ? 0.3 * b + 0.25 * e + 0.3 * sh + 0.15 * w : 0.25 * b + 0.2 * e + 0.25 * sh + 0.15 * ge + 0.15 * w;
+      f.fish.push(Math.round(score * 100) / 100);
+      f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0) | (ge != null && ge > 0.55 ? 16 : 0));
     }
   }
 }
@@ -550,7 +575,7 @@ function hotspotLabels(g, f) {
     const lat = g.south + Math.floor(k / g.nx) * g.step; const lng = g.west + (k % g.nx) * g.step;
     if (picked.some((p) => Math.hypot(p.lat - lat, p.lng - lng) < 0.8)) continue;
     const why = f.why?.[k] || 0;
-    const words = [why & 1 && 'Temperature break', why & 2 && 'Current edge', why & 4 && 'Shelf', why & 8 && 'Billfish water'].filter(Boolean);
+    const words = [why & 1 && 'Temperature break', why & 2 && 'Current edge', why & 16 && 'Colour edge', why & 4 && 'Shelf', why & 8 && 'Billfish water'].filter(Boolean);
     if (words.length) picked.push({ lat, lng, text: words.join(' · ') });
     if (picked.length >= 6) break;
   }
