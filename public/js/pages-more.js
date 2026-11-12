@@ -139,34 +139,55 @@ PAGE_GROUPS.push((view) => ({
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     const LAYERS = [
-      ['none', 'None'], ['hotspots', 'Hotspots'], ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
+      ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
     ];
+    // Each square's little picture: its colours, as on the map.
+    const grad = (stops) => `linear-gradient(135deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})`;
+    const PREVIEW = {
+      chart: 'repeating-linear-gradient(160deg,#c5e3f1 0 9px,#8fbfd9 9px 10px)', satellite: 'linear-gradient(135deg,#3d6b3a,#2a4d2f 45%,#1d3b5c 55%,#163150)',
+      none: '#a9d2e8', hotspots: 'radial-gradient(ellipse 60% 40% at 55% 55%,rgba(255,64,129,.35) 0 85%,#ff4081 87% 95%,transparent 97%),#a9d2e8',
+      currents: grad(SPEED_SCALE), sst: grad(SST_SCALE), wind: grad(WIND_SCALE), wave: grad(WAVE_SCALE),
+    };
+    const square = (attr, key, label, ic, on) => raw(html`<button type="button" class="chart-sq" ${raw(attr)}="${key}" aria-pressed="${on}">
+      <span class="sq-pic" style="background:${PREVIEW[key]}">${raw(icon(ic))}</span><span class="sq-name">${label}</span></button>`);
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
       <div class="chart-note" id="chart-note" role="status" hidden></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
-        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'none'}">${label}</button>`))}</div>
+        <button type="button" class="chart-title" id="chart-title" data-open-layers>Chart</button>
+      </div>
+      <div class="chart-tools">
+        <button type="button" class="chart-tool" data-open-layers aria-label="Layers">${raw(icon('layers'))}</button>
+        <span class="chart-gap"></span>
+        <button type="button" class="chart-tool" data-zoom="1" aria-label="Zoom in">${raw(icon('plus'))}</button>
+        <button type="button" class="chart-tool" data-zoom="-1" aria-label="Zoom out">${raw(icon('minus'))}</button>
+        <button type="button" class="chart-tool" data-locate aria-label="My position">${raw(icon('locate'))}</button>
+      </div>
+      <div class="chart-panel" id="chart-panel" hidden>
+        <div class="panel-head"><b>Map</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
+        <div class="sq-grid">${square('data-base', 'chart', 'Chart', 'map', true)}${square('data-base', 'satellite', 'Satellite', 'globe', false)}</div>
+        <div class="panel-head"><b>On the map</b></div>
+        <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
+        ${state.me ? raw(html`<div class="panel-switches">
+          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label>
+          ${crew ? raw('<label>My fish <input type="checkbox" class="switch" data-show="fish" checked></label>') : ''}</div>`) : ''}
       </div>
       <div class="chart-bottom">
-        <div class="chart-toggles">
-          <div class="chart-base" role="group" aria-label="Map"><button type="button" data-base="chart" aria-pressed="true">Chart</button><button type="button" data-base="satellite" aria-pressed="false">Satellite</button></div>
-          ${state.me ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label>') : ''}
-          ${crew ? raw('<label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
-        </div>
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
           <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span></div></div>
         <div class="chart-legend" id="chart-legend"></div>
       </div>
     </div>`;
-    // The layer buttons a little smaller to fit (never too small to read; past that the row scrolls).
-    const chips = view.querySelector('.chart-layers');
-    const fitChips = () => {
-      chips.style.removeProperty('--chip-fs');
-      for (let size = 13.5; chips.scrollWidth > chips.clientWidth + 0.5 && size >= 12.5; size -= 0.5) chips.style.setProperty('--chip-fs', `${size}px`);
-    };
-    fitChips();
-    document.fonts?.ready.then(fitChips);
+    // The layers panel: opened with the layers button (or the name at the top), closed with the
+    // cross or a tap on the map; picking a square shows it at once.
+    const panel = view.querySelector('#chart-panel');
+    const openLayers = (on) => { panel.hidden = !on; };
+    view.querySelectorAll('[data-open-layers]').forEach((b) => b.addEventListener('click', () => openLayers(panel.hidden)));
+    view.querySelector('[data-close-layers]').addEventListener('click', () => openLayers(false));
+    const titleFor = (k) => LAYERS.find(([x]) => x === k)?.[1];
+    // The name at the top: the map, and what's on it.
+    let setTitle = () => {};
     // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
@@ -209,7 +230,19 @@ PAGE_GROUPS.push((view) => ({
       const o = overlays[c.dataset.show];
       if (o) { if (c.checked) o.addTo(map); else o.remove(); }
     }));
-    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => setBase(b.dataset.base)));
+    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => { setBase(b.dataset.base); setTitle(); }));
+    // The buttons down the side, as on a plotter: zoom, and the map on where you are.
+    view.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => map.setZoom(map.getZoom() + Number(b.dataset.zoom))));
+    let me = null;
+    view.querySelector('[data-locate]').addEventListener('click', () => {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const at0 = [pos.coords.latitude, pos.coords.longitude];
+        me?.remove();
+        me = L.circleMarker(at0, { radius: 7, weight: 3, color: '#fff', fillColor: '#1a73e8', fillOpacity: 1 }).addTo(map);
+        map.setView(at0, Math.max(map.getZoom(), 10));
+      }, () => toast('Your position isn\'t available. Check that location is on for the app.'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    });
+    map.on('click', () => openLayers(false));
     if (crew) {
       api('/me/spots').then(({ spots }) => {
         overlays.fish = L.layerGroup(spots.filter((x) => x.lat != null).map((s) => L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 })
@@ -298,6 +331,7 @@ PAGE_GROUPS.push((view) => ({
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
     let layer = 'none';
+    setTitle = () => { view.querySelector('#chart-title').textContent = [base === 'chart' ? 'Chart' : 'Satellite', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
     let labels = null;
     let image = null;
     let at = null;
@@ -393,7 +427,8 @@ PAGE_GROUPS.push((view) => ({
     });
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
-      view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      setTitle();
       show();
       flow.reseed();
     }));
