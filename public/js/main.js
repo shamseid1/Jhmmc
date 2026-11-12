@@ -123,6 +123,10 @@ if (NATIVE) {
     const url = a?.notification?.data?.url;
     if (url && url.startsWith('/')) location.href = url;
   });
+  // Opening the app clears its notifications from the phone (and the number on the app's icon).
+  const clearDelivered = () => { if (document.visibilityState === 'visible') native('PushNotifications', 'removeAllDeliveredNotifications').catch(() => {}); };
+  clearDelivered();
+  document.addEventListener('visibilitychange', clearDelivered);
   // In the app already: Android doesn't show it, so a toast does (the iPhone shows its banner).
   if (!IOS_APP) nativeListen('PushNotifications', 'pushNotificationReceived', (n) => { if (n?.title) toast(n.body ? `${n.title}: ${n.body}` : n.title); });
 }
