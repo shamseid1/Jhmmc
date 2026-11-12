@@ -42,10 +42,6 @@ function twoFingers(map) {
   }, { passive: true });
   box.addEventListener('touchend', (e) => { if (!e.touches.length) map.dragging.disable(); }, { passive: true });
 }
-// The chart's base: Esri's ocean map, drawn like a nautical chart with the seabed shaded (from
-// GEBCO and others); the club's depth contours go on top of it.
-const oceanBase = (L) => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom: 18, maxNativeZoom: 10, attribution: 'Chart © Esri, GEBCO, NOAA', keepBuffer: 4, updateWhenZooming: false });
 // Each with its name and position.
 const MAP_PLACES = [
   { name: 'Marshall', lat: 6.15, lng: -10.3833 },
@@ -54,12 +50,12 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // The small map on a catch's page, on satellite imagery.
 // The depth charts as one map layer: map tiles (sharp at every zoom, only the
 // part in view is loaded) or, for an older chart, one picture.
-// With { clean }, for a light chart underneath: the charts' dark see-through shading over the
-// water (made for the satellite) is taken out, leaving the contour lines and depths.
-const depthLayer = (L, charts, { clean = false } = {}) => L.layerGroup(charts.map((c) => {
+// With { clean }: the charts' dark see-through shading over the water is taken out, leaving
+// the contour lines and depths; with { light } too, drawn light for the dark satellite sea.
+const depthLayer = (L, charts, { clean = false, light = false } = {}) => L.layerGroup(charts.map((c) => {
   const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
   // keepBuffer: the tiles just outside the screen are kept, so a pan doesn't show gaps.
-  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles', keepBuffer: 4, updateWhenZooming: false };
+  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: `depth-tiles${light ? ' light-lines' : ''}`, keepBuffer: 4, updateWhenZooming: false };
   if (!c.tiles) return L.imageOverlay(c.url, bounds, { opacity: 0.95 });
   // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
   // The clean tiles made once on the server; drawn here only for a chart without them.

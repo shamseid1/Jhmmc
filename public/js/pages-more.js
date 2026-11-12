@@ -131,10 +131,10 @@ PAGE_GROUPS.push((view) => ({
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
   },
 
-  // The chart: full screen, like Windy, on the fishing chart (Esri's ocean map with the club's
-  // depth contours) or the satellite. On top, one layer at a time: none, the hotspots (outlined),
-  // currents, water temperature, wind or waves (colours, with moving lines); your own fish too.
-  // The time from now to 3 days ahead. Tap the sea for everything at that spot.
+  // The chart: full screen, like Windy: the satellite with the club's depth contours (white lines
+  // and depths). On top, one layer at a time: none, the hotspots (outlined), currents, water
+  // temperature, wind or waves (colours, with moving lines); your own fish too. The time from
+  // now to 3 days ahead. Tap the sea for everything at that spot.
   currents() { location.replace('#/chart'); },
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
@@ -144,8 +144,7 @@ PAGE_GROUPS.push((view) => ({
     // Each square's little picture: its colours, as on the map.
     const grad = (stops) => `linear-gradient(135deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})`;
     const PREVIEW = {
-      chart: 'repeating-linear-gradient(160deg,#c5e3f1 0 9px,#8fbfd9 9px 10px)', satellite: 'linear-gradient(135deg,#3d6b3a,#2a4d2f 45%,#1d3b5c 55%,#163150)',
-      none: '#a9d2e8', hotspots: 'radial-gradient(ellipse 60% 40% at 55% 55%,rgba(255,64,129,.35) 0 85%,#ff4081 87% 95%,transparent 97%),#a9d2e8',
+      none: 'linear-gradient(135deg,#3d6b3a,#2a4d2f 40%,#1d3b5c 50%,#163150)', hotspots: 'radial-gradient(ellipse 60% 40% at 55% 55%,rgba(255,64,129,.35) 0 85%,#ff4081 87% 95%,transparent 97%),#163150',
       currents: grad(SPEED_SCALE), sst: grad(SST_SCALE), wind: grad(WIND_SCALE), wave: grad(WAVE_SCALE),
     };
     const square = (attr, key, label, ic, on) => raw(html`<button type="button" class="chart-sq" ${raw(attr)}="${key}" aria-pressed="${on}">
@@ -165,9 +164,7 @@ PAGE_GROUPS.push((view) => ({
         <button type="button" class="chart-tool" data-locate aria-label="My position">${raw(icon('locate'))}</button>
       </div>
       <div class="chart-panel" id="chart-panel" hidden>
-        <div class="panel-head"><b>Map</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
-        <div class="sq-grid">${square('data-base', 'chart', 'Chart', 'map', true)}${square('data-base', 'satellite', 'Satellite', 'globe', false)}</div>
-        <div class="panel-head"><b>On the map</b></div>
+        <div class="panel-head"><b>On the map</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         ${state.me ? raw(html`<div class="panel-switches">
           <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label>
@@ -187,9 +184,8 @@ PAGE_GROUPS.push((view) => ({
     view.querySelector('[data-close-layers]').addEventListener('click', () => openLayers(false));
     const titleFor = (k) => LAYERS.find(([x]) => x === k)?.[1];
     // The name at the top: the map, and what's on it.
-    let base = 'chart';
     let layer = 'none';
-    const setTitle = () => { view.querySelector('#chart-title').textContent = [base === 'chart' ? 'Chart' : 'Satellite', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
+    const setTitle = () => { view.querySelector('#chart-title').textContent = ['Chart', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
     // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
@@ -215,30 +211,19 @@ PAGE_GROUPS.push((view) => ({
     const lift = () => box.style.setProperty('--bar-h', `${bar.hidden ? 0 : bar.offsetHeight}px`);
     new ResizeObserver(lift).observe(bar);
     lift();
-    const { imagery } = addSatellite(L, map, { fullScreen: true });
-    // The base: the fishing chart (Esri's ocean map, the contours on it) or the satellite.
-    const ocean = oceanBase(L);
-    let onBase = null; // redraws the layer on top, once there is one
-    const setBase = (b) => {
-      base = b;
-      if (b === 'chart') { imagery.remove(); ocean.addTo(map).bringToBack(); } else { ocean.remove(); imagery.addTo(map).bringToBack(); }
-      syncContours();
-      setTitle();
-      view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.base === b)));
-      onBase?.();
-    };
+    addSatellite(L, map, { fullScreen: true });
     const overlays = {};
-    // The contours: lines only on the chart, with their shading on the satellite.
-    const contours = {};
+    // The contours: the lines and depths only (white, without the charts' grey shading), so the
+    // sea looks the same inside the charts and out.
+    let contours = null;
     function syncContours() {
-      contours.chart?.remove(); contours.satellite?.remove();
-      if (view.querySelector('[data-show=contours]')?.checked) contours[base]?.addTo(map);
+      contours?.remove();
+      if (view.querySelector('[data-show=contours]')?.checked) contours?.addTo(map);
     }
     if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
-        contours.chart = depthLayer(L, charts, { clean: true });
-        contours.satellite = depthLayer(L, charts);
+        contours = depthLayer(L, charts, { clean: true, light: true });
         syncContours();
       }).catch(() => {});
     }
@@ -247,7 +232,6 @@ PAGE_GROUPS.push((view) => ({
       const o = overlays[c.dataset.show];
       if (o) { if (c.checked) o.addTo(map); else o.remove(); }
     }));
-    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => setBase(b.dataset.base)));
     // The buttons down the side, as on a plotter: zoom, and the map on where you are.
     view.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => map.setZoom(map.getZoom() + Number(b.dataset.zoom))));
     let me = null;
@@ -267,7 +251,7 @@ PAGE_GROUPS.push((view) => ({
         if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
       }).catch(() => {});
     }
-    setBase('chart');
+    syncContours();
     // Until the forecast is here: the chart alone (with its contours), a note on top, and the
     // forecast's layers and time strip waiting.
     const note = view.querySelector('#chart-note');
@@ -373,7 +357,7 @@ PAGE_GROUPS.push((view) => ({
         // The wind blows over the land too (as on Windy); the sea's layers stop at the shore. On
         // the chart the colours are see-through, so the contours show under them.
         image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
-        image.setOpacity(base === 'chart' ? 0.6 : 1);
+        image.setOpacity(0.85); // the contours still show through
       }
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       // The scale like Windy's: the unit, then each colour's value where it sits (every other
@@ -392,7 +376,6 @@ PAGE_GROUPS.push((view) => ({
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
-    onBase = () => show();
     redraw = () => { show(); flow.reseed(); };
     // The time strip, like Windy's: the days as blocks with a mark for each hour, swiped under
     // a fixed pointer; it settles on whole hours and the bubble says which.

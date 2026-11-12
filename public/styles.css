@@ -1320,7 +1320,7 @@ body.chart-mode main > div { animation: none; }
 .lg-bar b.last { transform: translate(calc(-100% - 4px), -50%); }
 .chart .leaflet-control-attribution { margin-bottom: 0; }
 .chart .leaflet-bottom { bottom: var(--bar-h, 0px); }
-.chart .leaflet-control-attribution { margin: 0 !important; background: none; color: rgba(20, 30, 50, 0.55); font-size: 9px; text-shadow: 0 0 2px rgba(255, 255, 255, 0.8); }
+.chart .leaflet-control-attribution { margin: 0 !important; background: none !important; color: rgba(255, 255, 255, 0.6); font-size: 9px; text-shadow: 0 0 2px rgba(0, 0, 0, 0.9); }
 .chart-play { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: #fff; color: #0a1a33; }
 .chart-play svg { width: 18px; height: 18px; }
 
@@ -1385,3 +1385,4 @@ body.chart-mode main > div { animation: none; }
 .panel-switches label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .chart-top { padding-right: 70px; }
 .chart-bottom[hidden] { display: none; }
+.depth-tiles.light-lines { filter: invert(1) hue-rotate(180deg); }
