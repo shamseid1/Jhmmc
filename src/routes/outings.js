@@ -207,8 +207,15 @@ module.exports = (ctx) => {
       bump(outing.id, speciesId, b.fate, 1);
       db.prepare(`INSERT INTO outing_landings (outing_id, user_id, species_id, fate, weight_kg, lat, lng, landed_at, client_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(outing.id, u.id, speciesId, b.fate, weightKg, spot.lat, spot.lng, landedAt, clientId || null);
-      linkLogToRegistration(Number(db.prepare('SELECT last_insert_rowid() AS id').get().id));
+      const landingId = Number(db.prepare('SELECT last_insert_rowid() AS id').get().id);
+      linkLogToRegistration(landingId);
       db.exec('COMMIT');
+      // The sea when it came aboard, saved with it (in the background; never holds up the log).
+      if (ctx.sea && spot.lat != null) {
+        ctx.sea.at(spot.lat, spot.lng, landedAt)
+          .then((c) => { if (c) db.prepare('UPDATE outing_landings SET conditions = ? WHERE id = ?').run(JSON.stringify(c), landingId); })
+          .catch(() => {});
+      }
       // Fish on! For those who asked: boat, species and what happened, never the spot.
       // Only for this trip's fish (today's, or last night's carrying on), not ones added afterwards.
       if (Date.now() - Date.parse(landedAt) < 12 * 36e5) {
@@ -386,6 +393,25 @@ module.exports = (ctx) => {
       for (const r of db.prepare(`SELECT l.landed_at AS at, o.country FROM outing_landings l JOIN outings o ON o.id = l.outing_id
         WHERE l.outing_id IN (${ids.map(() => '?').join(',')}) AND l.lat IS NOT NULL AND l.fate <> 'lost'`).all(...ids)) hours[localHour(r.at, r.country)] += 1;
     }
+    // The sea when each fish came aboard (saved with it): for the most caught species, the
+    // water temperature, tide and wind they were caught in.
+    const seaBy = {};
+    if (ids.length) {
+      for (const r of db.prepare(`SELECT s.name AS species, l.conditions FROM outing_landings l JOIN species s ON s.id = l.species_id
+        WHERE l.outing_id IN (${ids.map(() => '?').join(',')}) AND l.conditions IS NOT NULL AND l.fate <> 'lost'`).all(...ids)) {
+        let c;
+        try { c = JSON.parse(r.conditions); } catch { continue; }
+        const x = (seaBy[r.species] ??= { species: r.species, fish: 0, water: {}, tide: {}, wind: {} });
+        x.fish += 1;
+        if (c.waterC != null) { const lo = Math.floor(c.waterC * 2) / 2; add(x.water, `${lo.toFixed(1)} – ${(lo + 0.5).toFixed(1)}°C`, 1); }
+        if (c.tide) add(x.tide, c.tide === 'rising' ? 'Rising' : 'Falling', 1);
+        if (c.windKn != null) add(x.wind, c.windKn < 10 ? 'Under 10 kn' : c.windKn <= 15 ? '10 – 15 kn' : 'Over 15 kn', 1);
+      }
+    }
+    const list = (map, order) => Object.entries(map).sort((a, b2) => (order ? order.indexOf(a[0]) - order.indexOf(b2[0]) : a[0].localeCompare(b2[0])))
+      .map(([label, fish]) => ({ label, fish }));
+    const seaConditions = Object.values(seaBy).filter((x) => x.fish >= 3).sort((a, b2) => b2.fish - a.fish).slice(0, 3)
+      .map((x) => ({ species: x.species, fish: x.fish, water: list(x.water), tide: list(x.tide, ['Rising', 'Falling']), wind: list(x.wind, ['Under 10 kn', '10 – 15 kn', 'Over 15 kn']) }));
     const areas = {};
     const techniques = {};
     for (const o of outings) {
@@ -400,7 +426,7 @@ module.exports = (ctx) => {
       lost: outings.reduce((n, o) => n + o.fish.reduce((m, f) => m + f.lost, 0), 0),
       daysWithFish: outings.filter((o) => caught(o, () => true) > 0).length,
       species: Object.values(bySpecies).sort((a, b2) => (b2.kept + b2.released) - (a.kept + a.released)),
-      hours, areas: top(areas), techniques: top(techniques),
+      hours, areas: top(areas), techniques: top(techniques), seaConditions,
     };
     const range = (vals) => (vals.length ? [Math.min(...vals), Math.max(...vals)] : null);
     const good = outings.filter((o) => caught(o, billfish) > 0);

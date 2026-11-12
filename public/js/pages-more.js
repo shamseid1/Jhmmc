@@ -35,6 +35,62 @@ PAGE_GROUPS.push((view) => ({
     });
   },
 
+  // Sea conditions: wind, waves, water, current, tide, sun and moon, the best fishing times
+  // and the week ahead, for a place off the coast or wherever the phone is.
+  async sea() {
+    const place = seaPlace();
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Sea conditions</h1>
+      <div class="sea-place"><select id="sea-where" aria-label="Place">${SEA_PLACES.map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}</select>
+        <span id="sea-rating"></span></div>
+      <div id="sea-body"><div class="card pad muted">Getting the forecast…</div></div>`;
+    view.querySelector('#sea-where').addEventListener('change', (e) => {
+      try { localStorage.setItem(SEA_KEY, e.target.value); } catch { /* fine */ }
+      route();
+    });
+    let s;
+    try {
+      s = await seaFor(place);
+    } catch (err) {
+      view.querySelector('#sea-body').innerHTML = html`<div class="card pad">${place.key === 'here' && err.code ? "The phone didn't share its location. Choose a place above, or allow location." : err.message || 'Sea conditions are not available right now.'}</div>`;
+      return;
+    }
+    const n = s.now;
+    view.querySelector('#sea-rating').innerHTML = n.rating ? html`<span class="rating ${n.rating}">● ${SEA_RATING[n.rating]}</span>` : '';
+    // Today's tide as a curve, with "now".
+    const pts = s.tide.curve;
+    const lo = Math.min(...pts.map((p) => p[1]), 0) - 0.1;
+    const hi = Math.max(...pts.map((p) => p[1]), 0) + 0.1;
+    const X = (h) => 6 + (h / 23) * 348;
+    const Y = (v) => 90 - ((v - lo) / (hi - lo || 1)) * 80;
+    const path = pts.map(([h, v], i) => `${i ? 'L' : 'M'}${X(h).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const nowH = Number(s.localTime.slice(11, 13)) + Number(s.localTime.slice(14, 16)) / 60;
+    const day = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+    view.querySelector('#sea-body').innerHTML = html`<div class="sea-now">
+        <div class="card"><b>${n.windKn ?? '–'} kn</b><span>Wind ${n.windDir || ''}</span><small>${n.gustKn != null ? `gusts ${n.gustKn}` : ''}</small></div>
+        <div class="card"><b>${n.waveM != null ? wavesTxt(n.waveM) : '–'}</b><span>Waves</span><small>${n.swellM != null ? `swell ${wavesTxt(n.swellM)}${n.swellS ? ` · ${n.swellS} s` : ''}` : ''}</small></div>
+        <div class="card"><b>${n.waterC != null ? tempTxt(n.waterC) : '–'}</b><span>Water</span><small>${n.airC != null ? `air ${tempTxt(n.airC)}` : ''}</small></div>
+        <div class="card"><b>${n.currentKn ?? '–'} kn</b><span>Current ${n.currentDir ? `to ${n.currentDir}` : ''}</span><small>${n.tide ? `tide ${n.tide}` : ''}</small></div>
+        <div class="card"><b>${s.sun.rise || '–'}</b><span>Sunrise</span><small>${s.sun.set ? `sunset ${s.sun.set}` : ''}</small></div>
+        <div class="card"><b>${s.moon.lit}%</b><span>Moon</span><small>${s.moon.name}</small></div>
+      </div>
+      ${pts.length > 3 ? raw(html`<h2>Tide today</h2><div class="card pad"><svg class="tide-svg" viewBox="0 0 360 96" preserveAspectRatio="none" aria-label="Today's tide">
+          <path d="${path} L${X(pts.at(-1)[0])},96 L${X(pts[0][0])},96Z" class="tide-fill"/><path d="${path}" class="tide-line"/>
+          <line x1="${X(nowH)}" x2="${X(nowH)}" y1="0" y2="96" class="tide-now"/></svg>
+        <div class="tide-times">${s.tide.turns.map((t) => raw(html`<span>${t.type === 'high' ? 'High' : 'Low'}<b>${t.time.slice(11, 16)}</b><small>${t.level > 0 ? '+' : ''}${t.level} m</small></span>`))}</div>
+        <p class="small muted">Times from the ocean model, not a local tide table: right for timing, close for height.</p></div>`) : ''}
+      <h2>Best fishing times</h2>
+      <div class="card pad"><ul class="solunar">
+        ${s.solunar.major.map((p) => raw(html`<li><b>Major</b><span>${hhmm(p.from)} – ${hhmm(p.to)}</span></li>`))}
+        ${s.solunar.minor.map((p) => raw(html`<li><span>Minor</span><span>${hhmm(p.from)} – ${hhmm(p.to)}</span></li>`))}</ul>
+        <p class="small muted">From the moon (solunar table). Fish tend to feed more around these times.</p></div>
+      <h2>Next 7 days</h2>
+      <ul class="card sea-days">${s.days.map((d) => raw(html`<li><span class="d"><b>${day(d.date)}</b>${Number(d.date.slice(8))}</span>
+        <span class="w">${[d.windKn != null && `${d.windDir || ''} ${d.windKn} kn`, d.waveM != null && `waves ${wavesTxt(d.waveM)}`, d.waterC != null && tempTxt(d.waterC)].filter(Boolean).join(' · ')}</span>
+        ${d.rating ? raw(html`<span class="rating ${d.rating}">${d.rating[0].toUpperCase() + d.rating.slice(1)}</span>`) : ''}</li>`))}</ul>
+      <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
+  },
+
   // How to put the app on the home screen, for each kind of phone.
   async install() {
     const ua = navigator.userAgent;
@@ -93,6 +149,7 @@ PAGE_GROUPS.push((view) => ({
         ${item('#/notifications', 'bell', 'Notifications', 'What this phone tells you about')}
       </div>
       <h2>Fishing</h2><div class="card menu">
+        ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
         ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>

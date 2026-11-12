@@ -159,6 +159,34 @@ function readAnglerEditor(form) {
   return [...crew, ...guests];
 }
 
+// ---- sea conditions -----------------------------------------------------------
+// Forecast places off the Liberian coast, or wherever the phone is. The server asks the
+// forecast (rounded to about 11 km) so the exact spot stays on the phone.
+const SEA_PLACES = [
+  { key: 'monrovia', name: 'Off Monrovia', lat: 6.2, lng: -10.95 },
+  { key: 'robertsport', name: 'Off Robertsport', lat: 6.7, lng: -11.5 },
+  { key: 'buchanan', name: 'Off Buchanan', lat: 5.8, lng: -10.1 },
+  { key: 'harper', name: 'Off Harper', lat: 4.3, lng: -7.8 },
+  { key: 'here', name: 'Where I am' },
+];
+const SEA_KEY = 'sea-place';
+const seaPlace = () => { try { return SEA_PLACES.find((p) => p.key === localStorage.getItem(SEA_KEY)) || SEA_PLACES[0]; } catch { return SEA_PLACES[0]; } };
+const SEA_RATING = { good: 'Good day to fish', fair: 'Fair', rough: 'Rough' };
+async function seaFor(place) {
+  let { lat, lng } = place;
+  if (place.key === 'here') {
+    const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, maximumAge: 600000, timeout: 15000 }));
+    ({ latitude: lat, longitude: lng } = pos.coords);
+  }
+  return api(`/sea?lat=${lat.toFixed(2)}&lng=${lng.toFixed(2)}`);
+}
+const wavesTxt = (m) => (m == null ? '' : `${Number(toUnit('depth', m)).toFixed(1)} ${unit('depth')}`);
+const tempTxt = (c) => (c == null ? '' : `${Number(toUnit('temp', c)).toFixed(1)}${unit('temp')}`);
+const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+// The line under the GPS on Log fish (and saved with each fish): the sea right now.
+const seaLine = (n, moonLit) => html`<span>${raw(icon('wave'))} ${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
+  n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`, moonLit != null && `moon ${moonLit}%`].filter(Boolean).join(' · ')}</span>`;
+
 // ---- keeping it decent: community rules, reporting, blocking ----------------
 // The rules everyone agrees to (at sign-up, or once on their next visit). Shown on #/community too.
 const COMMUNITY_RULES = [

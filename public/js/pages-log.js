@@ -255,6 +255,7 @@ PAGE_GROUPS.push((view) => ({
     flush();
     // Keep a GPS fix warm so the spot is right where the fish came aboard.
     const gps = view.querySelector('#fo-gps');
+    let seaShown = false;
     let fix = null;
     let watch = null;
     if (!live) {
@@ -263,6 +264,12 @@ PAGE_GROUPS.push((view) => ({
       watch = navigator.geolocation.watchPosition((pos) => {
         fix = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), at: Date.now() };
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
+        if (!seaShown && navigator.onLine !== false) {
+          seaShown = true;
+          api(`/sea?lat=${fix.lat.toFixed(2)}&lng=${fix.lng.toFixed(2)}`).then((s) => {
+            gps.insertAdjacentHTML('afterend', html`<p class="cond-line">${raw(seaLine(s.now, s.moon.lit))}</p>`);
+          }).catch(() => {});
+        }
         gps.classList.remove('gps-wait');
         view.querySelector('.fates')?.classList.remove('waiting');
       }, (err) => {
@@ -445,6 +452,11 @@ PAGE_GROUPS.push((view) => ({
         </div>`) : ''}
         ${R.areas.length ? raw(html`<h2>Where: rough areas</h2><div class="card pad">${bars(R.areas)}</div>`) : ''}
         ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}</div>`) : ''}
+        ${(R.seaConditions || []).map((x) => raw(html`<h2>The sea when you catch ${x.species.toLowerCase()}</h2><div class="card pad sea-trend">
+          <p class="small muted">From the conditions saved with ${plural(x.fish, 'fish')} logged at sea this season.</p>
+          ${x.water.length ? raw(html`<b class="small">Water temperature</b>${bars(x.water.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}
+          ${x.tide.length ? raw(html`<b class="small">Tide</b>${bars(x.tide.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}
+          ${x.wind.length ? raw(html`<b class="small">Wind</b>${bars(x.wind.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}</div>`))}
         <div class="card pad best-card">
           <b>Best conditions so far</b>
           ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,

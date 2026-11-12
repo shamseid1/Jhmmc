@@ -1218,3 +1218,40 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .report-row img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: none; }
 .report-text { display: grid; gap: 4px; min-width: 0; }
 .setup-close { justify-content: center; }
+
+/* Sea conditions. */
+.sea-place { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sea-place select { width: auto; font-weight: 600; }
+.rating { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.rating.good { background: rgba(27, 175, 122, .15); color: #13875c; }
+.rating.fair { background: rgba(245, 166, 35, .18); color: #a86500; }
+.rating.rough { background: rgba(255, 107, 107, .15); color: #c53030; }
+:root:not([data-theme="light"]) .rating.good { color: #5fe0a8; }
+:root:not([data-theme="light"]) .rating.fair { color: #ffc56b; }
+:root:not([data-theme="light"]) .rating.rough { color: #ff9a9a; }
+.sea-now { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.sea-now .card { padding: 12px 6px; text-align: center; display: grid; gap: 1px; }
+.sea-now b { font-size: 21px; line-height: 1.15; }
+.sea-now span { font-size: 12.5px; color: var(--muted); }
+.sea-now small { font-size: 11.5px; color: var(--muted); }
+.tide-svg { width: 100%; height: 96px; display: block; }
+.tide-fill { fill: var(--accent-soft); }
+.tide-line { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.tide-now { stroke: var(--danger); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.tide-times { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; margin-top: 6px; }
+.tide-times span { display: grid; }
+.tide-times small { color: var(--muted); }
+.solunar { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.solunar li { display: flex; justify-content: space-between; font-size: 14.5px; }
+.sea-days { list-style: none; margin: 0 0 8px; padding: 0; }
+.sea-days li { display: grid; grid-template-columns: 3.2em minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 14px; }
+.sea-days li:first-child { border-top: 0; }
+.sea-days .d b { display: block; }
+.sea-days .w { color: var(--muted); font-size: 13px; }
+.sea-card { display: grid; gap: 4px; text-decoration: none; color: inherit; margin-bottom: 12px; }
+.sea-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sea-card-top b { display: inline-flex; align-items: center; gap: 6px; }
+.sea-card .icon, .cond-line .icon { width: 17px; height: 17px; color: var(--accent); }
+.cond-line { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
+.cond-line span { display: inline-flex; align-items: flex-start; gap: 6px; }
+.sea-trend { display: grid; gap: 6px; }

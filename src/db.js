@@ -56,7 +56,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 48;
+const SCHEMA_VERSION = 49;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -393,7 +393,9 @@ CREATE TABLE IF NOT EXISTS outing_landings (
   -- A photo of the fish, added by the crew whenever they like (shown on the feed).
   photo TEXT,
   -- Shown on the angler's and boat's profiles (with its photo); the crew can hide it.
-  on_profile INTEGER NOT NULL DEFAULT 1
+  on_profile INTEGER NOT NULL DEFAULT 1,
+  -- The sea when it was landed (JSON: wind, waves, water temperature, tide, moon), from the forecast.
+  conditions TEXT
 );
 CREATE INDEX IF NOT EXISTS outing_landings_outing ON outing_landings(outing_id, id);
 
@@ -677,6 +679,11 @@ function openDb(file) {
       INSERT INTO registration_log SELECT * FROM registration_log_old;
       DROP TABLE registration_log_old;
       COMMIT;`);
+  }
+  if (hasTables && version < 49) {
+    if (!db.prepare('PRAGMA table_info(outing_landings)').all().some((c) => c.name === 'conditions')) {
+      db.exec('ALTER TABLE outing_landings ADD COLUMN conditions TEXT');
+    }
   }
   if (hasTables && version < 48) {
     // Community rules: when each person agreed (asked once, at sign-up or on their next visit).

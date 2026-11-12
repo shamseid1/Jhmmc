@@ -11,6 +11,7 @@ const jhmmcBook = require('./jhmmc-records');
 const { createMailer } = require('./mail');
 const { createBackups } = require('./backup');
 const { createPusher } = require('./push');
+const { createSea } = require('./sea');
 const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -65,6 +66,7 @@ function createApp({
   contactEmail,
   // Sends phone notifications; made from the database's keys unless given (tests).
   pusher,
+  sea,
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
   // Tests that still post open it.
   openPosts = false,
@@ -83,6 +85,8 @@ function createApp({
   // which account is the admin and where the nightly backups go.
   contactEmail = (contactEmail ?? (/<([^>]+)>/.exec(process.env.MAIL_FROM || '')?.[1] || (process.env.MAIL_FROM || '').trim()))?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
+  // Sea conditions (Open-Meteo): none under the test runner, so tests never go online.
+  if (sea === undefined) sea = process.env.NODE_TEST_CONTEXT ? null : createSea();
   pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
   if (nightlyBackups) backups.start();
@@ -393,6 +397,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     path,
     photoUrl,
     pusher,
+    sea,
     removeUpload,
     requireApprove,
     requireMoney,
@@ -411,7 +416,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     withVideo,
     zoneOf,
   };
-  for (const part of ['account', 'activity', 'notifications', 'reports', 'admin', 'boats', 'catches', 'registrations', 'scoring', 'tournaments', 'posts', 'outings', 'people']) {
+  for (const part of ['account', 'activity', 'notifications', 'reports', 'sea', 'admin', 'boats', 'catches', 'registrations', 'scoring', 'tournaments', 'posts', 'outings', 'people']) {
     Object.assign(ctx, require(`./routes/${part}`)(ctx));
   }
 

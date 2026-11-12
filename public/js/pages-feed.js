@@ -21,6 +21,7 @@ PAGE_GROUPS.push((view) => ({
         </form></details>`) : ''}
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
+      ${type === 'all' ? raw('<div id="sea-card"></div>') : ''}
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
@@ -71,6 +72,19 @@ PAGE_GROUPS.push((view) => ({
     }
     // Until this phone has notifications on, offer them here (announcements, reminders).
     if (state.me) renderNotify(view.querySelector('#notify'), { what: 'announcements from JHMMC, like tournament reminders', hideWhenOn: true });
+    // Today's sea, quietly: nothing shows if the forecast can't be had.
+    const seaBox = view.querySelector('#sea-card');
+    const place = seaPlace();
+    if (seaBox && navigator.onLine !== false && place.key !== 'here') {
+      seaFor(place).then((s) => {
+        const n = s.now;
+        const next = s.solunar.major.find((p) => p.to > Number(s.localTime.slice(11, 13)) * 60 + Number(s.localTime.slice(14, 16)));
+        seaBox.innerHTML = html`<a class="card pad sea-card" href="#/sea">
+          <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
+          <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
+          ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a>`;
+      }).catch(() => {});
+    }
     const form = view.querySelector('#ann');
     if (form) {
       bindForm(form, async () => {
