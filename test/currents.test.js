@@ -104,3 +104,18 @@ test('never an old forecast: a saved chart past 12 hours is not shown', async ()
   const err = await currents.get().catch((e) => e);
   assert.ok(err.preparing, 'the old chart is not given out');
 });
+
+test('a refusal is remembered over a restart: no asking again before the time', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const region = { south: 5, north: 5.3, west: -11, east: -10.7, step: 0.3 };
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-refused-')), 'chart-grid.json');
+  const refuse = async () => new Response(JSON.stringify({ error: true, reason: 'Daily API request limit exceeded.' }), { status: 429 });
+  const first = createCurrents({ region, gapMs: 0, file, fetchImpl: refuse });
+  await first.get({ wait: true }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 50)); // written in the background
+  let asked = 0;
+  const after = createCurrents({ region, gapMs: 0, file, fetchImpl: async () => { asked += 1; return refuse(); } });
+  const err = await after.get().catch((e) => e);
+  assert.equal(asked, 0, 'not asked again after the restart');
+  assert.match(err.lastError.message, /Daily/);
+});

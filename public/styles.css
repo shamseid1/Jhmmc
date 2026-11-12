@@ -1383,3 +1383,4 @@ body.chart-mode main > div { animation: none; }
 .panel-switches { display: grid; gap: 10px; margin-top: 14px; font-size: 15px; }
 .panel-switches label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .chart-top { padding-right: 70px; }
+.chart-bottom[hidden] { display: none; }

@@ -54,13 +54,42 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // The small map on a catch's page, on satellite imagery.
 // The depth charts as one map layer: map tiles (sharp at every zoom, only the
 // part in view is loaded) or, for an older chart, one picture.
-const depthLayer = (L, charts) => L.layerGroup(charts.map((c) => {
+// With { clean }, for a light chart underneath: the charts' dark see-through shading over the
+// water (made for the satellite) is taken out, leaving the contour lines and depths.
+const depthLayer = (L, charts, { clean = false } = {}) => L.layerGroup(charts.map((c) => {
   const bounds = [[c.bounds.south, c.bounds.west], [c.bounds.north, c.bounds.east]];
-  return c.tiles
-    // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
-    ? L.tileLayer(c.tiles, { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' })
-    : L.imageOverlay(c.url, bounds, { opacity: 0.95 });
+  const opts = { bounds, minZoom: 8, minNativeZoom: c.minZoom, maxNativeZoom: c.maxZoom, opacity: 0.95, className: 'depth-tiles' };
+  if (!c.tiles) return L.imageOverlay(c.url, bounds, { opacity: 0.95 });
+  // From zoom 8, where the lines can be read; further out they'd only show as dark patches.
+  return clean ? new (cleanTiles(L))(c.tiles, opts) : L.tileLayer(c.tiles, opts);
 }));
+// Tiles redrawn without the shading: it's black at about 43% (alpha 100 to 114); the lines and
+// numbers are stronger, so they stay (made a little bolder).
+let CleanTiles = null;
+function cleanTiles(L) {
+  CleanTiles ??= L.TileLayer.extend({
+    createTile(coords, done) {
+      const cv = document.createElement('canvas');
+      const img = new Image();
+      img.onload = () => {
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        try {
+          const d = ctx.getImageData(0, 0, cv.width, cv.height);
+          const px = d.data;
+          for (let i = 3; i < px.length; i += 4) { const a = px[i]; px[i] = a <= 114 ? 0 : Math.min(255, (a - 108) * 3.2); }
+          ctx.putImageData(d, 0, 0);
+        } catch { /* left as it is */ }
+        done(null, cv);
+      };
+      img.onerror = (e) => done(e, cv);
+      img.src = this.getTileUrl(coords);
+      return cv;
+    },
+  });
+  return CleanTiles;
+}
 
 async function drawSpotMaps(root) {
   const boxes = [...root.querySelectorAll('.spot-map-view:not(.leaflet-container)')];

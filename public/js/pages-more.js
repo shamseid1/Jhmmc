@@ -187,7 +187,9 @@ PAGE_GROUPS.push((view) => ({
     view.querySelector('[data-close-layers]').addEventListener('click', () => openLayers(false));
     const titleFor = (k) => LAYERS.find(([x]) => x === k)?.[1];
     // The name at the top: the map, and what's on it.
-    let setTitle = () => {};
+    let base = 'chart';
+    let layer = 'none';
+    const setTitle = () => { view.querySelector('#chart-title').textContent = [base === 'chart' ? 'Chart' : 'Satellite', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
     // Back to where the chart was opened from (or Sea conditions, if it was opened directly).
     const cameFrom = state.pagesSeen > 1;
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
@@ -210,27 +212,36 @@ PAGE_GROUPS.push((view) => ({
     const { imagery } = addSatellite(L, map, { fullScreen: true });
     // The base: the fishing chart (Esri's ocean map, the contours on it) or the satellite.
     const ocean = oceanBase(L);
-    let base = 'chart';
     let onBase = null; // redraws the layer on top, once there is one
     const setBase = (b) => {
       base = b;
       if (b === 'chart') { imagery.remove(); ocean.addTo(map).bringToBack(); } else { ocean.remove(); imagery.addTo(map).bringToBack(); }
+      syncContours();
+      setTitle();
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.base === b)));
       onBase?.();
     };
     const overlays = {};
+    // The contours: lines only on the chart, with their shading on the satellite.
+    const contours = {};
+    function syncContours() {
+      contours.chart?.remove(); contours.satellite?.remove();
+      if (view.querySelector('[data-show=contours]')?.checked) contours[base]?.addTo(map);
+    }
     if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
-        overlays.contours = depthLayer(L, charts);
-        if (view.querySelector('[data-show=contours]')?.checked) overlays.contours.addTo(map);
+        contours.chart = depthLayer(L, charts, { clean: true });
+        contours.satellite = depthLayer(L, charts);
+        syncContours();
       }).catch(() => {});
     }
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
+      if (c.dataset.show === 'contours') return syncContours();
       const o = overlays[c.dataset.show];
       if (o) { if (c.checked) o.addTo(map); else o.remove(); }
     }));
-    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => { setBase(b.dataset.base); setTitle(); }));
+    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => setBase(b.dataset.base)));
     // The buttons down the side, as on a plotter: zoom, and the map on where you are.
     view.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => map.setZoom(map.getZoom() + Number(b.dataset.zoom))));
     let me = null;
@@ -257,6 +268,7 @@ PAGE_GROUPS.push((view) => ({
     const tlRow = view.querySelector('.tl-row');
     const waiting = (on) => {
       tlRow.hidden = on;
+      view.querySelector('.chart-bottom').hidden = on;
       view.querySelectorAll('[data-layer]').forEach((b) => { if (b.dataset.layer !== 'none') b.disabled = on; });
       if (!on) note.hidden = true;
     };
@@ -330,8 +342,7 @@ PAGE_GROUPS.push((view) => ({
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
-    let layer = 'none';
-    setTitle = () => { view.querySelector('#chart-title').textContent = [base === 'chart' ? 'Chart' : 'Satellite', layer !== 'none' && titleFor(layer)].filter(Boolean).join(' · '); };
+
     let labels = null;
     let image = null;
     let at = null;

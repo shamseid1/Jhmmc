@@ -113,12 +113,17 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
 function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null, file = null,
   gapMs = 61000, partSize = 360, retryMs = 10 * 60e3, maxAgeMs = 12 * 3600e3 } = {}) {
   let cached = null;
-  try { if (file) cached = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cached = null; }
-  if (cached && (!cached.data?.frames || cached.data.step !== region.step)) cached = null; // another grid
+  let saved = null;
+  try { if (file) saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = null; }
+  if (saved?.data?.frames && saved.data.step === region.step) cached = { at: saved.at, data: saved.data }; // not another grid's
   let pending = null;
   let failedAt = 0;
-  let retryAt = 0; // when to try again after a refusal
-  let lastError = null; // what went wrong last, for the waiting page
+  // A refusal is remembered on disk too, so a restart (every update) doesn't ask again before then.
+  let retryAt = saved?.refusal?.retryAt > Date.now() ? saved.refusal.retryAt : 0; // when to try again after a refusal
+  let lastError = retryAt ? saved.refusal : null; // what went wrong last, for the waiting page
+  const save = () => {
+    if (file) fs.promises.writeFile(file, JSON.stringify({ ...(cached || {}), refusal: lastError })).catch((err) => console.warn(`Chart not saved: ${err.message}`));
+  };
   // When to ask again after a refusal: Open-Meteo says which allowance ran out.
   const nextTry = (msg) => {
     const now = new Date();
@@ -177,12 +182,13 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     pending = load().then((data) => {
       cached = { at: Date.now(), data };
       lastError = null;
-      if (file) fs.promises.writeFile(file, JSON.stringify(cached)).catch((err) => console.warn(`Chart not saved: ${err.message}`));
+      save();
       return data;
     }).catch((err) => {
       failedAt = Date.now();
       retryAt = nextTry(err.message);
       lastError = { message: err.message, at: failedAt, retryAt };
+      save();
       console.warn(`Chart refresh failed: ${err.message} (next try ${new Date(retryAt).toISOString()})`);
     }).finally(() => { pending = null; });
     return pending;
