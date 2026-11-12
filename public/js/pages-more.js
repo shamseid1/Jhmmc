@@ -126,8 +126,89 @@ PAGE_GROUPS.push((view) => ({
       <ul class="card sea-days">${s.days.map((d) => raw(html`<li><span class="d"><b>${day(d.date)}</b>${Number(d.date.slice(8))}</span>
         <span class="w">${[d.windKn != null && `${d.windDir || ''} ${d.windKn} kn`, d.waveM != null && `waves ${wavesTxt(d.waveM)}`, d.waterC != null && tempTxt(d.waterC)].filter(Boolean).join(' · ')}</span>
         ${d.rating ? raw(html`<span class="rating ${d.rating}">${d.rating[0].toUpperCase() + d.rating.slice(1)}</span>`) : ''}</li>`))}</ul>
+      <a class="card pad cur-link" href="#/currents">${raw(icon('wave'))}<span><b>Currents map</b><span class="small muted">The water's flow and temperature, now and the next 3 days</span></span><span aria-hidden="true">›</span></a>
       <p class="center"><a href="#/depth">Depth check: compare the seabed map with your chart ›</a></p>
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
+  },
+
+  // The currents map: the water's flow as moving lines over water temperature (or current
+  // strength), every 3 hours for 3 days; crews see the depth contours and their own fish too.
+  async currents() {
+    view.innerHTML = html`<p class="back"><a href="#/sea">‹ Sea conditions</a></p>
+      <h1>Currents</h1>
+      <div class="cur-bar"><div class="seg" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-kind="sst">Water temperature</button>
+        <button type="button" role="tab" aria-selected="false" data-kind="speed">Current strength</button></div></div>
+      <div id="cur-map" class="cur-map"><div class="card pad muted">Getting the currents…</div></div>
+      <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
+      <div class="cur-legend" id="cur-legend"></div>
+      <p class="small muted">The lines move the way the surface water flows; longer, faster lines are stronger current. Warm and cool water
+      meeting (a temperature break) and the edges of a current are where bait, and the fish after it, often gather.
+      From the Copernicus ocean model through Open-Meteo, on a grid of about 30 km: the big picture, not every current line on the water.</p>`;
+    let data;
+    let L;
+    try {
+      [data, L] = await Promise.all([api('/currents'), loadLeaflet()]);
+    } catch (err) {
+      view.querySelector('#cur-map').innerHTML = html`<div class="card pad">${err.message || 'The currents map is not available right now.'}</div>`;
+      return;
+    }
+    const box = view.querySelector('#cur-map');
+    box.innerHTML = '';
+    const map = L.map(box, { zoomControl: true, attributionControl: true }).setView([6.0, -10.6], 7);
+    addSatellite(L, map);
+    const crew = !!(state.me?.teamId || state.me?.isAdmin);
+    if (crew) {
+      api('/charts').then(({ charts }) => { if (charts.length) depthLayer(L, charts).addTo(map); }).catch(() => {});
+      api('/me/spots').then(({ spots }) => {
+        for (const s of spots.filter((x) => x.lat != null)) {
+          L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 }).bindPopup(html`${s.species}, ${s.date}`).addTo(map);
+        }
+      }).catch(() => {});
+    }
+    const slider = view.querySelector('#cur-t');
+    const when = view.querySelector('#cur-when');
+    slider.max = String(data.frames.length - 1);
+    // Start at the frame nearest now.
+    const nowIso = new Date().toISOString().slice(0, 13);
+    const start = Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso));
+    slider.value = String(start);
+    let kind = 'sst';
+    let image = null;
+    let at = null;
+    const legend = () => {
+      const stops = kind === 'sst' ? SST_STOPS : SPEED_STOPS;
+      view.querySelector('#cur-legend').innerHTML = html`<span>${kind === 'sst' ? tempTxt(stops[0][0]) : `${stops[0][0]} kn`}</span>
+        <i style="background:linear-gradient(90deg,${stops.map(([, c]) => `rgb(${c})`).join(',')})"></i>
+        <span>${kind === 'sst' ? tempTxt(stops.at(-1)[0]) : `${stops.at(-1)[0]} kn`}</span>`;
+    };
+    const show = () => {
+      const f = data.frames[Number(slider.value)];
+      at = sampler(data, f);
+      image?.remove();
+      image = fieldImage(L, data, f, kind).addTo(map);
+      const t = new Date(`${f.time}:00Z`);
+      when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+      legend();
+    };
+    flowLayer(map, () => at);
+    slider.addEventListener('input', show);
+    view.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => {
+      kind = b.dataset.kind;
+      view.querySelectorAll('[data-kind]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      show();
+    }));
+    // Tap the sea: that spot's current and water.
+    map.on('click', (e) => {
+      if (!at) return;
+      const u = at(e.latlng.lat, e.latlng.lng, 'u');
+      const v = at(e.latlng.lat, e.latlng.lng, 'v');
+      const t = at(e.latlng.lat, e.latlng.lng, 'sst');
+      if (u == null) return;
+      const deg = (Math.atan2(u, v) * 180) / Math.PI;
+      L.popup().setLatLng(e.latlng).setContent(html`<b>${Math.hypot(u, v).toFixed(1)} kn</b> to the ${compassName(deg)}${t != null ? ` · water ${tempTxt(t)}` : ''}`).openOn(map);
+    });
+    show();
   },
 
   // Depth check: the seabed map's depth (GEBCO) at positions typed as a chart plotter shows
@@ -247,6 +328,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <h2>Fishing</h2><div class="card menu">
         ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
+        ${item('#/currents', 'wave', 'Currents map', "The water's flow and temperature, like a weather map")}
         ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>

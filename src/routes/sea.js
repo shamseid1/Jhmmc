@@ -3,7 +3,18 @@
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
-  const { api, auth, depth, sea } = ctx;
+  const { api, auth, currents, depth, sea } = ctx;
+
+  // The currents map's data: the grid's currents and water temperature every 3 hours.
+  api.get('/currents', async (_req, res) => {
+    if (!currents) return res.status(503).json({ error: 'The currents map is not available right now.' });
+    try {
+      res.set('Cache-Control', 'public, max-age=900').json(await currents.get());
+    } catch (err) {
+      console.warn(`Currents failed: ${err.message}`);
+      res.status(503).json({ error: 'The currents map is not available right now. Try again in a few minutes.' });
+    }
+  });
 
   // The depth (GEBCO) at up to 50 spots: "lat,lng|lat,lng". For the Depth check page.
   api.get('/depth', auth.requireUser, async (req, res) => {

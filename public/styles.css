@@ -1263,3 +1263,19 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .depth-list li:first-child { border-top: 0; }
 .depth-list li span { display: grid; min-width: 0; }
 .depth-list b { font-size: 18px; white-space: nowrap; }
+
+/* The currents map. */
+.cur-map { position: relative; height: min(68vh, 560px); border-radius: var(--radius); overflow: hidden; background: #0a1a33; margin: 10px 0; }
+.flow-canvas { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
+.field-image { image-rendering: auto; }
+.cur-bar .seg { margin: 6px 0 0; }
+.cur-time { display: flex; align-items: center; gap: 12px; }
+.cur-time input { flex: 1; accent-color: var(--accent); }
+.cur-time span { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cur-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 8px 0; }
+.cur-legend i { flex: 1; height: 10px; border-radius: 5px; }
+.cur-link { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; margin: 12px 0; }
+.cur-link > span:nth-child(2) { display: grid; flex: 1; }
+.cur-link .icon { width: 26px; height: 26px; color: var(--accent); flex: none; }
+.seg button { text-align: center; padding: 10px; border-radius: 999px; font-weight: 700; color: var(--muted); background: none; border: 0; justify-content: center; }
+.seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }

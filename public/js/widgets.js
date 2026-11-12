@@ -215,6 +215,121 @@ function depthBands(depthsM) {
 const seaLine = (n, moonLit, depthM) => html`<span>${raw(icon('wave'))} ${[depthM != null && `depth about ${depthTxt(depthM)}`, n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
   n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`, moonLit != null && `moon ${moonLit}%`].filter(Boolean).join(' · ')}</span>`;
 
+// ---- the currents map --------------------------------------------------------
+// A grid (south-west corner, step in degrees, nx by ny) with u and v (knots, east and north)
+// and water temperature; null on land. Values between grid points are blended (bilinear).
+function sampler(g, f) {
+  return (lat, lng, key) => {
+    const x = (lng - g.west) / g.step;
+    const y = (lat - g.south) / g.step;
+    const i = Math.floor(x); const j = Math.floor(y);
+    if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return null;
+    const a = f[key][j * g.nx + i]; const b = f[key][j * g.nx + i + 1];
+    const c = f[key][(j + 1) * g.nx + i]; const d = f[key][(j + 1) * g.nx + i + 1];
+    if (a == null || b == null || c == null || d == null) return null;
+    const fx = x - i; const fy = y - j;
+    return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+  };
+}
+const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+// Colour scales: water temperature (cool blue to warm red), current strength (calm to strong).
+const SST_STOPS = [[24, [40, 70, 160]], [26, [40, 140, 200]], [27.5, [60, 190, 170]], [28.5, [240, 210, 80]], [29.5, [240, 130, 50]], [31, [200, 40, 60]]];
+const SPEED_STOPS = [[0, [30, 60, 120]], [0.3, [40, 130, 190]], [0.6, [60, 190, 160]], [1, [240, 200, 70]], [1.5, [240, 110, 50]], [2.2, [190, 30, 80]]];
+function colourAt(stops, v) {
+  if (v <= stops[0][0]) return stops[0][1];
+  for (let k = 1; k < stops.length; k++) {
+    if (v <= stops[k][0]) {
+      const [v0, c0] = stops[k - 1]; const [v1, c1] = stops[k];
+      const t = (v - v0) / (v1 - v0);
+      return c0.map((c, n) => Math.round(c + (c1[n] - c) * t));
+    }
+  }
+  return stops.at(-1)[1];
+}
+// The colour layer for one frame: one pixel per grid point, smoothed by the browser.
+function fieldImage(L, g, f, kind) {
+  const cv = document.createElement('canvas');
+  cv.width = g.nx; cv.height = g.ny;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(g.nx, g.ny);
+  for (let j = 0; j < g.ny; j++) {
+    for (let i = 0; i < g.nx; i++) {
+      const k = j * g.nx + i;
+      const v = kind === 'sst' ? f.sst[k] : (f.u[k] == null ? null : Math.hypot(f.u[k], f.v[k]));
+      const p = ((g.ny - 1 - j) * g.nx + i) * 4; // north up
+      if (v == null) continue;
+      const [r, gg, b] = colourAt(kind === 'sst' ? SST_STOPS : SPEED_STOPS, v);
+      img.data.set([r, gg, b, 170], p);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const half = g.step / 2;
+  return L.imageOverlay(cv.toDataURL(), [[g.south - half, g.west - half], [g.south + (g.ny - 1) * g.step + half, g.west + (g.nx - 1) * g.step + half]],
+    { opacity: 0.85, className: 'field-image', interactive: false });
+}
+// Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
+function flowLayer(map, getField) {
+  const box = map.getContainer();
+  const cv = document.createElement('canvas');
+  cv.className = 'flow-canvas';
+  box.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  let parts = [];
+  let raf = 0;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const size = () => {
+    const r = box.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    cv.style.width = `${r.width}px`; cv.style.height = `${r.height}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  const seed = () => {
+    const r = box.getBoundingClientRect();
+    const n = Math.round(Math.min(2200, (r.width * r.height) / 140));
+    parts = Array.from({ length: n }, () => ({ x: Math.random() * r.width, y: Math.random() * r.height, age: Math.floor(Math.random() * 80) }));
+    ctx.clearRect(0, 0, r.width, r.height);
+  };
+  const step = () => {
+    const r = box.getBoundingClientRect();
+    const at = getField();
+    // Fade the old trails.
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.fillRect(0, 0, r.width, r.height);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 1.3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    for (const p of parts) {
+      const ll = map.containerPointToLatLng([p.x, p.y]);
+      const u = at && at(ll.lat, ll.lng, 'u');
+      const v = at && at(ll.lat, ll.lng, 'v');
+      if (u == null || v == null || p.age > 90) {
+        p.x = Math.random() * r.width; p.y = Math.random() * r.height; p.age = 0;
+        continue;
+      }
+      // Pixels per frame: faster current, longer stroke (the same at every zoom).
+      const nx = p.x + u * 1.6;
+      const ny = p.y - v * 1.6;
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(nx, ny);
+      p.x = nx; p.y = ny; p.age += 1;
+    }
+    ctx.stroke();
+    raf = requestAnimationFrame(step);
+  };
+  size(); seed();
+  map.on('movestart zoomstart', () => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, cv.width, cv.height); });
+  map.on('moveend zoomend', () => { seed(); if (!reduce) raf = requestAnimationFrame(step); });
+  map.on('resize', () => { size(); seed(); });
+  if (!reduce) raf = requestAnimationFrame(step);
+  // Stop when the page is left.
+  const stop = () => { cancelAnimationFrame(raf); window.removeEventListener('hashchange', stop); };
+  window.addEventListener('hashchange', stop);
+  return { reseed: seed };
+}
+
 // ---- keeping it decent: community rules, reporting, blocking ----------------
 // The rules everyone agrees to (at sign-up, or once on their next visit). Shown on #/community too.
 const COMMUNITY_RULES = [
