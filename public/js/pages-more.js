@@ -186,9 +186,7 @@ PAGE_GROUPS.push((view) => ({
       <div class="chart-panel" id="chart-panel" hidden>
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
-        ${state.me ? raw(html`<div class="panel-switches">
-          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" ${saved.contours === false ? '' : 'checked'}></label></div>
-        <div class="panel-head"><b>Catches</b></div>
+        ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
@@ -211,7 +209,7 @@ PAGE_GROUPS.push((view) => ({
     const remember = () => {
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
-        localStorage.setItem('chart-prefs', JSON.stringify({ contours: on('contours'), fish: on('fish'), regional: on('regional'), cf,
+        localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), regional: on('regional'), cf,
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -254,10 +252,8 @@ PAGE_GROUPS.push((view) => ({
     // The contours: the lines and depths only (white, without the charts' grey shading), so the
     // sea looks the same inside the charts and out.
     let contours = null;
-    function syncContours() {
-      contours?.remove();
-      if (view.querySelector('[data-show=contours]')?.checked) contours?.addTo(map);
-    }
+    // Always on: they're the chart.
+    function syncContours() { if (contours && !map.hasLayer(contours)) contours.addTo(map); }
     if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
@@ -266,7 +262,6 @@ PAGE_GROUPS.push((view) => ({
       }).catch(() => {});
     }
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
-      if (c.dataset.show === 'contours') return syncContours();
       if (c.dataset.show === 'regional') return; // drawn for the filters (below)
       const o = overlays[c.dataset.show];
       if (o) { if (c.checked) o.addTo(map); else o.remove(); }
