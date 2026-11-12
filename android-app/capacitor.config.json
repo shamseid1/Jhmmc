@@ -24,5 +24,9 @@
       "insetsHandling": "css",
       "initialViewportFitValueHint": "cover"
     }
+  },
+  "ios": {
+    "limitsNavigationsToAppBoundDomains": true,
+    "backgroundColor": "#f4f6fa"
   }
 }
