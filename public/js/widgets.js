@@ -7,7 +7,7 @@
 // names (country, city, town) on top.
 function addSatellite(L, map, { fullScreen = false } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
-  const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
+  const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri', keepBuffer: 4 }).addTo(map);
   L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
   if (!fullScreen) twoFingers(map);

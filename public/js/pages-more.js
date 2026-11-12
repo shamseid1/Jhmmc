@@ -219,7 +219,10 @@ PAGE_GROUPS.push((view) => ({
     }
     box.innerHTML = '';
     // Opens close enough in for the depth contours (they show from zoom 8), off Marshall.
-    const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5 }).setView([6.05, -10.55], 8);
+    // Pinching stops at the furthest zoom (no shrinking past it and bouncing back, which showed
+    // empty grey around the map), and the map stays around West Africa.
+    const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, bounceAtZoomLimits: false,
+      maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 8);
     // The map's credit (Esri's terms): small, bottom left, just above the time strip.
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
     const bar = view.querySelector('.chart-bottom');
