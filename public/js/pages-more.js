@@ -138,7 +138,6 @@ PAGE_GROUPS.push((view) => ({
   currents() { location.replace('#/chart'); },
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
-    const PORT_NAMES = ['Marshall', 'Monrovia', 'Robertsport', 'Buchanan', 'Greenville', 'Harper', 'Freetown', 'Conakry', 'Bissau'];
     // Opened from the old Catch map (or "See them on the map"): the catches on, the map on them.
     const hq = new URLSearchParams(location.hash.split('?')[1] || '');
     // How you left the chart, on this phone: the switches, the filters and the layer.
@@ -200,13 +199,11 @@ PAGE_GROUPS.push((view) => ({
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
         <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
-        <div class="panel-head catches-head"><b>Home port</b></div>
-        <label class="port-pick"><span>Distances and tides from</span><select data-port aria-label="Home port">${raw(PORT_NAMES.map((n) => html`<option${n === (saved.port || 'Marshall') ? ' selected' : ''}>${n}</option>`).join(''))}</select></label>
 
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
-          <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span></div></div>
+          <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span><span class="tl-port" id="tl-port"></span></div></div>
         <div class="chart-legend" id="chart-legend"></div>
       </div>
     </div>`;
@@ -220,7 +217,7 @@ PAGE_GROUPS.push((view) => ({
     const remember = () => {
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
-        localStorage.setItem('chart-prefs', JSON.stringify({ port: view.querySelector('[data-port]')?.value, fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
+        localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -291,20 +288,14 @@ PAGE_GROUPS.push((view) => ({
     // ---- where you are, and today's track ----
     // The blue button follows you (the dot moves with the boat) and draws today's track; tap it
     // again to stop. The track is kept on this phone for the day.
-    // Your home port (chosen in the layers panel, kept on this phone): distances on a tap and the
-    // tides on the time strip are from there.
+    // The coast's ports and towns: a tap gives the distance from the nearest (and from you), and
+    // the time strip's tides are for the one nearest the part of the map you're looking at.
+    // Nothing to set up, whichever boat or club.
     const PORTS = [['Marshall', 6.15, -10.3833], ['Monrovia', 6.33, -10.8], ['Robertsport', 6.753, -11.367], ['Buchanan', 5.877, -10.047],
-      ['Greenville', 5.011, -9.039], ['Harper', 4.375, -7.717], ['Freetown', 8.484, -13.234], ['Conakry', 9.509, -13.712], ['Bissau', 11.863, -15.598]];
-    let port = PORTS.find(([n]) => n === saved.port) || PORTS[0];
-    let HOME = [port[1], port[2]];
-    let portPin = null;
-    const markPort = () => {
-      portPin?.remove(); portPin = null;
-      if (port[0] === MAP_PLACES[0].name) return; // Marshall is on the map already
-      portPin = L.circleMarker(HOME, { radius: 5, weight: 2, color: '#fff', fillColor: '#f5a524', fillOpacity: 1, interactive: false })
-        .bindTooltip(port[0], { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] }).addTo(map);
-    };
-    markPort();
+      ['River Cess', 5.457, -9.583], ['Greenville', 5.011, -9.039], ['Harper', 4.375, -7.717], ['Tabou', 4.42, -7.353],
+      ['Sulima', 6.97, -11.58], ['Bonthe', 7.526, -12.505], ['Freetown', 8.484, -13.234], ['Conakry', 9.509, -13.712],
+      ['Boké', 10.94, -14.3], ['Bissau', 11.863, -15.598], ['Bubaque', 11.28, -15.83]];
+    const nearestPort = (at0) => PORTS.reduce((best, p) => (navTo([p[1], p[2]], at0).nm < navTo([best[1], best[2]], at0).nm ? p : best));
     let myPos = null;
     let me = null;
     let watch = null;
@@ -343,7 +334,10 @@ PAGE_GROUPS.push((view) => ({
     });
     window.addEventListener('hashchange', stopFollowing, { once: true });
     // From Marshall, and from you when the app knows where you are.
-    const navRows = (to) => [[`From ${port[0]}`, navTxt(HOME, to)], myPos && ['From you', navTxt(myPos, to)]].filter(Boolean);
+    const navRows = (to) => {
+      const p = nearestPort(to);
+      return [myPos && ['From you', navTxt(myPos, to)], [`From ${p[0]}`, navTxt([p[1], p[2]], to)]].filter(Boolean);
+    };
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
     const earlyTap = (e) => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
@@ -506,7 +500,7 @@ PAGE_GROUPS.push((view) => ({
         where = [e.latlng.lat, e.latlng.lng];
         openLayers(false);
         view.querySelector('#chart-list').hidden = true;
-        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt(HOME, where)} from ${port[0]}`;
+        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt([nearestPort(where)[1], nearestPort(where)[2]], where)} from ${nearestPort(where)[0]}`;
         form.reset();
         form.hidden = false;
         form.name.focus();
@@ -747,12 +741,15 @@ PAGE_GROUPS.push((view) => ({
     tl.innerHTML = html`<span class="tl-pad"></span><div class="tl-track">${days.map((day, n) => raw(html`<div class="tl-day${n % 2 ? ' alt' : ''}" style="width:${day.hours.length * PX}px" data-day="${day.key}">
       <b>${day.d.toLocaleDateString(undefined, { weekday: 'long' })} ${day.d.getDate()}<span class="tl-moon"></span></b>
       <span class="tl-hours">${day.hours.map(({ h, label }) => raw(h % 3 ? '<i></i>' : html`<i class="big"><em>${label}</em></i>`))}</span></div>`))}<div class="tl-marks"></div></div><span class="tl-pad"></span>`;
-    // On the strip, off Marshall: high and low water (▲ ▼), sunrise and sunset (the sun, half
-    // up or down), and each day's moon. From Sea conditions' forecast for Marshall.
+    // On the strip: high and low water (▲ ▼), sunrise and sunset (the sun, half up or down) and
+    // each day's moon, for the port nearest the middle of the map (named on the strip), from
+    // Sea conditions' forecast for it; it follows the map as you move it.
     const MOONS = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
-    const loadStrip = () => api(`/sea?lat=${HOME[0]}&lng=${HOME[1]}`).then((sea) => {
+    let stripPort = null;
+    const loadStrip = (p) => api(`/sea?lat=${p[1]}&lng=${p[2]}`).then((sea) => {
       const st = sea?.strip;
-      if (!st || !view.isConnected) return;
+      if (!st || !view.isConnected || p !== stripPort) return;
+      view.querySelector('#tl-port').textContent = `Tides · ${p[0]}`;
       const hourOf = (local) => (Date.parse(`${local}:00Z`) - st.utcOffset * 1000 - t0) / 3600e3;
       const marks = [
         ...st.turns.map((t) => ({ h: hourOf(t.time), cls: t.type === 'high' ? 'hi' : 'lo', text: t.type === 'high' ? '▲' : '▼', title: `${t.type === 'high' ? 'High' : 'Low'} water ${t.time.slice(11, 16)}` })),
@@ -764,16 +761,15 @@ PAGE_GROUPS.push((view) => ({
         if (el && d.moon) el.querySelector('.tl-moon').textContent = ` ${MOONS[Math.round((d.moon.age / 29.53) * 8) % 8]} ${d.moon.lit}%`;
       }
     }).catch(() => {});
-    loadStrip();
-    // A new home port: its tides on the strip, its name on the map and in the distances.
-    view.querySelector('[data-port]')?.addEventListener('change', (e) => {
-      port = PORTS.find(([n]) => n === e.target.value) || PORTS[0];
-      HOME = [port[1], port[2]];
-      markPort();
-      view.querySelector('.tl-marks').innerHTML = '';
-      view.querySelectorAll('.tl-moon').forEach((m) => { m.textContent = ''; });
-      loadStrip();
-    });
+    const followMap = () => {
+      const c = map.getCenter();
+      const p = nearestPort([c.lat, c.lng]);
+      if (p === stripPort) return;
+      stripPort = p;
+      loadStrip(p);
+    };
+    followMap();
+    map.on('moveend', followMap);
     const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
     pads();
     tl.scrollLeft = hour * PX;

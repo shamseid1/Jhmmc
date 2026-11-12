@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v211';
+const CACHE = 'app-v212';
 const APP_FILES = [
   '/', '/index.html', '/styles.css',
   '/js/core.js', '/js/exports.js', '/js/widgets.js', '/js/cards.js', '/js/pages-feed.js', '/js/pages-board.js', '/js/pages-weigh.js', '/js/pages-log.js', '/js/pages-more.js', '/js/pages-officers.js', '/js/pages-account.js', '/js/main.js',
