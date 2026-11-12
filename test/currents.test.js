@@ -24,3 +24,19 @@ test('the currents map: a grid in two halves, frames every 3 hours, u/v in knots
   await currents.get();
   assert.equal(urls.length, 2, 'shared and kept');
 });
+
+test('the tide is averaged out: a steady current stays, the to-and-fro goes', () => {
+  const { frames } = require('../src/currents');
+  const region = { south: 5, north: 5, west: -11, east: -11, step: 0.3 };
+  const time = Array.from({ length: 72 }, (_, h) => `2026-11-12T${String(h % 24).padStart(2, '0')}:00`);
+  // 0.5 kn east, plus a 1 kn tide north and south every 12.4 hours.
+  const u = time.map(() => 0.5);
+  const v = time.map((_, h) => Math.cos((2 * Math.PI * h) / 12.42));
+  const hourly = { time, sea_surface_temperature: time.map(() => 28),
+    ocean_current_velocity: u.map((x, h) => Math.hypot(x, v[h]) * 1.852),
+    ocean_current_direction: u.map((x, h) => (Math.atan2(x, v[h]) * 180) / Math.PI) };
+  const d = frames([{ hourly }], region, { nx: 1, ny: 1 });
+  const mid = d.frames[12];
+  assert.ok(Math.abs(mid.u[0] - 0.5) < 0.05, `east stays: ${mid.u[0]}`);
+  assert.ok(Math.abs(mid.v[0]) < 0.12, `tide gone: ${mid.v[0]}`);
+});

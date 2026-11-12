@@ -177,7 +177,8 @@ PAGE_GROUPS.push((view) => ({
     let image = null;
     let at = null;
     const ranges = { sst: fieldRange(data, 'sst'), speed: fieldRange(data, 'speed') };
-    const stopsFor = (k) => stretch(...ranges[k]);
+    // Water: stretched over the day's temperatures, so breaks show. Current: a fixed knots scale.
+    const stopsFor = (k) => (k === 'sst' ? stretch(...ranges.sst) : SPEED_SCALE);
     const legend = () => {
       const stops = stopsFor(kind);
       view.querySelector('#cur-legend').innerHTML = html`<span>${kind === 'sst' ? tempTxt(stops[0][0]) : `${stops[0][0]} kn`}</span>

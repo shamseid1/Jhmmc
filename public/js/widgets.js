@@ -224,11 +224,13 @@ function sampler(g, f) {
     const y = (lat - g.south) / g.step;
     const i = Math.floor(x); const j = Math.floor(y);
     if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return null;
-    const a = f[key][j * g.nx + i]; const b = f[key][j * g.nx + i + 1];
-    const c = f[key][(j + 1) * g.nx + i]; const d = f[key][(j + 1) * g.nx + i + 1];
-    if (a == null || b == null || c == null || d == null) return null;
     const fx = x - i; const fy = y - j;
-    return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+    // Blend the corners that have water (so the colours and lines reach the coast).
+    const corners = [[f[key][j * g.nx + i], (1 - fx) * (1 - fy)], [f[key][j * g.nx + i + 1], fx * (1 - fy)],
+      [f[key][(j + 1) * g.nx + i], (1 - fx) * fy], [f[key][(j + 1) * g.nx + i + 1], fx * fy]];
+    let s = 0; let w = 0;
+    for (const [val, wt] of corners) if (val != null) { s += val * wt; w += wt; }
+    return w > 0.15 ? s / w : null;
   };
 }
 const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
@@ -237,6 +239,7 @@ const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'sout
 // temperature break of half a degree) still show as a change of colour.
 const PALETTE = [[0, [40, 70, 160]], [0.2, [40, 140, 200]], [0.4, [60, 190, 170]], [0.6, [240, 210, 80]], [0.8, [240, 130, 50]], [1, [200, 40, 60]]];
 const stretch = (lo, hi) => PALETTE.map(([t, c]) => [lo + t * (hi - lo), c]);
+const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
 function fieldRange(g, kind) {
   let lo = Infinity; let hi = -Infinity;
   for (const f of g.frames) {
@@ -265,23 +268,27 @@ function colourAt(stops, v) {
 }
 // The colour layer for one frame: one pixel per grid point, smoothed by the browser.
 function fieldImage(L, g, f, kind, stops) {
+  const at = sampler(g, f);
+  const S = 8; // pixels per grid step
+  const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
   const cv = document.createElement('canvas');
-  cv.width = g.nx; cv.height = g.ny;
+  cv.width = w; cv.height = h;
   const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(g.nx, g.ny);
-  for (let j = 0; j < g.ny; j++) {
-    for (let i = 0; i < g.nx; i++) {
-      const k = j * g.nx + i;
-      const v = kind === 'sst' ? f.sst[k] : (f.u[k] == null ? null : Math.hypot(f.u[k], f.v[k]));
-      const p = ((g.ny - 1 - j) * g.nx + i) * 4; // north up
+  const img = ctx.createImageData(w, h);
+  for (let py = 0; py < h; py++) {
+    const lat = g.south + ((h - 1 - py) / S) * g.step; // north up
+    for (let px = 0; px < w; px++) {
+      const lng = g.west + (px / S) * g.step;
+      let v;
+      if (kind === 'sst') v = at(lat, lng, 'sst');
+      else { const u = at(lat, lng, 'u'); const vv = at(lat, lng, 'v'); v = u == null || vv == null ? null : Math.hypot(u, vv); }
       if (v == null) continue;
       const [r, gg, b] = colourAt(stops, v);
-      img.data.set([r, gg, b, 170], p);
+      img.data.set([r, gg, b, 175], (py * w + px) * 4);
     }
   }
   ctx.putImageData(img, 0, 0);
-  const half = g.step / 2;
-  return L.imageOverlay(cv.toDataURL(), [[g.south - half, g.west - half], [g.south + (g.ny - 1) * g.step + half, g.west + (g.nx - 1) * g.step + half]],
+  return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
     { opacity: 0.85, className: 'field-image', interactive: false });
 }
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).

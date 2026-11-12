@@ -18,24 +18,41 @@ function grid(r = REGION) {
 }
 
 // The model's hourly lists at each point, made into frames every 3 hours: u and v (knots,
-// east and north), and water temperature; null on land.
+// east and north), and water temperature; null on land. The model's current includes the
+// tide, which near the coast swings the water on and off shore every few hours; averaged over
+// a day (two tides, 25 hours around each frame) it leaves the current itself: the Guinea
+// Current, its eddies and edges, as a fishing chart shows it.
+const TIDE_WINDOW = 12;
 function frames(results, r = REGION, { nx, ny } = grid(r)) {
   const times = results.find((x) => x?.hourly?.time)?.hourly.time || [];
+  // Each point's hourly u and v.
+  const uv = results.map((x) => {
+    const hu = []; const hv = [];
+    for (let h = 0; h < times.length; h++) {
+      const sp = x?.hourly?.ocean_current_velocity?.[h];
+      const dir = x?.hourly?.ocean_current_direction?.[h]; // where it flows to, degrees
+      if (sp == null || dir == null) { hu.push(null); hv.push(null); continue; }
+      const kn = sp * KN_PER_KMH;
+      const rad = (dir * Math.PI) / 180;
+      hu.push(kn * Math.sin(rad));
+      hv.push(kn * Math.cos(rad));
+    }
+    return [hu, hv];
+  });
+  const mean = (xs, h) => {
+    let s = 0; let n = 0;
+    for (let k = Math.max(0, h - TIDE_WINDOW); k <= Math.min(xs.length - 1, h + TIDE_WINDOW); k++) if (xs[k] != null) { s += xs[k]; n += 1; }
+    return n ? Math.round((s / n) * 100) / 100 : null;
+  };
   const out = [];
   for (let h = 0; h < times.length; h += 3) {
     const u = []; const v = []; const sst = [];
-    for (const x of results) {
-      const sp = x?.hourly?.ocean_current_velocity?.[h];
-      const dir = x?.hourly?.ocean_current_direction?.[h]; // where it flows to, degrees
+    results.forEach((x, k) => {
+      u.push(mean(uv[k][0], h));
+      v.push(mean(uv[k][1], h));
       const t = x?.hourly?.sea_surface_temperature?.[h];
-      if (sp == null || dir == null) { u.push(null); v.push(null); } else {
-        const kn = sp * KN_PER_KMH;
-        const rad = (dir * Math.PI) / 180;
-        u.push(Math.round(kn * Math.sin(rad) * 100) / 100);
-        v.push(Math.round(kn * Math.cos(rad) * 100) / 100);
-      }
       sst.push(t == null ? null : Math.round(t * 10) / 10);
-    }
+    });
     out.push({ time: times[h], u, v, sst });
   }
   return { south: r.south, west: r.west, step: r.step, nx, ny, frames: out };
