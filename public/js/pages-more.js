@@ -139,9 +139,9 @@ PAGE_GROUPS.push((view) => ({
       <div class="cur-bar"><div class="seg" role="tablist">
         <button type="button" role="tab" aria-selected="true" data-kind="sst">Water temperature</button>
         <button type="button" role="tab" aria-selected="false" data-kind="speed">Current strength</button></div></div>
-      <div id="cur-map" class="cur-map"><div class="card pad muted">Getting the currents…</div></div>
       <div class="cur-time"><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
       <div class="cur-legend" id="cur-legend"></div>
+      <div id="cur-map" class="cur-map"><div class="card pad muted">Getting the currents…</div></div>
       <p class="small muted">The lines move the way the surface water flows; longer, faster lines are stronger current. Warm and cool water
       meeting (a temperature break) and the edges of a current are where bait, and the fish after it, often gather.
       From the Copernicus ocean model through Open-Meteo, on a grid of about 30 km: the big picture, not every current line on the water.</p>`;

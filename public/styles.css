@@ -1265,11 +1265,11 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .depth-list b { font-size: 18px; white-space: nowrap; }
 
 /* The currents map. */
-.cur-map { position: relative; z-index: 0; isolation: isolate; height: min(60vh, 560px); border-radius: var(--radius); overflow: hidden; background: #0a1a33; margin: 10px 0; }
+.cur-map { position: relative; z-index: 0; isolation: isolate; height: min(58vh, 560px); border-radius: var(--radius); overflow: hidden; background: #0a1a33; margin: 10px 0 16px; }
 .flow-canvas { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
 .field-image { image-rendering: auto; }
 .cur-bar .seg { margin: 6px 0 0; }
-.cur-time { display: flex; align-items: center; gap: 12px; }
+.cur-time { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .cur-time input { flex: 1; accent-color: var(--accent); }
 .cur-time span { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cur-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 8px 0; }
