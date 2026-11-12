@@ -337,7 +337,7 @@ PAGE_GROUPS.push((view) => ({
     const navRows = (to) => (myPos ? [['From you', navTxt(myPos, to)]] : []);
     // A tap, as on a plotter: a ring on the spot, and a box with its position, what's known about
     // it, and Mark (save it as a spot).
-    const ringIcon = L.divIcon({ className: 'tap-ring', iconSize: [44, 44], iconAnchor: [22, 22] });
+    const ringIcon = L.divIcon({ className: 'tap-ring', iconSize: [32, 32], iconAnchor: [16, 16] });
     let ring = null;
     let markSpot = null; // set once saving spots is ready (signed in)
     const tapBox = (latlng, rows) => {
@@ -345,10 +345,11 @@ PAGE_GROUPS.push((view) => ({
       ring?.remove();
       ring = L.marker(latlng, { pane: 'pins', icon: ringIcon, interactive: false, keyboard: false }).addTo(map);
       const div = document.createElement('div');
-      div.innerHTML = `<div class="pop-pos">${esc(fmtCoords(where0[0], where0[1]))}</div>${rows.length ? `<dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>` : ''}
-        ${markSpot ? `<button type="button" class="pop-mark">${icon('pin')} Mark</button>` : ''}`;
+      // The position and Mark on one line; what's known about the spot under it, if anything.
+      div.innerHTML = `<div class="pop-top"><span class="pop-pos">${esc(fmtCoords(where0[0], where0[1]))}</span>${markSpot ? `<button type="button" class="pop-mark" aria-label="Mark this spot">${icon('pin')}Mark</button>` : ''}</div>
+        ${rows.length ? `<dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>` : ''}`;
       div.querySelector('.pop-mark')?.addEventListener('click', () => { map.closePopup(); markSpot(where0); });
-      const pop = L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90], offset: [0, -16] }).setLatLng(latlng).setContent(div).openOn(map);
+      const pop = L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90], offset: [0, -10] }).setLatLng(latlng).setContent(div).openOn(map);
       pop.once('remove', () => { if (ring && pop === lastPop) { ring.remove(); ring = null; } });
       lastPop = pop;
     };
