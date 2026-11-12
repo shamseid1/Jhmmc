@@ -270,8 +270,10 @@ function depthBands(depthsM) {
   return names.map((name, i) => ({ name, fish: counts[i] })).filter((r) => r.fish);
 }
 // The line under the GPS on Log fish (and saved with each fish): the sea right now, and the depth.
-const seaLine = (n, moonLit, depthM) => html`<span>${raw(icon('wave'))} ${[depthM != null && `depth about ${depthTxt(depthM)}`, n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
-  n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`, moonLit != null && `moon ${moonLit}%`].filter(Boolean).join(' · ')}</span>`;
+// The depth (the seabed map) and water temperature (the ocean model) are estimates: marked ~.
+const estTxt = (t) => `~${t}`;
+const seaLine = (n, moonLit, depthM) => html`<span>${raw(icon('wave'))} ${[depthM != null && `depth ${estTxt(depthTxt(depthM))}`, n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
+  n.waterC != null && `water ${estTxt(tempTxt(n.waterC))}`, n.tide && `tide ${n.tide}`, moonLit != null && `moon ${moonLit}%`].filter(Boolean).join(' · ')}</span>`;
 
 // ---- the currents map --------------------------------------------------------
 // A grid (south-west corner, step in degrees, nx by ny) with u and v (knots, east and north)

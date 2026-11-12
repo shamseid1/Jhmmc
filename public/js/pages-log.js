@@ -542,6 +542,8 @@ PAGE_GROUPS.push((view) => ({
     // Weights logged at sea are estimates.
     const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
     const when = (x) => fmtDate(x.date);
+    // The depth and water saved with a fish logged at sea (estimates, so ~).
+    const sea = (x) => [x.depthM != null && estTxt(depthTxt(x.depthM)), x.waterC != null && estTxt(tempTxt(x.waterC))].filter(Boolean).join(' · ');
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Catch map${raw(info(html`<p>Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>${charts.length ? raw('<p>Depth contours: zoom in to see them; switch them on and off with the layers button on the map. Depths in feet.</p>') : ''}`))}</h1>${raw(mapTabs)}
       ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
@@ -555,7 +557,7 @@ PAGE_GROUPS.push((view) => ({
       ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
         <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
           <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
-          <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}
+          <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}${sea(x) ? ` · ${sea(x)}` : ''}
             ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
         : raw(emptyState('pin', `No spots yet${year ? ` in ${year}` : ''}. Fish you log at sea appear here.`, state.me?.teamId ? ['#/fishon', 'Log fish'] : null))}`;
     if (!spots.length && !charts.length) return;
@@ -577,7 +579,7 @@ PAGE_GROUPS.push((view) => ({
       return;
     }
     const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${kg(x)}${x.released ? ' · released' : ''}<br>
-      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}<br><span class="pop-coords">${fmtCoords(x.lat, x.lng)}</span>${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
+      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}<br>${sea(x) ? raw(html`<span class="pop-sea">${sea(x)}</span><br>`) : ''}<span class="pop-coords">${fmtCoords(x.lat, x.lng)}</span>${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
     // The charts are screenshots: sharp up to about zoom 11, blurry past it.
     const close = charts.length ? 11 : 12;
     map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: close - 1 });

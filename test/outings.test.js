@@ -187,6 +187,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.equal((await fetch(at + tile)).status, 401, 'the chart needs signing in too');
     // The spots go on the crew's catch maps.
     const mine = (await deckhand('GET', '/me/spots')).body.spots;
+    assert.ok(mine.every((x) => 'depthM' in x && 'waterC' in x), 'the depth and water saved with each fish (none here: no forecast in tests)');
     assert.deepEqual(mine.filter((x) => x.kind === 'log').map((x) => [x.species, x.released]), [['Sailfish', true], ['Sailfish', true]]);
   } finally {
     srv.close();

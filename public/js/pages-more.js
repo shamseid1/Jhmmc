@@ -499,9 +499,9 @@ PAGE_GROUPS.push((view) => ({
       const pt = (deg0) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
       const rows = [
         hot && reasons.length && ['Hotspot', reasons.join(', ')],
-        d != null && ['Depth', depthTxt(d)],
+        d != null && ['Depth', estTxt(depthTxt(d))],
         u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn → ${pt(deg(u, v))}`],
-        t != null && ['Water', tempTxt(t)],
+        t != null && ['Water', estTxt(tempTxt(t))],
         wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn from ${pt(deg(wu, wv) + 180)}`],
         wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` from ${pt(wd)}` : ''}`],
       ].filter(Boolean);

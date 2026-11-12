@@ -625,13 +625,13 @@ module.exports = (ctx) => {
     const posts = db.prepare(`
       SELECT 'catch' AS kind, k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.caught_on AS date,
         k.lat, k.lng, k.location, COALESCE(NULLIF(au.nickname, ''), au.name, k.angler_name) AS angler, t.name AS boat,
-        COALESCE(k.photo, k.scale_photo) AS photo, 0 AS estimate
+        COALESCE(k.photo, k.scale_photo) AS photo, 0 AS estimate, NULL AS depthM, NULL AS waterC
       FROM catches k JOIN species s ON s.id = k.species_id LEFT JOIN users au ON au.id = k.user_id LEFT JOIN teams t ON t.id = k.team_id
       WHERE k.lat IS NOT NULL AND k.status <> 'rejected' AND NOT EXISTS (SELECT 1 FROM outing_landings x WHERE x.catch_id = k.id)
         AND (k.user_id = :me OR k.logged_by = :me OR (:boat IS NOT NULL AND k.team_id = :boat))
       UNION ALL
       SELECT 'club', p.id, s.name, p.weight_kg, p.released, date(p.created_at), p.lat, p.lng, NULL,
-        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo, 0
+        COALESCE(NULLIF(au.nickname, ''), au.name), t.name, p.photo, 0, NULL, NULL
       FROM club_posts p JOIN species s ON s.id = p.species_id JOIN users au ON au.id = p.user_id LEFT JOIN teams t ON t.id = au.team_id
       WHERE p.lat IS NOT NULL AND p.user_id = :me
       UNION ALL
@@ -639,7 +639,9 @@ module.exports = (ctx) => {
           THEN (SELECT k.weight_kg FROM catches k WHERE k.id = l.catch_id AND ${ALONE}) ELSE l.weight_kg END,
         l.fate = 'released', o.date, l.lat, l.lng, NULL,
         COALESCE(NULLIF(au.nickname, ''), au.name), t.name, NULL,
-        NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected')
+        NOT EXISTS (SELECT 1 FROM catches k WHERE k.id = l.catch_id AND k.status <> 'rejected'),
+        -- The depth and water saved with the fish (estimates: the seabed map and the ocean model).
+        json_extract(l.conditions, '$.depthM'), json_extract(l.conditions, '$.waterC')
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
         LEFT JOIN users au ON au.id = l.user_id LEFT JOIN teams t ON t.id = o.team_id
       WHERE l.lat IS NOT NULL AND l.fate <> 'lost' AND (l.user_id = :me OR (:crew IS NOT NULL AND o.team_id = :crew))
