@@ -138,6 +138,10 @@ PAGE_GROUPS.push((view) => ({
   currents() { location.replace('#/chart'); },
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
+    // Opened from the old Catch map (or "See them on the map"): the catches on, the map on them.
+    const hq = new URLSearchParams(location.hash.split('?')[1] || '');
+    const cf = { year: hq.get('year') || '', species: hq.get('species') || '', month: hq.get('month') || '' };
+    const fromCatches = hq.has('catches') || hq.has('year') || hq.get('view') === 'regional';
     const LAYERS = [
       ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
     ];
@@ -158,17 +162,27 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <div class="chart-tools">
         <button type="button" class="chart-tool" data-open-layers aria-label="Layers">${raw(icon('layers'))}</button>
+        ${state.me ? raw(html`<button type="button" class="chart-tool" data-open-list aria-label="Your fish, as a list" hidden>${raw(icon('list'))}</button>`) : ''}
         <span class="chart-gap"></span>
         <button type="button" class="chart-tool" data-zoom="1" aria-label="Zoom in">${raw(icon('plus'))}</button>
         <button type="button" class="chart-tool" data-zoom="-1" aria-label="Zoom out">${raw(icon('minus'))}</button>
         <button type="button" class="chart-tool" data-locate aria-label="My position">${raw(icon('locate'))}</button>
       </div>
+      <div class="chart-panel" id="chart-list" hidden>
+        <div class="panel-head"><b>Your fish</b><button type="button" class="chart-x" data-close-list aria-label="Close">${raw(icon('close'))}</button></div>
+        <ul class="catch-list" id="catch-list"></ul>
+      </div>
       <div class="chart-panel" id="chart-panel" hidden>
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         ${state.me ? raw(html`<div class="panel-switches">
-          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label>
-          ${crew ? raw('<label>My fish <input type="checkbox" class="switch" data-show="fish" checked></label>') : ''}</div>`) : ''}
+          <label>Depth contours <input type="checkbox" class="switch" data-show="contours" checked></label></div>
+        <div class="panel-head"><b>Catches</b></div>
+        <div class="panel-switches catches">
+          <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" checked></label>
+          <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${hq.get('view') === 'regional' ? 'checked' : ''}></label>
+        </div>
+        <div class="catch-filters" id="catch-filters"></div>`) : ''}
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
@@ -230,6 +244,7 @@ PAGE_GROUPS.push((view) => ({
     }
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
       if (c.dataset.show === 'contours') return syncContours();
+      if (c.dataset.show === 'regional') return; // drawn for the filters (below)
       const o = overlays[c.dataset.show];
       if (o) { if (c.checked) o.addTo(map); else o.remove(); }
     }));
@@ -245,12 +260,96 @@ PAGE_GROUPS.push((view) => ({
       }, () => toast('Your position isn\'t available. Check that location is on for the app.'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
     });
     map.on('click', () => openLayers(false));
-    if (crew) {
+    // ---- the catches: your fish (exact spots) and the region's (10 km circles) ----
+    // One set of filters for both: year, species and month.
+    let mySpots = [];
+    let grid = null;
+    const pins = new Map(); // a fish -> its pin
+    const est = (x) => [x.depthM != null && estTxt(depthTxt(x.depthM)), x.waterC != null && estTxt(tempTxt(x.waterC))].filter(Boolean).join(' · ');
+    const fishLink = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
+    const shownFish = () => mySpots.filter((x) => (!cf.year || x.date.startsWith(cf.year)) && (!cf.species || x.species === cf.species)
+      && (!cf.month || Number(x.date.slice(5, 7)) === Number(cf.month)));
+    // Your fish over everything on the sea (the region's circles, the moving lines, outlines).
+    if (!map.getPane('pins')) map.createPane('pins').style.zIndex = 610;
+    const drawFish = () => {
+      overlays.fish?.remove();
+      pins.clear();
+      const list = shownFish();
+      overlays.fish = L.layerGroup(list.map((x) => {
+        const pin = L.circleMarker([x.lat, x.lng], { pane: 'pins', radius: 6, weight: 2, color: '#fff', fillColor: x.released ? '#3fcf8e' : '#1a73e8', fillOpacity: 1 })
+          .bindPopup(`<dl><dt>${esc(x.species)}</dt><dd>${x.weightKg ? `${x.estimate ? '~' : ''}${esc(fmtWeight(x.weightKg))}` : ''}${x.released ? ' released' : ''}</dd>
+            <dt>Date</dt><dd>${esc(fmtDate(x.date))}</dd>${x.boat ? `<dt>Boat</dt><dd>${esc(x.boat)}</dd>` : ''}
+            ${x.depthM != null ? `<dt>Depth</dt><dd>${esc(estTxt(depthTxt(x.depthM)))}</dd>` : ''}${x.waterC != null ? `<dt>Water</dt><dd>${esc(estTxt(tempTxt(x.waterC)))}</dd>` : ''}</dl>
+            ${fishLink(x) ? `<a class="pop-link" href="${fishLink(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'} ›</a>` : ''}`, { className: 'chart-pop' });
+        pins.set(x, pin);
+        return pin;
+      }));
+      if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
+      // The list: the same fish, newest first; a tap flies to it.
+      const ul = view.querySelector('#catch-list');
+      if (ul) {
+        ul.innerHTML = list.length ? list.map((x, n) => html`<li><button type="button" data-fish="${n}"><em><b>${x.species}</b>${x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : ''}${x.released ? ' · released' : ''}</em>
+          <span>${fmtDate(x.date)}${x.angler ? ` · ${x.angler}` : ''}${est(x) ? ` · ${est(x)}` : ''}</span></button></li>`).join('')
+          : '<li class="empty">No fish with a spot for this choice.</li>';
+        ul.onclick = (e) => {
+          const b = e.target.closest('[data-fish]');
+          if (!b) return;
+          const x = list[b.dataset.fish];
+          view.querySelector('#chart-list').hidden = true;
+          if (!view.querySelector('[data-show=fish]').checked) { view.querySelector('[data-show=fish]').checked = true; overlays.fish.addTo(map); }
+          map.setView([x.lat, x.lng], Math.max(map.getZoom(), 10));
+          pins.get(x)?.openPopup();
+        };
+      }
+      const lb = view.querySelector('[data-open-list]');
+      if (lb) lb.hidden = !mySpots.length;
+    };
+    const drawRegional = async () => {
+      overlays.regional?.remove(); overlays.regional = null;
+      if (!view.querySelector('[data-show=regional]')?.checked) return;
+      const gq = new URLSearchParams({ year: cf.year || 'all', month: cf.month || 'all', ...(cf.species && { species: cf.species }) });
+      try { grid = await api(`/outings/grid?${gq}`); } catch { return; }
+      if (!view.isConnected || !view.querySelector('[data-show=regional]')?.checked) return;
+      const most = Math.max(1, ...grid.cells.map((c) => c.fish));
+      overlays.regional?.remove();
+      overlays.regional = L.layerGroup(grid.cells.map((c) => L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2],
+        { radius: 6000, color: '#fff', weight: 1, fillColor: '#ffd166', fillOpacity: 0.25 + 0.55 * (c.fish / most) })
+        .bindPopup(`<dl><dt>Fish</dt><dd>${c.fish}</dd><dt>Boats</dt><dd>${c.boats}</dd></dl>`, { className: 'chart-pop' }))).addTo(map);
+      filters();
+    };
+    // The filters: what's in your fish and the region's, together.
+    const filters = () => {
+      const box0 = view.querySelector('#catch-filters');
+      if (!box0) return;
+      const years = [...new Set([...mySpots.map((x) => x.date.slice(0, 4)), ...(grid?.years || [])])].sort().reverse();
+      const species = [...new Set([...mySpots.map((x) => x.species), ...(grid?.speciesList || [])])].sort();
+      const sel = (k, label, items) => html`<select data-cf="${k}" aria-label="${label}">${raw(items.map(([v, t]) => html`<option value="${v}"${v === cf[k] ? ' selected' : ''}>${t}</option>`).join(''))}</select>`;
+      box0.innerHTML = sel('year', 'Year', [['', 'All years'], ...years.map((y) => [y, y])])
+        + sel('species', 'Species', [['', 'All species'], ...species.map((x) => [x, x])])
+        + sel('month', 'Month', [['', 'All months'], ...MONTH_SHORT.map((m, n) => [String(n + 1), m])]);
+    };
+    if (state.me) {
+      view.querySelector('#catch-filters').addEventListener('change', (e) => {
+        const k = e.target.dataset.cf;
+        if (!k) return;
+        cf[k] = e.target.value;
+        drawFish();
+        drawRegional();
+      });
+      view.querySelector('[data-show=regional]').addEventListener('change', drawRegional);
+      view.querySelector('[data-open-list]').addEventListener('click', () => { openLayers(false); view.querySelector('#chart-list').hidden = false; });
+      view.querySelector('[data-close-list]').addEventListener('click', () => { view.querySelector('#chart-list').hidden = true; });
+      map.on('click', () => { view.querySelector('#chart-list').hidden = true; });
       api('/me/spots').then(({ spots }) => {
-        overlays.fish = L.layerGroup(spots.filter((x) => x.lat != null).map((s) => L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 })
-          .bindPopup(html`${s.species}, ${s.date}`)));
-        if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
+        mySpots = spots.filter((x) => x.lat != null);
+        drawFish();
+        filters();
+        // Opened for the catches: the map on them.
+        const list = shownFish();
+        if (fromCatches && list.length) map.fitBounds(L.latLngBounds(list.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: 10 });
       }).catch(() => {});
+      filters();
+      drawRegional();
     }
     syncContours();
     // Until the forecast is here: the chart alone (with its contours), a note on top, and the
@@ -629,7 +728,6 @@ PAGE_GROUPS.push((view) => ({
       <h2>Fishing</h2><div class="card menu">
         ${item('#/sea', 'wave', 'Sea conditions', 'Wind, waves, water, tide and the week ahead')}
         ${item('#/chart', 'map', 'Chart', 'Currents, water temperature, wind and waves, full screen')}
-        ${item('#/spots', 'pin', 'Catch map', me.teamId ? 'Your crew\'s spots, and the region month by month' : 'Where fish are being caught, month by month')}
         ${item('#/log', 'history', 'Log', me.teamId ? "Your boat's log, and the regional log" : "Every boat's trips, and the season at a glance")}
       </div>
       ${me.canWeigh && !me.canApprove ? `<h2>Weigh-in &amp; points</h2><div class="card menu">

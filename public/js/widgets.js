@@ -855,40 +855,6 @@ function trendsHtml(tr, { perBoat, link, mine }) {
   return yearChart + biting + weekly;
 }
 
-// Where fish are being caught, region-wide: 10 km circles shaded by fish
-// caught (one hue, light to dark), for a month and species. No pins, no boats.
-async function renderGridMap(box, q, link) {
-  const gq = new URLSearchParams({ ...(q.get('gyear') && { year: q.get('gyear') }), ...(q.get('gspecies') && { species: q.get('gspecies') }), ...(q.get('gmonth') && { month: q.get('gmonth') }) });
-  const [g, L, { charts }] = await Promise.all([api(`/outings/grid?${gq}`), loadLeaflet().catch(() => null),
-    state.me ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
-  if (!box.isConnected) return;
-  const sel = (label, items, current) => `<select class="chip-select" data-go aria-label="${label}">${options(items, current)}</select>`;
-  box.innerHTML = html`<div class="filter-chips">
-      ${g.years.length > 1 ? raw(sel('Year', g.years.map((y) => [link({ gyear: y, gmonth: '' }), y]), link({ gyear: g.year, gmonth: '' }))) : ''}
-      ${raw(sel('Species', [[link({ gspecies: '', gmonth: '' }), 'All species'], ...g.speciesList.map((x) => [link({ gspecies: x, gmonth: '' }), x])], link({ gspecies: g.species || '', gmonth: '' })))}
-      ${g.months.length ? raw(sel('Month', g.months.map((m) => [link({ gmonth: String(m) }), MONTH_SHORT[m - 1]]), link({ gmonth: String(g.month) }))) : ''}
-      ${raw(info(html`<p>Each circle marks an area about 10 km across, darker where more fish were caught${g.month ? ` in ${MONTH_SHORT[g.month - 1]} ${g.year}` : ''}. Tap one for the count.</p><p>No exact spots and no boat names.${charts.length ? ' The depth contours switch on and off with the layers button.' : ''}</p>`))}
-    </div>
-    ${g.cells.length ? raw('<div class="card catch-map" id="grid-map"></div>') : raw('<div class="card pad empty">No fish logged with a spot for this choice yet.</div>')}`;
-  if (!g.cells.length || !L) return;
-  const map = L.map('grid-map', { zoomControl: true });
-  addSatellite(L, map);
-  // The depth chart, under the circles; on unless switched off.
-  if (charts.length) {
-    // All the chart areas are one layer, "Depth contours".
-    const contours = depthLayer(L, charts).addTo(map);
-    L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
-  }
-  const most = Math.max(...g.cells.map((c) => c.fish));
-  const fill = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim() || '#2a78d6';
-  for (const c of g.cells) {
-    // A circle on each 10 km area's centre, drawn a bit larger than the area so it reads well.
-    L.circle([(c.south + c.north) / 2, (c.west + c.east) / 2], { radius: 12000, color: '#ffffff', weight: 1, fillColor: fill, fillOpacity: 0.2 + 0.6 * (c.fish / most) })
-      .addTo(map).bindPopup(`<b>${c.fish} ${c.fish === 1 ? 'fish' : 'fish'}</b><br>${c.boats === 1 ? '1 boat' : `${c.boats} boats`}`);
-  }
-  map.fitBounds(L.latLngBounds(g.cells.flatMap((c) => [[c.south, c.west], [c.north, c.east]])).pad(0.4), { maxZoom: 10 });
-}
-
 // Leaderboard: points, tournaments and the record book, one tab each.
 // A dropdown chip whose choices are pages: picking one goes there.
 document.addEventListener('change', (e) => {

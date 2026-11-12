@@ -1397,3 +1397,18 @@ body.chart-mode main > div { animation: none; }
 .chart-pop dl { display: grid; grid-template-columns: auto auto; gap: 3px 12px; margin: 0; }
 .chart-pop dt { color: rgba(255, 255, 255, 0.6); font-weight: 600; }
 .chart-pop dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The chart's catches: the switches with a line under each, the filters, the list of your fish. */
+.panel-switches.catches label > span { display: grid; }
+.panel-switches small { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
+.chart-tool[hidden] { display: none; }
+.catch-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.catch-filters select { min-width: 0; padding: 9px 8px; border-radius: 10px; border: 0; background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
+.catch-filters select option { color: #0a1a33; }
+.catch-list { list-style: none; margin: 0; padding: 0; }
+.catch-list li + li { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.catch-list button { display: grid; gap: 2px; width: 100%; padding: 10px 2px; border: 0; background: none; color: #fff; text-align: left; font: inherit; font-size: 14px; }
+.catch-list button span { font-size: 12px; color: rgba(255, 255, 255, 0.65); }
+.catch-list .empty { padding: 12px 2px; color: rgba(255, 255, 255, 0.65); }
+.chart-pop .pop-link { display: inline-block; margin-top: 8px; color: #8fc4ff; font-weight: 700; text-decoration: none; }
+.panel-switches.catches { border-top: 0; padding-top: 0; margin-top: 4px; }
+.catch-list button em { font-style: normal; }

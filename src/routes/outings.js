@@ -533,15 +533,18 @@ module.exports = (ctx) => {
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
       WHERE l.lat IS NOT NULL AND l.fate <> 'lost'`).all();
     const years = [...new Set(rows.map((r) => r.date.slice(0, 4)))].sort().reverse();
-    const year = years.includes(req.query.year) ? req.query.year : years[0] ?? null;
-    const inYear = rows.filter((r) => r.date.startsWith(year ?? ''));
+    // year=all and month=all: every year, every month (the chart's catch filters).
+    const allYears = req.query.year === 'all';
+    const year = allYears ? null : years.includes(req.query.year) ? req.query.year : years[0] ?? null;
+    const inYear = allYears ? rows : rows.filter((r) => r.date.startsWith(year ?? ''));
     const speciesList = [...new Set(inYear.map((r) => r.species))].sort();
     const species = speciesList.includes(req.query.species) ? req.query.species : null;
     const ofSpecies = inYear.filter((r) => !species || r.species === species);
     const months = [...new Set(ofSpecies.map((r) => Number(r.date.slice(5, 7))))].sort((a, b2) => a - b2);
-    const month = months.includes(Number(req.query.month)) ? Number(req.query.month) : months.at(-1) ?? null;
+    const allMonths = req.query.month === 'all';
+    const month = allMonths ? null : months.includes(Number(req.query.month)) ? Number(req.query.month) : months.at(-1) ?? null;
     const cells = {};
-    for (const r of ofSpecies.filter((x) => Number(x.date.slice(5, 7)) === month)) {
+    for (const r of ofSpecies.filter((x) => allMonths || Number(x.date.slice(5, 7)) === month)) {
       const la = Math.floor(r.lat / GRID); const ln = Math.floor(r.lng / GRID);
       const c = (cells[`${la}:${ln}`] ||= { south: +(la * GRID).toFixed(1), west: +(ln * GRID).toFixed(1), fish: 0, boats: new Set() });
       c.fish += 1;

@@ -126,7 +126,7 @@ PAGE_GROUPS.push((view) => ({
     const who = team.captain ? `${team.captain} invites you` : "You're invited";
     const head = html`<h1>Join ${team.name}</h1>
       <p class="muted">${who} to join the crew of <b>${team.name}</b>${team.clubName ? ` (${team.clubName})` : ''} on Africa Sportfishing.
-      As crew you log your fish at sea, keep the boat's log and see its catch map.</p>`;
+      As crew you log your fish at sea, keep the boat's log and see its catches on the chart.</p>`;
     if (!state.me) {
       state.afterLogin = location.hash;
       view.innerHTML = html`${raw(head)}<div class="card pad stack">

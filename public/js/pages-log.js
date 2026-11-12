@@ -1,4 +1,4 @@
-// Africa Sportfishing, part of the app (public/js/pages-log.js): Log fish at sea, the boat's log and season numbers, the catch maps.
+// Africa Sportfishing, part of the app (public/js/pages-log.js): Log fish at sea, the boat's log and season numbers.
 // The parts load in order (index.html) and share one scope, as one file would.
 
 'use strict';
@@ -54,7 +54,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       <h2>The fish</h2>
       <div class="card"><ul class="list" id="fo-list"></ul></div>
-      <p><a class="btn" href="#/spots">${raw(icon('pin'))} See them on my catch map</a></p>
+      <p><a class="btn" href="#/chart?catches=1">${raw(icon('pin'))} See them on the chart</a></p>
 `;
     const list = view.querySelector('#fo-list');
     const QUEUE = 'fishon-queue';
@@ -434,7 +434,7 @@ PAGE_GROUPS.push((view) => ({
             <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, ${scope === 'mine' ? 'your boat' : 'all boats'}.</span>`)
             : raw('<span class="muted">Once billfish are logged at sea, the water temperature they came aboard in shows here.</span>')}
         </div>
-        ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/spots?year=${sz.year}">${raw(icon('pin'))} See them on my catch map</a></p>`) : ''}
+        ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/chart?catches=1&year=${sz.year}">${raw(icon('pin'))} See them on the chart</a></p>`) : ''}
         <p class="log-buttons"><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One line per trip</a>
           <a class="btn" href="/api/outings/fish.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One row per fish</a></p>`;
       view.querySelector('#season-species')?.addEventListener('change', (e) => { location.hash = link({ species: e.target.value }); });
@@ -505,91 +505,11 @@ PAGE_GROUPS.push((view) => ({
     });
   },
 
-  // My catch map: every fish you logged with a spot, on a map, by year.
-  async spots() {
-    if (!state.me) return needLogin(view, 'see your catch map');
-    const sq = new URLSearchParams(location.hash.split('?')[1] || '');
-    // Two maps: My boat (the crew's exact spots) and Regional (10 km circles, no spots).
-    const regional = sq.get('view') === 'regional' || !state.me.teamId;
-    const mapTabs = html`<div class="line-tabs" role="tablist">
-      ${state.me.teamId ? raw('<a role="tab" href="#/spots" aria-selected="' + !regional + '">My boat</a>') : ''}
-      <a role="tab" href="#/spots?view=regional" aria-selected="${regional}">Regional</a></div>`;
-    if (regional) {
-      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Catch map${raw(info('<p>Where fish are being caught across the region, month by month. No exact spots and no boat names. Members only.</p>'))}</h1>${raw(mapTabs)}
-        <div id="grid-map-box"></div>`;
-      const link = (changes) => {
-        const p = new URLSearchParams(sq);
-        p.set('view', 'regional');
-        for (const [k, v] of Object.entries(changes)) (v ? p.set(k, v) : p.delete(k));
-        return `#/spots?${p}`;
-      };
-      await renderGridMap(view.querySelector('#grid-map-box'), sq, link);
-      return;
-    }
-    const year = sq.get('year') || '';
-    const species = sq.get('species') || '';
-    const month = sq.get('month') || '';
-    const [{ years, spots: allSpots }, L, { charts }] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null),
-      state.me ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
-    // Filter by species: only the species on the map that year are offered.
-    // and by month, to see where the fish were as the season went on.
-    const speciesHere = [...new Set(allSpots.map((x) => x.species))].sort();
-    const monthsHere = [...new Set(allSpots.filter((x) => !species || x.species === species).map((x) => Number(x.date.slice(5, 7))))].sort((a, b2) => a - b2);
-    const spots = allSpots.filter((x) => (!species || x.species === species) && (!month || Number(x.date.slice(5, 7)) === Number(month)));
-    const spotsLink = (y, sp, m = month) => { const p = new URLSearchParams({ ...(y && { year: y }), ...(sp && { species: sp }), ...(m && { month: m }) }); return `#/spots${p.size ? `?${p}` : ''}`; };
-    const chip = (y, label) => html`<a role="tab" href="${spotsLink(y, species, '')}" aria-selected="${y === year}">${label}</a>`;
-    const href = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
-    // Weights logged at sea are estimates.
-    const kg = (x) => (x.weightKg ? ` · ${x.estimate ? '~' : ''}${fmtWeight(x.weightKg)}` : '');
-    const when = (x) => fmtDate(x.date);
-    // The depth and water saved with a fish logged at sea (estimates, so ~).
-    const sea = (x) => [x.depthM != null && estTxt(depthTxt(x.depthM)), x.waterC != null && estTxt(tempTxt(x.waterC))].filter(Boolean).join(' · ');
-    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
-      <h1>Catch map${raw(info(html`<p>Every fish logged with a spot: what you and your crew logged with Log fish${state.me.isCaptain ? ', your boat\'s posts' : ''}, and your own posts. Only you see this.</p>${charts.length ? raw('<p>Depth contours: zoom in to see them; switch them on and off with the layers button on the map. Depths in feet.</p>') : ''}`))}</h1>${raw(mapTabs)}
-      ${years.length > 1 ? raw(html`<div class="year-tabs" role="tablist">${raw(chip('', 'All'))}${years.map((y) => raw(chip(y, y)))}</div>`) : ''}
-      ${speciesHere.length > 1 || species || monthsHere.length > 1 || month ? raw(html`<div class="filter-chips">
-        ${speciesHere.length > 1 || species ? raw(html`<select class="chip-select" data-go aria-label="Species">${raw(options(
-          [[spotsLink(year, '', ''), 'All species'], ...speciesHere.map((sp) => [spotsLink(year, sp, ''), sp])], spotsLink(year, species, '')))}</select>`) : ''}
-        ${monthsHere.length > 1 || month ? raw(html`<select class="chip-select" data-go aria-label="Month">${raw(options(
-          [[spotsLink(year, species, ''), 'All months'], ...monthsHere.map((m) => [spotsLink(year, species, String(m)), MONTH_SHORT[m - 1]])], spotsLink(year, species, month)))}</select>`) : ''}
-      </div>`) : ''}
-      ${spots.length || charts.length ? raw(html`<div class="card catch-map" id="catch-map"></div>`) : ''}
-      ${spots.length ? raw(html`<p class="small muted">${plural(spots.length, species ? species.toLowerCase() : 'catch')}${month ? ` in ${MONTH_SHORT[month - 1]}` : ''}${year ? ` ${month ? '' : 'in '}${year}` : ''}. Tap a pin for the fish.</p>
-        <div class="card"><ul class="list spot-list">${spots.map((x, n) => raw(html`<li data-n="${n}">
-          <b>${x.species}</b>${kg(x)}${x.released ? raw(' <span class="badge release">Released</span>') : ''}
-          <div class="small muted">${when(x)}${x.angler ? ` · ${x.angler}` : ''}${x.location ? ` · ${x.location}` : ''} · ${fmtCoords(x.lat, x.lng)}${sea(x) ? ` · ${sea(x)}` : ''}
-            ${href(x) ? raw(html` · <a href="${href(x)}">Open</a>`) : ''}</div></li>`))}</ul></div>`)
-        : raw(emptyState('pin', `No spots yet${year ? ` in ${year}` : ''}. Fish you log at sea appear here.`, state.me?.teamId ? ['#/fishon', 'Log fish'] : null))}`;
-    if (!spots.length && !charts.length) return;
-    if (!L) {
-      view.querySelector('#catch-map').outerHTML = '<div class="card pad empty">The map couldn\'t load just now. Your catches are listed below.</div>';
-      return;
-    }
-    const map = L.map('catch-map', { zoomControl: true });
-    addSatellite(L, map);
-    // Depth charts sit over the satellite, under the pins; on unless switched off.
-    if (charts.length) {
-      // All the chart areas are one layer, "Depth contours".
-      const contours = depthLayer(L, charts).addTo(map);
-      L.control.layers(null, { 'Depth contours': contours }, { collapsed: true, position: 'topright' }).addTo(map);
-    }
-    if (!spots.length) {
-      const c = charts[0].bounds;
-      map.fitBounds([[c.south, c.west], [c.north, c.east]]);
-      return;
-    }
-    const pins = spots.map((x) => L.circleMarker([x.lat, x.lng], spotPin(L, x.released)).addTo(map).bindPopup(html`<b>${x.species}</b>${kg(x)}${x.released ? ' · released' : ''}<br>
-      ${when(x)}${x.boat ? ` · ${x.boat}` : ''}<br>${sea(x) ? raw(html`<span class="pop-sea">${sea(x)}</span><br>`) : ''}<span class="pop-coords">${fmtCoords(x.lat, x.lng)}</span>${href(x) ? raw(html`<br><a href="${href(x)}">${x.kind === 'log' ? 'Open the trip' : 'Open the catch'}</a>`) : ''}`));
-    // The charts are screenshots: sharp up to about zoom 11, blurry past it.
-    const close = charts.length ? 11 : 12;
-    map.fitBounds(L.latLngBounds(spots.map((x) => [x.lat, x.lng])).pad(0.3), { maxZoom: close - 1 });
-    view.querySelector('.spot-list').addEventListener('click', (e) => {
-      const li = e.target.closest('li[data-n]');
-      if (!li || e.target.closest('a')) return;
-      const x = spots[li.dataset.n];
-      map.setView([x.lat, x.lng], close);
-      pins[li.dataset.n].openPopup();
-      view.querySelector('#catch-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+  // The catch map is now part of the chart: its catches (your fish and the region's) are
+  // there, with the same filters. Old links land on the chart with the catches showing.
+  spots() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    q.set('catches', '1');
+    location.replace(`#/chart?${q}`);
   },
 }));
