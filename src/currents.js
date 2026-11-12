@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+
 // The chart's data: the ocean model's surface currents, water temperature and waves (Open-Meteo's
 // marine forecast, from Copernicus/Mercator) and the wind (its weather forecast) on a grid over
 // the fishing grounds, every 3 hours for 3 days. One grid for everyone, fetched every 6 hours, in
@@ -101,27 +103,45 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
   return { south: r.south, west: r.west, step: r.step, nx, ny, frames: out };
 }
 
-function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null } = {}) {
+// Open-Meteo's free limit is 600 points a minute (and 5,000 an hour, 10,000 a day): the grid is
+// asked for in parts of about 360 points a minute apart (about 4 minutes in all, every 6 hours).
+// Nobody waits for that: get() answers at once with the last chart (kept on disk too, so a
+// restart or an update doesn't start again from nothing), and refreshes it in the background.
+// Until the very first chart is ready it says so (err.preparing). A refused fetch isn't tried
+// again for 10 minutes, so visits don't keep knocking.
+function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null, file = null,
+  gapMs = 61000, partSize = 360, retryMs = 10 * 60e3 } = {}) {
   let cached = null;
+  try { if (file) cached = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cached = null; }
+  if (cached && (!cached.data?.frames || cached.data.step !== region.step)) cached = null; // another grid
   let pending = null;
+  let failedAt = 0;
+  const pause = () => new Promise((r) => setTimeout(r, gapMs));
   async function load() {
     const g = grid(region);
-    // In parts of up to 400 points, to keep each request's address short.
-    const n = Math.ceil(g.pts.length / 400);
+    const n = Math.ceil(g.pts.length / partSize);
     const size = Math.ceil(g.pts.length / n);
     const parts = Array.from({ length: n }, (_, k) => g.pts.slice(k * size, (k + 1) * size));
     const results = [];
-    for (const part of parts) {
+    for (const [k, part] of parts.entries()) {
+      if (k) await pause();
       const url = `${MARINE}?latitude=${part.map((p) => p[0]).join(',')}&longitude=${part.map((p) => p[1]).join(',')}`
         + '&hourly=ocean_current_velocity,ocean_current_direction,sea_surface_temperature,wave_height,wave_direction&forecast_days=3&timezone=GMT&cell_selection=nearest';
-      const res = await fetchImpl(url, { signal: AbortSignal.timeout(30000) });
-      if (!res.ok) throw new Error(`Currents ${res.status}`);
+      // Refused for going over the minute's allowance: wait a minute and ask again (twice).
+      let res;
+      for (let tries = 0; ; tries++) {
+        res = await fetchImpl(url, { signal: AbortSignal.timeout(30000) });
+        if (res.status !== 429 || tries >= 2) break;
+        await pause();
+      }
+      if (!res.ok) throw new Error(`Currents ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
       const body = await res.json();
       results.push(...(Array.isArray(body) ? body : [body]));
     }
     // The wind: if it fails, the chart still has the sea.
     let wind = null;
     try {
+      await pause();
       const wgr = windGrid(region);
       const url = `${FORECAST}?latitude=${wgr.pts.map((p) => p[0]).join(',')}&longitude=${wgr.pts.map((p) => p[1]).join(',')}`
         + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&forecast_days=3&timezone=GMT';
@@ -129,24 +149,39 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
       if (res.ok) { const body = await res.json(); wind = { results: Array.isArray(body) ? body : [body] }; }
     } catch { /* no wind this time */ }
     const data = frames(results, region, g, wind);
-    // The seabed depth at each point (for the fishing chart's shelf), if the depth service answers.
+    // The seabed depth at each point (for the fishing chart's shelf): it doesn't change, so
+    // the last chart's is kept if the depth service doesn't answer.
     if (depth) {
-      try { data.depth = await depth.at(g.pts.map(([lat, lng]) => ({ lat, lng }))); } catch { /* no depths this time */ }
+      try { data.depth = await depth.at(g.pts.map(([lat, lng]) => ({ lat, lng }))); } catch { /* none this time */ }
     }
+    if (!data.depth && cached?.data?.depth?.length === g.pts.length) data.depth = cached.data.depth;
     return data;
   }
+  function refresh() {
+    if (pending || Date.now() - failedAt < retryMs) return pending;
+    pending = load().then((data) => {
+      cached = { at: Date.now(), data };
+      if (file) fs.promises.writeFile(file, JSON.stringify(cached)).catch((err) => console.warn(`Chart not saved: ${err.message}`));
+      return data;
+    }).catch((err) => {
+      failedAt = Date.now();
+      console.warn(`Chart refresh failed: ${err.message}`);
+    }).finally(() => { pending = null; });
+    return pending;
+  }
   return {
-    async get() {
-      if (cached && Date.now() - cached.at < ttlMs) return cached.data;
-      pending ??= load().then((data) => { cached = { at: Date.now(), data }; return data; }).finally(() => { pending = null; });
-      try {
-        return await pending;
-      } catch (err) {
-        // Refused or slow: the last map, if there is one, rather than none.
-        if (cached) return cached.data;
-        throw err;
+    // The chart now: the last one (refreshing it in the background if it's old). With wait,
+    // a fresh one is waited for (the tests).
+    async get({ wait = false } = {}) {
+      if (!cached || Date.now() - cached.at >= ttlMs) {
+        const p = refresh();
+        if (wait) await p;
       }
+      if (cached) return cached.data;
+      throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true });
     },
+    // Start fetching (at start-up, so the chart is ready before anyone asks).
+    warm: () => { if (!cached || Date.now() - cached.at >= ttlMs) refresh(); },
   };
 }
 

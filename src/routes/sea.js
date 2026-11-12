@@ -38,6 +38,8 @@ module.exports = (ctx) => {
       if (/\bgzip\b/.test(req.get('accept-encoding') || '')) res.set('Content-Encoding', 'gzip').send(packed.gz);
       else res.send(packed.json);
     } catch (err) {
+      // Not ready yet (just after an update): said at once, and the page asks again by itself.
+      if (err.preparing) return res.set('Cache-Control', 'no-store').json({ preparing: true, message: err.message });
       console.warn(`Currents failed: ${err.message}`);
       res.status(503).json({ error: 'The currents map is not available right now. Try again in a few minutes.' });
     }
