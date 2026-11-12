@@ -119,3 +119,15 @@ test('a refusal is remembered over a restart: no asking again before the time', 
   assert.equal(asked, 0, 'not asked again after the restart');
   assert.match(err.lastError.message, /Daily/);
 });
+
+test('a new area: the last chart is shown until the new one is ready', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const region = { south: 5, north: 5.3, west: -11, east: -10.7, step: 0.3 };
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-grid-')), 'chart-grid.json');
+  fs.writeFileSync(file, JSON.stringify({ at: Date.now() - 3600e3, data: { south: 4, west: -12, step: 0.25, frames: [{ time: 'old' }] } }));
+  let asked = 0;
+  const currents = createCurrents({ region, gapMs: 0, file, fetchImpl: async () => { asked += 1; return new Response('{}', { status: 500 }); } });
+  assert.equal((await currents.get()).frames[0].time, 'old', 'the last chart at once');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(asked > 0, 'and the new area asked for straight away');
+});

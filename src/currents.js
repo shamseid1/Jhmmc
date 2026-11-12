@@ -116,7 +116,9 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
   let cached = null;
   let saved = null;
   try { if (file) saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = null; }
-  if (saved?.data?.frames && saved.data.step === region.step) cached = { at: saved.at, data: saved.data }; // not another grid's
+  // The last chart, even if it was another grid (the area or spacing changed): shown until the
+  // new one is ready (it carries its own grid), but fetched again at once.
+  if (saved?.data?.frames) cached = { at: saved.at, data: saved.data, otherGrid: saved.data.step !== region.step || saved.data.south !== region.south || saved.data.west !== region.west };
   let pending = null;
   let failedAt = 0;
   // A refusal is remembered on disk too, so a restart (every update) doesn't ask again before then.
@@ -198,7 +200,7 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     // The chart now: the last one (refreshing it in the background if it's old). With wait,
     // a fresh one is waited for (the tests).
     async get({ wait = false } = {}) {
-      if (!cached || Date.now() - cached.at >= ttlMs) {
+      if (!cached || cached.otherGrid || Date.now() - cached.at >= ttlMs) {
         const p = refresh();
         if (wait) await p;
       }
@@ -207,7 +209,7 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
       throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true, lastError, fetching: !!pending });
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).
-    warm: () => { if (!cached || Date.now() - cached.at >= ttlMs) refresh(); },
+    warm: () => { if (!cached || cached.otherGrid || Date.now() - cached.at >= ttlMs) refresh(); },
   };
 }
 
