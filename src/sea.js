@@ -67,7 +67,7 @@ const avg = (xs) => { const v = xs.filter((x) => x != null); return v.length ? v
 // The conditions at one hour (local time "YYYY-MM-DDTHH:MM"): what's saved with a logged fish.
 function conditionsAt(w, m, isoLocal) {
   const i = indexOfHour(w.hourly.time, isoLocal);
-  const j = indexOfHour(m.hourly.time, isoLocal);
+  const j = indexOfHour(m.hourly.time || [], isoLocal);
   if (i < 0 && j < 0) return null;
   const sl = m.hourly.sea_level_height_msl || [];
   const tide = j > 0 && sl[j] != null && sl[j - 1] != null ? (sl[j] > sl[j - 1] ? 'rising' : 'falling') : null;
@@ -89,15 +89,20 @@ function summarize(w, m, now = new Date()) {
   const cur = w.current || {};
   const mc = m.current || {};
   const mo = moon(now);
-  const d = w.daily;
+  // The daily lists start two days back (asked for, so fish sent late still get their sea): from today on.
+  const from = Math.max(0, w.daily.time.indexOf(today));
+  const cut = (xs) => (Array.isArray(xs) ? xs.slice(from) : xs);
+  const d = Object.fromEntries(Object.entries(w.daily).map(([k, v]) => [k, cut(v)]));
+  const mFrom = m.daily?.time ? Math.max(0, m.daily.time.indexOf(today)) : from;
+  const md = m.daily ? Object.fromEntries(Object.entries(m.daily).map(([k, v]) => [k, Array.isArray(v) ? v.slice(mFrom) : v])) : {};
   const sunrise = d.sunrise?.[0];
   const sunset = d.sunset?.[0];
   const minutes = (iso) => (iso ? Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)) : null);
   const noon = sunrise && sunset ? (minutes(sunrise) + minutes(sunset)) / 2 : 720;
-  const sstByDay = (day) => avg(m.hourly.time.map((t, k) => (t.startsWith(day) ? m.hourly.sea_surface_temperature[k] : null)));
+  const sstByDay = (day) => avg((m.hourly.time || []).map((t, k) => (t.startsWith(day) ? m.hourly.sea_surface_temperature[k] : null)));
   const days = d.time.map((day, k) => {
     const windKn = d.wind_speed_10m_max?.[k] ?? null;
-    const waveM = m.daily?.wave_height_max?.[k] ?? null;
+    const waveM = md.wave_height_max?.[k] ?? null;
     return {
       date: day, windKn: windKn == null ? null : Math.round(windKn), windDir: compass(d.wind_direction_10m_dominant?.[k]),
       waveM: waveM == null ? null : round1(waveM), waterC: (() => { const s = sstByDay(day); return s == null ? null : round1(s); })(),
@@ -105,8 +110,8 @@ function summarize(w, m, now = new Date()) {
     };
   });
   const sl = m.hourly.sea_level_height_msl || [];
-  const turns = tideTurns(m.hourly.time, sl).filter((t) => t.time.startsWith(today));
-  const tideCurve = m.hourly.time.map((t, k) => (t.startsWith(today) ? [Number(t.slice(11, 13)), sl[k]] : null)).filter((x) => x && x[1] != null);
+  const turns = tideTurns(m.hourly.time || [], sl).filter((t) => t.time.startsWith(today));
+  const tideCurve = (m.hourly.time || []).map((t, k) => (t.startsWith(today) ? [Number(t.slice(11, 13)), sl[k]] : null)).filter((x) => x && x[1] != null);
   const nowWind = cur.wind_speed_10m ?? null;
   const nowWave = mc.wave_height ?? null;
   return {
@@ -149,15 +154,21 @@ function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3 } = {}) {
     const key = `${lat},${lng}`;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < ttlMs) return hit.data;
-    const [w, m] = await Promise.all([
+    const [wr, mr] = await Promise.allSettled([
       get(`${FORECAST}?${query(lat, lng)}&wind_speed_unit=kn&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m`
         + '&hourly=wind_speed_10m,wind_direction_10m&daily=sunrise,sunset,wind_speed_10m_max,wind_direction_10m_dominant'),
       get(`${MARINE}?${query(lat, lng)}&cell_selection=sea&current=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction,sea_surface_temperature,ocean_current_velocity,ocean_current_direction`
         + '&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&daily=wave_height_max'),
     ]);
+    if (wr.status !== 'fulfilled') throw wr.reason;
+    // No sea forecast (refused, or none for that place): the weather, sun and moon still show.
+    const w = wr.value;
+    const m = mr.status === 'fulfilled' ? mr.value : { hourly: {}, current: {}, daily: {} };
+    if (mr.status !== 'fulfilled') console.warn(`Marine forecast failed: ${mr.reason?.message}`);
     const data = { w, m };
     if (cache.size > 300) cache.delete(cache.keys().next().value);
-    cache.set(key, { at: Date.now(), data });
+    // Without the sea part, ask again sooner (10 minutes).
+    cache.set(key, { at: Date.now() - (mr.status === 'fulfilled' ? 0 : ttlMs - 10 * 60e3), data });
     return data;
   }
   // Towns and ports by name (Open-Meteo's place search), kept a day.

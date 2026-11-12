@@ -66,7 +66,7 @@ PAGE_GROUPS.push((view) => ({
     const saveQueue = (q) => { try { localStorage.setItem(QUEUE, JSON.stringify([...allQueued().filter((x) => !mine(x)), ...q])); } catch {} };
     const time = (iso) => parseTime(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
-    const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
+    const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}${x.depthM != null ? ` · about ${depthTxt(x.depthM)}` : ''}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
     function draw() {
       const waiting = queued().filter((x) => x.date === day);
       const landed = trip?.landings || [];
@@ -233,9 +233,11 @@ PAGE_GROUPS.push((view) => ({
         gps.textContent = `GPS: ${fmtCoords(fix.lat, fix.lng)} (±${Math.round(pos.coords.accuracy)} m)`;
         if (!seaShown && navigator.onLine !== false) {
           seaShown = true;
-          api(`/sea?lat=${fix.lat.toFixed(2)}&lng=${fix.lng.toFixed(2)}`).then((s) => {
-            gps.insertAdjacentHTML('afterend', html`<p class="cond-line">${raw(seaLine(s.now, s.moon.lit))}</p>`);
-          }).catch(() => {});
+          Promise.allSettled([api(`/sea?lat=${fix.lat.toFixed(2)}&lng=${fix.lng.toFixed(2)}`), api(`/depth?at=${fix.lat.toFixed(4)},${fix.lng.toFixed(4)}`)]).then(([s, d]) => {
+            const depthM = d.value?.depths?.[0]?.depthM;
+            if (s.status !== 'fulfilled' && depthM == null) return;
+            gps.insertAdjacentHTML('afterend', html`<p class="cond-line">${raw(seaLine(s.value?.now || {}, s.value?.moon.lit, depthM))}</p>`);
+          });
         }
         gps.classList.remove('gps-wait');
         view.querySelector('.fates')?.classList.remove('waiting');
@@ -421,6 +423,7 @@ PAGE_GROUPS.push((view) => ({
         ${R.techniques.length ? raw(html`<h2>How: techniques</h2><div class="card pad">${bars(R.techniques)}</div>`) : ''}
         ${(R.seaConditions || []).map((x) => raw(html`<h2>The sea when you catch ${x.species.toLowerCase()}</h2><div class="card pad sea-trend">
           <p class="small muted">From the conditions saved with ${plural(x.fish, 'fish')} logged at sea this season.</p>
+          ${x.depths.length ? raw(html`<b class="small">Depth (about)</b>${bars(depthBands(x.depths))}`) : ''}
           ${x.water.length ? raw(html`<b class="small">Water temperature</b>${bars(x.water.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}
           ${x.tide.length ? raw(html`<b class="small">Tide</b>${bars(x.tide.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}
           ${x.wind.length ? raw(html`<b class="small">Wind</b>${bars(x.wind.map((r) => ({ name: r.label, fish: r.fish })))}`) : ''}</div>`))}

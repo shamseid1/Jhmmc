@@ -200,8 +200,19 @@ async function seaFor(place) {
 const wavesTxt = (m) => (m == null ? '' : `${Number(toUnit('depth', m)).toFixed(1)} ${unit('depth')}`);
 const tempTxt = (c) => (c == null ? '' : `${Number(toUnit('temp', c)).toFixed(1)}${unit('temp')}`);
 const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-// The line under the GPS on Log fish (and saved with each fish): the sea right now.
-const seaLine = (n, moonLit) => html`<span>${raw(icon('wave'))} ${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
+const depthTxt = (m) => `${Math.round(toUnit('depth', m))} ${unit('depth')}`;
+// Depths (the seabed map's, approximate) in bands wide enough that a few hundred metres either way doesn't matter.
+function depthBands(depthsM) {
+  const ft = unit('depth') === 'ft';
+  const edges = ft ? [300, 600, 1000, 2000] : [100, 200, 300, 600];
+  const inUnit = (m) => toUnit('depth', m);
+  const names = [`under ${edges[0]}`, ...edges.slice(0, -1).map((e, i) => `${e} – ${edges[i + 1]}`), `over ${edges.at(-1)}`].map((n) => `${n} ${unit('depth')}`);
+  const counts = names.map(() => 0);
+  for (const m of depthsM) { const v = inUnit(m); const i = edges.findIndex((e) => v < e); counts[i < 0 ? edges.length : i] += 1; }
+  return names.map((name, i) => ({ name, fish: counts[i] })).filter((r) => r.fish);
+}
+// The line under the GPS on Log fish (and saved with each fish): the sea right now, and the depth.
+const seaLine = (n, moonLit, depthM) => html`<span>${raw(icon('wave'))} ${[depthM != null && `depth about ${depthTxt(depthM)}`, n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`,
   n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`, moonLit != null && `moon ${moonLit}%`].filter(Boolean).join(' · ')}</span>`;
 
 // ---- keeping it decent: community rules, reporting, blocking ----------------

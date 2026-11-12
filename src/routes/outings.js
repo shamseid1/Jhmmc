@@ -147,7 +147,7 @@ module.exports = (ctx) => {
   // The fish join that boat's line for the day, created on the first one.
   const FATES = ['released', 'kept', 'lost'];
   const landingsOf = (outingId) => db.prepare(`SELECT l.id, l.user_id AS userId, l.species_id AS speciesId, l.catch_id AS catchId, l.photo, COALESCE(l.client_id LIKE 'reg-%', 0) AS fromScale, s.name AS species, l.fate, l.weight_kg AS weightKg, ${SCALE}, l.lat, l.lng, l.landed_at AS landedAt, l.on_profile AS onProfile,
-      COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy
+      COALESCE(NULLIF(u.nickname, ''), u.name) AS loggedBy, json_extract(l.conditions, '$.depthM') AS depthM
     FROM outing_landings l JOIN species s ON s.id = l.species_id LEFT JOIN users u ON u.id = l.user_id
     WHERE l.outing_id = ? ORDER BY l.id`).all(outingId);
   const tripFor = (outingId, viewer) => {
@@ -210,11 +210,13 @@ module.exports = (ctx) => {
       const landingId = Number(db.prepare('SELECT last_insert_rowid() AS id').get().id);
       linkLogToRegistration(landingId);
       db.exec('COMMIT');
-      // The sea when it came aboard, saved with it (in the background; never holds up the log).
-      if (ctx.sea && spot.lat != null) {
-        ctx.sea.at(spot.lat, spot.lng, landedAt)
-          .then((c) => { if (c) db.prepare('UPDATE outing_landings SET conditions = ? WHERE id = ?').run(JSON.stringify(c), landingId); })
-          .catch(() => {});
+      // The sea when it came aboard, and how deep it was there (the GEBCO seabed map), saved
+      // with it in the background: never holds up the log.
+      if ((ctx.sea || ctx.depth) && spot.lat != null) {
+        Promise.allSettled([ctx.sea?.at(spot.lat, spot.lng, landedAt), ctx.depth?.at([{ lat: spot.lat, lng: spot.lng }])]).then(([c, d]) => {
+          const cond = { ...(c.value || {}), ...(d.value?.[0] != null && { depthM: d.value[0] }) };
+          if (Object.keys(cond).length) db.prepare('UPDATE outing_landings SET conditions = ? WHERE id = ?').run(JSON.stringify(cond), landingId);
+        }).catch(() => {});
       }
       // Fish on! For those who asked: boat, species and what happened, never the spot.
       // Only for this trip's fish (today's, or last night's carrying on), not ones added afterwards.
@@ -401,8 +403,9 @@ module.exports = (ctx) => {
         WHERE l.outing_id IN (${ids.map(() => '?').join(',')}) AND l.conditions IS NOT NULL AND l.fate <> 'lost'`).all(...ids)) {
         let c;
         try { c = JSON.parse(r.conditions); } catch { continue; }
-        const x = (seaBy[r.species] ??= { species: r.species, fish: 0, water: {}, tide: {}, wind: {} });
+        const x = (seaBy[r.species] ??= { species: r.species, fish: 0, water: {}, tide: {}, wind: {}, depths: [] });
         x.fish += 1;
+        if (c.depthM != null) x.depths.push(c.depthM);
         if (c.waterC != null) { const lo = Math.floor(c.waterC * 2) / 2; add(x.water, `${lo.toFixed(1)} – ${(lo + 0.5).toFixed(1)}°C`, 1); }
         if (c.tide) add(x.tide, c.tide === 'rising' ? 'Rising' : 'Falling', 1);
         if (c.windKn != null) add(x.wind, c.windKn < 10 ? 'Under 10 kn' : c.windKn <= 15 ? '10 – 15 kn' : 'Over 15 kn', 1);
@@ -411,7 +414,7 @@ module.exports = (ctx) => {
     const list = (map, order) => Object.entries(map).sort((a, b2) => (order ? order.indexOf(a[0]) - order.indexOf(b2[0]) : a[0].localeCompare(b2[0])))
       .map(([label, fish]) => ({ label, fish }));
     const seaConditions = Object.values(seaBy).filter((x) => x.fish >= 3).sort((a, b2) => b2.fish - a.fish).slice(0, 3)
-      .map((x) => ({ species: x.species, fish: x.fish, water: list(x.water), tide: list(x.tide, ['Rising', 'Falling']), wind: list(x.wind, ['Under 10 kn', '10 – 15 kn', 'Over 15 kn']) }));
+      .map((x) => ({ species: x.species, fish: x.fish, depths: x.depths, water: list(x.water), tide: list(x.tide, ['Rising', 'Falling']), wind: list(x.wind, ['Under 10 kn', '10 – 15 kn', 'Over 15 kn']) }));
     const areas = {};
     const techniques = {};
     for (const o of outings) {

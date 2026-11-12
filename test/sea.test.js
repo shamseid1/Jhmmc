@@ -6,20 +6,20 @@ const { createSea, tideTurns, moon, rating, compass } = require('../src/sea');
 function fixture() {
   const start = Date.UTC(2026, 10, 10);
   const hours = Array.from({ length: 9 * 24 }, (_, h) => new Date(start + h * 3600e3).toISOString().slice(0, 16));
-  const days = Array.from({ length: 7 }, (_, d) => new Date(Date.UTC(2026, 10, 12 + d)).toISOString().slice(0, 10));
+  const days = Array.from({ length: 9 }, (_, d) => new Date(Date.UTC(2026, 10, 10 + d)).toISOString().slice(0, 10));
   const w = {
     timezone: 'GMT', utc_offset_seconds: 0,
     current: { temperature_2m: 29.2, wind_speed_10m: 9.4, wind_direction_10m: 225, wind_gusts_10m: 14.2 },
     hourly: { time: hours, wind_speed_10m: hours.map(() => 9), wind_direction_10m: hours.map(() => 220) },
     daily: { time: days, sunrise: days.map((d) => `${d}T06:21`), sunset: days.map((d) => `${d}T18:14`),
-      wind_speed_10m_max: [9, 11, 16, 21, 13, 8, 7], wind_direction_10m_dominant: [225, 225, 270, 270, 225, 225, 180] },
+      wind_speed_10m_max: [30, 30, 9, 11, 16, 21, 13, 8, 7], wind_direction_10m_dominant: [0, 0, 225, 225, 270, 270, 225, 225, 180] },
   };
   const m = {
     timezone: 'GMT', utc_offset_seconds: 0,
     current: { wave_height: 1.12, swell_wave_height: 1.3, swell_wave_period: 12.2, swell_wave_direction: 200, sea_surface_temperature: 28.6, ocean_current_velocity: 1.1, ocean_current_direction: 90 },
     hourly: { time: hours, wave_height: hours.map(() => 1.1), sea_surface_temperature: hours.map(() => 28.6),
       sea_level_height_msl: hours.map((t) => 0.55 * Math.cos(((Date.parse(`${t}:00Z`) - Date.UTC(2026, 10, 12, 4, 18)) / 3600e3 / 12.42) * 2 * Math.PI)) },
-    daily: { wave_height_max: [1.1, 1.3, 1.8, 2.4, 1.6, 1.0, 0.9] },
+    daily: { time: days, wave_height_max: [3, 3, 1.1, 1.3, 1.8, 2.4, 1.6, 1.0, 0.9] },
   };
   return { w, m };
 }
@@ -38,7 +38,8 @@ test('sea conditions: the forecast made into what an angler needs', async () => 
     assert.ok(asked.every((u) => u.includes('latitude=6.2&longitude=-11')));
     assert.deepEqual([s.now.windKn, s.now.windDir, s.now.gustKn, s.now.waveM, s.now.waterC, s.now.currentKn, s.now.currentDir], [9, 'SW', 14, 1.1, 28.6, 0.6, 'E']);
     assert.equal(s.now.rating, 'good');
-    assert.deepEqual(s.days.map((d) => d.rating), ['good', 'good', 'fair', 'rough', 'fair', 'good', 'good']);
+    assert.deepEqual(s.days.map((d) => d.rating), ['good', 'good', 'fair', 'rough', 'fair', 'good', 'good'], 'from today, not two days back');
+    assert.equal(s.days[0].date, '2026-11-12');
     // Today's tide: two highs, two lows, the first low a little after 4 am.
     assert.deepEqual(s.tide.turns.map((t) => t.type), ['high', 'low', 'high', 'low'].slice(0, s.tide.turns.length));
     assert.ok(s.tide.turns.length >= 3);
@@ -82,4 +83,14 @@ test('place search: towns and ports by name, kept a day', async () => {
   assert.deepEqual(places, [{ name: 'Freetown', region: 'Western Area', country: 'Sierra Leone', countryCode: 'SL', lat: 8.49, lng: -13.24 }]);
   await sea.search('free town');
   assert.equal(calls, 1);
+});
+
+test('no sea forecast: the weather still shows', async () => {
+  const { w } = fixture();
+  const sea = createSea({ fetchImpl: async (url) => (url.includes('marine') ? new Response('{"error":true}', { status: 429 }) : new Response(JSON.stringify(w))) });
+  const s = await sea.summary(6.2, -11);
+  assert.equal(s.now.windKn, 9);
+  assert.equal(s.now.waveM, null);
+  assert.deepEqual(s.tide.turns, []);
+  assert.equal(s.days.length, 7);
 });

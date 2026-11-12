@@ -2,10 +2,10 @@
 
 // The depth of the sea at a spot, from GEBCO (the world's seabed map, a grid of about 450 m),
 // through Open Topo Data's free service: a height below sea level, so "about" a depth, good
-// offshore, rougher near reefs and the shelf edge. Spots are rounded to about 500 m, asked in
+// offshore, rougher near reefs and the shelf edge. Spots are rounded to about 100 m, asked in
 // batches (100 at most), and kept a month.
 const URL_GEBCO = 'https://api.opentopodata.org/v1/gebco2020';
-const r3 = (n) => Math.round(n * 200) / 200; // 0.005°, about 500 m
+const r3 = (n) => Math.round(n * 1000) / 1000; // 0.001°, about 100 m (the map's grid is about 450 m)
 
 function createDepth({ fetchImpl = globalThis.fetch, ttlMs = 30 * 864e5 } = {}) {
   const cache = new Map();
