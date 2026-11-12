@@ -1190,7 +1190,7 @@ button.link, .wq { white-space: normal; }
 /* Kept / Released / Lost: words in the middle; with big text they take two rows, the
    last one full width (not a lone half button). */
 .fates { display: flex; flex-wrap: wrap; }
-.fate { flex: 1 1 6.2em; justify-content: center; text-align: center; }
+.fate { flex: 1 1 5.2em; justify-content: center; text-align: center; }
 @media (max-width: 640px) {
   #nav a { font-size: var(--nav-fs, 11px); }
 }
