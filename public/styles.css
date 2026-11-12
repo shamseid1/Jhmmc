@@ -1425,7 +1425,6 @@ body.chart-mode main > div { animation: none; }
 .tl-marks .hi, .tl-marks .lo { color: #7cc7ff; }
 .tl-marks .sun { color: #ffd166; font-size: 11px; }
 .tl-moon { font-weight: 600; opacity: 0.85; margin-left: 2px; }
-.offline-note { margin: 2px 0 10px; font-size: 13px; color: rgba(255, 255, 255, 0.7); }
 .spot-save { width: 100%; padding: 12px; border: 0; border-radius: 12px; background: #fff; color: #0a1a33; font: inherit; font-weight: 800; justify-content: center; }
 .spot-save:disabled { opacity: 0.7; }
 .spot-form { display: grid; gap: 10px; }

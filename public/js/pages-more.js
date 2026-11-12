@@ -199,10 +199,7 @@ PAGE_GROUPS.push((view) => ({
           <label><span>Regional<small>Where everyone's fish are caught: 10 km circles, no spots or boats.</small></span><input type="checkbox" class="switch" data-show="regional" ${regionalOn ? 'checked' : ''}></label>
         </div>
         <div class="catch-filters" id="catch-filters" ${regionalOn ? '' : 'hidden'}></div>`) : ''}
-        <div class="panel-head catches-head"><b>No signal at sea</b></div>
-        <p class="offline-note">The forecast, your fish and spots, and the contours you've looked at are kept on this phone each time.
-          Save all the contours now (about 10 MB), before going out:</p>
-        <button type="button" class="spot-save" data-save-offline>Save the chart for no signal</button>
+
       </div>
       <div class="chart-bottom">
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
@@ -438,33 +435,31 @@ PAGE_GROUPS.push((view) => ({
       // The filters' choices, whether or not the region's circles are on.
       api('/outings/grid?season=all&month=all').then((g) => { choices = g; filters(); }).catch(() => {});
     }
-    // ---- save the chart for no signal: every contour tile to zoom 10 (the zooms used at sea),
-    // with the forecast and your fish (kept by the app as they load) ----
-    view.querySelector('[data-save-offline]')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      try {
-        const { charts } = await api('/charts');
-        const urls = [];
-        const tileXY = (lat, lng, z) => { const n = 2 ** z; const r = (lat * Math.PI) / 180; return [Math.floor(((lng + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)]; };
-        for (const c of charts.filter((x) => x.cleanTiles)) {
-          for (let z = 8; z <= Math.min(10, c.maxZoom ?? 10); z++) {
-            const [x0, y0] = tileXY(c.bounds.north, c.bounds.west, z); const [x1, y1] = tileXY(c.bounds.south, c.bounds.east, z);
-            for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.push(c.cleanTiles.replace('{z}', z).replace('{x}', x).replace('{y}', y));
-          }
+    // ---- ready for no signal, by itself: with signal, the whole contour chart (to zoom 10,
+    // about 10 MB) is fetched quietly in the background, once, and again only when the chart
+    // changes; the app keeps it (with the forecast, your fish and spots, kept as they load) ----
+    const saveForSea = async () => {
+      if (!navigator.onLine || !('serviceWorker' in navigator) || navigator.connection?.saveData) return;
+      let charts;
+      try { ({ charts } = await api('/charts')); } catch { return; }
+      const list = charts.filter((x) => x.cleanTiles);
+      const version = list.map((x) => x.cleanTiles.split('v=')[1]).join(',');
+      try { if (localStorage.getItem('chart-saved') === version) return; } catch { /* no memory: fetch (the app keeps tiles once) */ }
+      const urls = [];
+      const tileXY = (lat, lng, z) => { const n = 2 ** z; const r = (lat * Math.PI) / 180; return [Math.floor(((lng + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)]; };
+      for (const c of list) {
+        for (let z = 8; z <= Math.min(10, c.maxZoom ?? 10); z++) {
+          const [x0, y0] = tileXY(c.bounds.north, c.bounds.west, z); const [x1, y1] = tileXY(c.bounds.south, c.bounds.east, z);
+          for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.push(c.cleanTiles.replace('{z}', z).replace('{x}', x).replace('{y}', y));
         }
-        urls.push('/api/currents', '/api/me/spots', '/api/me/waypoints', '/api/chart/fishing', `/api/sea?lat=${HOME[0]}&lng=${HOME[1]}`);
-        btn.disabled = true;
-        let done = 0;
-        const next = async () => { while (urls.length) { const u = urls.shift(); await fetch(u, { credentials: 'same-origin' }).catch(() => {}); done += 1; if (done % 20 === 0) btn.textContent = `Saving… ${done}`; } };
-        const total = urls.length;
-        await Promise.all([next(), next(), next(), next(), next(), next()]);
-        btn.textContent = `Saved for no signal (${total} pieces)`;
-        try { localStorage.setItem('chart-saved-at', String(Date.now())); } catch { /* fine */ }
-      } catch (err) {
-        btn.disabled = false;
-        toast(err.message || 'Couldn\'t save just now. Try again with signal.');
       }
-    });
+      let failed = 0;
+      // Two at a time, so the map you're looking at isn't slowed down; stops if you leave.
+      const next = async () => { while (urls.length && view.isConnected) { const ok = await fetch(urls.shift(), { credentials: 'same-origin' }).then((r) => r.ok).catch(() => false); if (!ok) failed += 1; } };
+      await Promise.all([next(), next()]);
+      if (!urls.length && failed < 5) { try { localStorage.setItem('chart-saved', version); } catch { /* fine */ } }
+    };
+    setTimeout(saveForSea, 4000);
     // ---- saved spots: press and hold the map to save one; your crew's are shown ----
     let spots = [];
     const spotIcon = L.divIcon({ className: 'wp-icon', iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -8] });
