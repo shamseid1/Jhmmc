@@ -260,12 +260,10 @@ function sampler(g, f) {
   };
 }
 const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
-// Colour scales: water temperature (cool blue to warm red), current strength (calm to strong).
-// Each palette is stretched over the values actually on the map, so small differences (a
-// temperature break of half a degree) still show as a change of colour.
-const PALETTE = [[0, [40, 70, 160]], [0.2, [40, 140, 200]], [0.4, [60, 190, 170]], [0.6, [240, 210, 80]], [0.8, [240, 130, 50]], [1, [200, 40, 60]]];
-const stretch = (lo, hi) => PALETTE.map(([t, c]) => [lo + t * (hi - lo), c]);
-// The wind (knots) and waves (metres) on fixed scales, like Windy's.
+// Colour scales, fixed like Windy's (the same colour is the same value every day). Water
+// temperature in Windy's yellow-orange-red, with more steps over the tropical range so a
+// break of a degree or two still shows.
+const SST_SCALE = [[18, [175, 190, 60]], [22, [230, 200, 50]], [25, [245, 160, 40]], [27, [240, 125, 35]], [29, [228, 88, 35]], [31, [200, 52, 42]], [33, [150, 28, 48]]];
 const WIND_SCALE = [[0, [70, 90, 180]], [5, [50, 150, 200]], [10, [60, 180, 110]], [15, [230, 210, 70]], [20, [240, 140, 50]], [25, [210, 50, 60]], [35, [150, 40, 150]]];
 const WAVE_SCALE = [[0, [60, 70, 170]], [0.5, [50, 140, 200]], [1, [60, 180, 140]], [1.5, [230, 210, 70]], [2, [240, 140, 50]], [3, [210, 50, 60]], [4, [150, 40, 150]]];
 // Each colour layer's value at a spot, from a frame's sampler.
@@ -276,21 +274,6 @@ const FIELD_VALUE = {
   wave: (at, lat, lng) => at(lat, lng, 'wh'),
 };
 const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
-function fieldRange(g, kind) {
-  let lo = Infinity; let hi = -Infinity;
-  for (const f of g.frames) {
-    for (let k = 0; k < f.u.length; k++) {
-      const v = kind === 'sst' ? f.sst[k] : (f.u[k] == null ? null : Math.hypot(f.u[k], f.v[k]));
-      if (v == null) continue;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-  }
-  if (!Number.isFinite(lo)) return kind === 'sst' ? [26, 30] : [0, 2];
-  // Round outwards: half degrees, or tenths of a knot from zero.
-  if (kind === 'sst') { lo = Math.floor(lo * 2) / 2; hi = Math.max(lo + 1, Math.ceil(hi * 2) / 2); } else { lo = 0; hi = Math.max(0.5, Math.ceil(hi * 10) / 10); }
-  return [lo, hi];
-}
 function colourAt(stops, v) {
   if (v <= stops[0][0]) return stops[0][1];
   for (let k = 1; k < stops.length; k++) {
@@ -325,14 +308,14 @@ function fieldImage(L, g, f, kind, stops, land) {
       const v = FIELD_VALUE[kind](at, lat, lng);
       if (v == null) continue;
       const [r, gg, b] = colourAt(stops, v);
-      img.data.set([r, gg, b, 175], (py * w + px) * 4);
+      img.data.set([r, gg, b, 235], (py * w + px) * 4);
     }
   }
   ctx.putImageData(img, 0, 0);
   ctx.globalCompositeOperation = 'destination-out';
   fillLand(ctx, land, (lat, lng) => [((lng - g.west) / g.step) * S, h - 1 - ((lat - g.south) / g.step) * S]);
   return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
-    { opacity: 0.85, className: 'field-image', interactive: false });
+    { opacity: 1, className: 'field-image', interactive: false });
 }
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
 function flowLayer(map, getField, getLand = () => null, bounds = null) {

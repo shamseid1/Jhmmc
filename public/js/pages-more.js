@@ -211,10 +211,9 @@ PAGE_GROUPS.push((view) => ({
     const nowIso = new Date().toISOString().slice(0, 13);
     slider.value = String(Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso)));
     // Each layer: its colours, the lines' field (and how fast they look), and its scale's ends.
-    const sstRange = fieldRange(data, 'sst');
     const LAYER = {
       currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0].toFixed(1)} kn`] },
-      sst: { colour: 'sst', stops: stretch(...sstRange), lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
+      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.6], ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
     };
