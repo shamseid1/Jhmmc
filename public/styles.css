@@ -1478,3 +1478,21 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .home-tile.wide > span:nth-child(2) { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .home-tile.wide .go { font-size: 24px; color: var(--muted); }
 .home-tile.wide b { color: var(--text); }
+/* Home: today's tides, sun, moon and best times; what's biting. */
+.day-card { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px 8px; text-decoration: none; color: inherit; margin: -4px 0 12px; font-size: 13px; }
+.day-col { display: grid; align-content: start; gap: 2px; min-width: 0; }
+.day-col .k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 2px; }
+.day-col b { font-variant-numeric: tabular-nums; }
+.home-wide-slot { grid-column: 1 / -1; display: grid; }
+.home-wide-slot:empty { display: none; }
+.biting-card .bite { font-size: 14px; color: var(--text); }
+.biting-card .bite b { font-size: 14px; }
+.biting-card .up { color: #1f9d55; font-weight: 800; margin-left: 2px; }
+.biting-card .down { color: #c0392b; font-weight: 800; margin-left: 2px; }
+.biting-card .fish-mark, .biting-card .icon { width: 30px; height: 30px; flex: none; }
+.day-tides { grid-column: 1 / -1; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.day-tides .tides { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
+.day-tides .hint { text-transform: none; letter-spacing: 0; font-weight: 600; margin-left: 6px; }
+.day-tides i { font-style: normal; font-size: 11px; }
+.day-tides i.hi, .day-tides i.lo { color: var(--accent); }
+.nowrap { white-space: nowrap; }

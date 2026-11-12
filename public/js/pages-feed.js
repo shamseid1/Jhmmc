@@ -4,8 +4,19 @@
 'use strict';
 
 // Home's cards, filled in as their data comes: the tournament on or next, today's fish to
-// weigh (crews), today's sea, and the offer of notifications.
+// weigh (crews), today's sea with its tides, sun, moon and best times, what's biting, and the
+// offer of notifications.
 function homeCards(view) {
+    // What's biting: every boat's fish in the last 14 days against the 14 before, the top few.
+    api('/outings/trends').then((tr) => {
+      const box = view.querySelector('#biting');
+      const top = (tr.now?.biting || []).filter((r) => r.now > 0).slice(0, 3);
+      if (!box || !top.length) return;
+      const arrow = (r) => (r.now > r.before ? '<span class="up">↑</span>' : r.now < r.before ? '<span class="down">↓</span>' : '');
+      box.innerHTML = html`<a class="home-tile wide biting-card" href="#/log?tab=trends&scope=regional">${raw(icon('fish'))}<span><b>What's biting</b>
+        ${raw(top.map((r) => html`<span class="bite"><b>${r.species}</b> ${r.now}${raw(arrow(r))}${r.area ? ` · mostly ${r.area}` : ''}</span>`).join(''))}
+        <span class="small muted">The last 14 days, ${plural(tr.now.boats, 'boat')}</span></span><span class="go" aria-hidden="true">›</span></a>`;
+    }).catch(() => {});
     // Today's trip, for the card at the top: fish boated but not weighed in yet.
     if (state.me?.teamId) {
       api(`/outings/trip?date=${today()}`).then(({ trip }) => {
@@ -63,7 +74,13 @@ function homeCards(view) {
           seaBox.innerHTML = html`<div class="card sea-card"><a class="sea-card-today" href="#/sea">
             <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
             <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
-            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>`;
+            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>
+            <a class="card pad day-card" href="#/sea">
+              <span class="day-col day-tides"><span class="k">Tides today <span class="hint">▲ high ▼ low</span></span><span class="tides">${raw((s.tide?.turns || []).map((t) => html`<span><i class="${t.type === 'high' ? 'hi' : 'lo'}">${t.type === 'high' ? '▲' : '▼'}</i> <b>${t.time.slice(11, 16)}</b></span>`).join('') || '<span class="muted">—</span>')}</span></span>
+              <span class="day-col"><span class="k">Sun</span><span>Rise <b>${s.sun.rise || '—'}</b></span><span>Set <b>${s.sun.set || '—'}</b></span></span>
+              <span class="day-col"><span class="k">Moon</span><span><b>${s.moon.lit}%</b></span><span class="muted">${s.moon.name}</span></span>
+              <span class="day-col"><span class="k">Best times</span>${raw(s.solunar.major.map((p) => html`<span class="nowrap"><b>${hhmm(p.from)}</b>–${hhmm(p.to)}</span>`).join(''))}</span>
+            </a>`;
         }).catch(() => {});
       }
     }
@@ -81,12 +98,11 @@ PAGE_GROUPS.push((view) => ({
         <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
         ${state.me?.canWeigh || state.me?.canApprove ? raw(html`<a class="home-tile wide" href="#/weigh">${raw(icon('weight'))}<span><b>Weigh-in</b><span>${
           state.me.canApprove && !state.me.teamId ? 'For any boat, any day' : state.me.weighmasterAt ? `You're the weighmaster at ${state.me.weighmasterAt}` : `Today's fish for ${state.me.teamName || 'your boat'}${state.me.weighStation ? ` at ${state.me.weighStation}` : ''}`}</span></span><span class="go" aria-hidden="true">›</span></a>`) : ''}
+        <div id="biting" class="home-wide-slot"></div>
+        <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
         <a class="home-tile" href="#/leaderboard">${raw(icon('leaderboard'))}<b>Leaderboard</b><span>The season's points</span></a>
         <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
-        <a class="home-tile" href="#/records">${raw(icon('scale'))}<b>Records</b><span>The biggest fish</span></a>
-        <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
         <a class="home-tile" href="#/sea">${raw(icon('wave'))}<b>Sea conditions</b><span>The week ahead</span></a>
-        <a class="home-tile" href="#/calendar">${raw(icon('calendar'))}<b>Calendar</b><span>The club's dates</span></a>
       </div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       ${state.me ? raw(html`<a class="card pad home-account" href="#/profile">${raw(icon('user'))}<span><b>My account</b><span class="small muted">${state.me.displayName || state.me.name}${state.me.teamName ? ` · ${state.me.teamName}` : ''}</span></span><span aria-hidden="true">›</span></a>`)
