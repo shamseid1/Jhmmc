@@ -1255,3 +1255,6 @@ label.check input { width: auto; margin-top: 4px; flex: none; }
 .cond-line { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
 .cond-line span { display: inline-flex; align-items: flex-start; gap: 6px; }
 .sea-trend { display: grid; gap: 6px; }
+.sea-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sea-results li button { display: grid; text-align: left; width: 100%; padding: 8px 0; text-decoration: none; white-space: normal; }
+#sea-search { margin: 10px 0; }

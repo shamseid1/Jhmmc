@@ -131,6 +131,7 @@ function summarize(w, m, now = new Date()) {
 }
 
 const FORECAST = 'https://api.open-meteo.com/v1/forecast';
+const PLACES = 'https://geocoding-api.open-meteo.com/v1/search';
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
 const query = (lat, lng) => `latitude=${lat}&longitude=${lng}&timezone=auto&forecast_days=7&past_days=2`;
 
@@ -159,7 +160,23 @@ function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3 } = {}) {
     cache.set(key, { at: Date.now(), data });
     return data;
   }
+  // Towns and ports by name (Open-Meteo's place search), kept a day.
+  const found = new Map();
+  async function search(q) {
+    const key = q.toLowerCase();
+    const hit = found.get(key);
+    if (hit && Date.now() - hit.at < 864e5) return hit.places;
+    const r = await get(`${PLACES}?name=${encodeURIComponent(q)}&count=8&language=en&format=json`);
+    const places = (r.results || []).map((p) => ({
+      name: p.name, region: p.admin1 || null, country: p.country || null, countryCode: p.country_code || null,
+      lat: Math.round(p.latitude * 100) / 100, lng: Math.round(p.longitude * 100) / 100,
+    }));
+    if (found.size > 500) found.delete(found.keys().next().value);
+    found.set(key, { at: Date.now(), places });
+    return places;
+  }
   return {
+    search,
     async summary(lat, lng) {
       const { w, m } = await forecasts(lat, lng);
       return summarize(w, m);

@@ -4,6 +4,19 @@
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
   const { api, sea } = ctx;
+  // Places to choose from: towns and ports by name.
+  api.get('/sea/places', async (req, res) => {
+    const q = String(req.query.q ?? '').trim().slice(0, 60);
+    if (q.length < 2) return res.json({ places: [] });
+    if (!sea) return res.status(503).json({ error: 'Place search is not available right now.' });
+    try {
+      res.json({ places: await sea.search(q) });
+    } catch (err) {
+      console.warn(`Place search failed: ${err.message}`);
+      res.status(503).json({ error: 'Place search is not available right now. Try again in a few minutes.' });
+    }
+  });
+
   api.get('/sea', async (req, res) => {
     const lat = Number(req.query.lat);
     const lng = Number(req.query.lng);

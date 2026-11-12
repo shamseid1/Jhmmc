@@ -170,7 +170,24 @@ const SEA_PLACES = [
   { key: 'here', name: 'Where I am' },
 ];
 const SEA_KEY = 'sea-place';
-const seaPlace = () => { try { return SEA_PLACES.find((p) => p.key === localStorage.getItem(SEA_KEY)) || SEA_PLACES[0]; } catch { return SEA_PLACES[0]; } };
+const SEA_RECENT = 'sea-recent';
+// The place chosen last: one of the list, or one found by search (kept with its position).
+function seaPlace() {
+  try {
+    const v = localStorage.getItem(SEA_KEY);
+    if (v?.startsWith('{')) { const p = JSON.parse(v); if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) return p; }
+    return SEA_PLACES.find((p) => p.key === v) || SEA_PLACES[0];
+  } catch { return SEA_PLACES[0]; }
+}
+const seaRecent = () => { try { return JSON.parse(localStorage.getItem(SEA_RECENT) || '[]').filter((p) => Number.isFinite(p.lat)); } catch { return []; } };
+function setSeaPlace(p) {
+  try {
+    if (p.lat == null) { localStorage.setItem(SEA_KEY, p.key); return; }
+    localStorage.setItem(SEA_KEY, JSON.stringify(p));
+    // Searched places are remembered (the last six).
+    if (p.key.startsWith('q:')) localStorage.setItem(SEA_RECENT, JSON.stringify([p, ...seaRecent().filter((x) => x.key !== p.key)].slice(0, 6)));
+  } catch { /* chosen for now only */ }
+}
 const SEA_RATING = { good: 'Good day to fish', fair: 'Fair', rough: 'Rough' };
 async function seaFor(place) {
   let { lat, lng } = place;

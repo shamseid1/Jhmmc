@@ -70,3 +70,16 @@ test('ratings, compass, tide turns and the moon', () => {
   assert.equal(moon(new Date(Date.UTC(2000, 0, 6, 18, 14))).name, 'New moon');
   assert.equal(moon(new Date(Date.UTC(2000, 0, 21, 4, 40))).name, 'Full moon');
 });
+
+test('place search: towns and ports by name, kept a day', async () => {
+  let calls = 0;
+  const sea = createSea({ fetchImpl: async (url) => {
+    calls += 1;
+    assert.match(url, /geocoding-api\.open-meteo\.com\/v1\/search\?name=Free%20town/);
+    return new Response(JSON.stringify({ results: [{ name: 'Freetown', admin1: 'Western Area', country: 'Sierra Leone', country_code: 'SL', latitude: 8.48714, longitude: -13.2356 }] }));
+  } });
+  const places = await sea.search('Free town');
+  assert.deepEqual(places, [{ name: 'Freetown', region: 'Western Area', country: 'Sierra Leone', countryCode: 'SL', lat: 8.49, lng: -13.24 }]);
+  await sea.search('free town');
+  assert.equal(calls, 1);
+});

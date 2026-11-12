@@ -41,12 +41,50 @@ PAGE_GROUPS.push((view) => ({
     const place = seaPlace();
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Sea conditions</h1>
-      <div class="sea-place"><select id="sea-where" aria-label="Place">${SEA_PLACES.map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}</select>
+      <div class="sea-place"><select id="sea-where" aria-label="Place">
+          ${SEA_PLACES.filter((p) => p.key !== 'here').map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}
+          ${seaRecent().length ? raw(html`<optgroup label="Recent">${seaRecent().map((p) => raw(html`<option value="${p.key}" ${p.key === place.key ? 'selected' : ''}>${p.name}</option>`))}</optgroup>`) : ''}
+          <option value="here" ${place.key === 'here' ? 'selected' : ''}>Where I am</option>
+          <option value="search">Search a town or port…</option></select>
         <span id="sea-rating"></span></div>
+      <form id="sea-search" class="card pad stack" hidden>
+        <label>Town or port <input name="q" required minlength="2" maxlength="60" placeholder="e.g. Freetown, Takoradi, Dakar" autocomplete="off" enterkeyhint="search"></label>
+        <div class="row-buttons"><button type="submit" class="primary">Search</button><button type="button" data-cancel>Cancel</button></div>
+        <ul class="sea-results"></ul>
+        <p class="small muted">The forecast is for the sea just off the place you choose.</p>
+      </form>
       <div id="sea-body"><div class="card pad muted">Getting the forecast…</div></div>`;
-    view.querySelector('#sea-where').addEventListener('change', (e) => {
-      try { localStorage.setItem(SEA_KEY, e.target.value); } catch { /* fine */ }
+    const where = view.querySelector('#sea-where');
+    const search = view.querySelector('#sea-search');
+    where.addEventListener('change', () => {
+      if (where.value === 'search') {
+        search.hidden = false;
+        search.q.focus();
+        return;
+      }
+      setSeaPlace([...SEA_PLACES, ...seaRecent()].find((p) => p.key === where.value) || SEA_PLACES[0]);
       route();
+    });
+    search.querySelector('[data-cancel]').onclick = () => { search.hidden = true; where.value = place.key; };
+    search.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const out = search.querySelector('.sea-results');
+      out.innerHTML = '<li class="muted">Searching…</li>';
+      try {
+        const { places } = await api(`/sea/places?q=${encodeURIComponent(search.q.value.trim())}`);
+        out.innerHTML = places.length ? places.map((p, i) => html`<li><button type="button" class="link" data-i="${i}"><b>${p.name}</b>
+          <span class="small muted">${[p.region, p.country].filter(Boolean).join(', ')}</span></button></li>`).join('')
+          : '<li class="muted">Nothing found. Try another spelling, or a nearby bigger town.</li>';
+        out.onclick = (ev) => {
+          const b = ev.target.closest('[data-i]');
+          if (!b) return;
+          const p = places[b.dataset.i];
+          setSeaPlace({ key: `q:${p.lat},${p.lng}`, name: `Off ${p.name}${p.countryCode ? ` (${p.countryCode})` : ''}`, lat: p.lat, lng: p.lng });
+          route();
+        };
+      } catch (err) {
+        out.innerHTML = html`<li class="error">${err.message}</li>`;
+      }
     });
     let s;
     try {
