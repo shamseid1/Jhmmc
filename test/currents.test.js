@@ -94,3 +94,13 @@ test('turned away for the day: the chart says so and waits until after midnight 
   await currents.get().catch(() => {});
   assert.equal(asked, before, 'no knocking again before then');
 });
+
+test('never an old forecast: a saved chart past 12 hours is not shown', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const region = { south: 5, north: 5.3, west: -11, east: -10.7, step: 0.3 };
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wabg-old-')), 'chart-grid.json');
+  fs.writeFileSync(file, JSON.stringify({ at: Date.now() - 13 * 3600e3, data: { step: 0.3, frames: [{ time: '2026-11-01T00:00' }] } }));
+  const currents = createCurrents({ region, gapMs: 0, file, fetchImpl: async () => new Response('{}', { status: 500 }) });
+  const err = await currents.get().catch((e) => e);
+  assert.ok(err.preparing, 'the old chart is not given out');
+});

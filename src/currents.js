@@ -106,11 +106,12 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
 // Open-Meteo's free limit is 600 points a minute (and 5,000 an hour, 10,000 a day): the grid is
 // asked for in parts of about 360 points a minute apart (about 4 minutes in all, every 6 hours).
 // Nobody waits for that: get() answers at once with the last chart (kept on disk too, so a
-// restart or an update doesn't start again from nothing), and refreshes it in the background.
+// restart or an update doesn't start again from nothing), and refreshes it in the background;
+// a chart more than 12 hours old is never shown.
 // Until the very first chart is ready it says so (err.preparing). A refused fetch isn't tried
 // again for 10 minutes, so visits don't keep knocking.
 function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null, file = null,
-  gapMs = 61000, partSize = 360, retryMs = 10 * 60e3 } = {}) {
+  gapMs = 61000, partSize = 360, retryMs = 10 * 60e3, maxAgeMs = 12 * 3600e3 } = {}) {
   let cached = null;
   try { if (file) cached = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cached = null; }
   if (cached && (!cached.data?.frames || cached.data.step !== region.step)) cached = null; // another grid
@@ -194,7 +195,8 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
         const p = refresh();
         if (wait) await p;
       }
-      if (cached) return cached.data;
+      // Never an old forecast: past two missed refreshes, none at all (the page says why).
+      if (cached && Date.now() - cached.at < maxAgeMs) return cached.data;
       throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true, lastError, fetching: !!pending });
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).

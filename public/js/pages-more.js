@@ -204,6 +204,14 @@ PAGE_GROUPS.push((view) => ({
       if (!view.isConnected) return;
       try { data = await api('/currents'); } catch { /* try again in a moment */ }
     }
+    // Only now and ahead: the hours already gone are dropped (the frame up to 3 hours ago stays,
+    // as "now").
+    const nowIso0 = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 13);
+    data.frames = data.frames.filter((f) => f.time.slice(0, 13) > nowIso0);
+    if (!data.frames.length) {
+      box.innerHTML = html`<div class="chart-wait"><p><b>No up-to-date forecast right now.</b><br>Try again in a little while.</p></div>`;
+      return;
+    }
     box.innerHTML = '';
     const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
     addSatellite(L, map, { fullScreen: true });
