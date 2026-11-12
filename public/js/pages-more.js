@@ -140,8 +140,13 @@ PAGE_GROUPS.push((view) => ({
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     // Opened from the old Catch map (or "See them on the map"): the catches on, the map on them.
     const hq = new URLSearchParams(location.hash.split('?')[1] || '');
-    const cf = { year: hq.get('year') || '', species: hq.get('species') || '', month: hq.get('month') || '' };
-    const fromCatches = hq.has('catches') || hq.has('year') || hq.get('view') === 'regional';
+    const cf = { season: hq.get('season') || '', species: hq.get('species') || '', month: hq.get('month') || '' };
+    // JHMMC seasons: from the secretary's season start (1 September) to the day before the next;
+    // a season is named by the year it starts (2026 is 2026–27).
+    const startMd = (state.meta?.season?.start || '2026-09-01').slice(5);
+    const seasonOf = (date) => String(Number(date.slice(0, 4)) - (date.slice(5) < startMd ? 1 : 0));
+    const seasonName = (y) => `${y}–${String(Number(y) + 1).slice(2)}`;
+    const fromCatches = hq.has('catches') || hq.has('season') || hq.get('view') === 'regional';
     const LAYERS = [
       ['none', 'None', 'ban'], ['hotspots', 'Hotspots', 'target'], ['currents', 'Currents', 'currents'], ['sst', 'Temperature', 'thermometer'], ['wind', 'Wind', 'wind'], ['wave', 'Waves', 'wave'],
     ];
@@ -271,7 +276,7 @@ PAGE_GROUPS.push((view) => ({
     const pins = new Map(); // a fish -> its pin
     const est = (x) => [x.depthM != null && estTxt(depthTxt(x.depthM)), x.waterC != null && estTxt(tempTxt(x.waterC))].filter(Boolean).join(' · ');
     const fishLink = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
-    const shownFish = () => mySpots.filter((x) => (!cf.year || x.date.startsWith(cf.year)) && (!cf.species || x.species === cf.species)
+    const shownFish = () => mySpots.filter((x) => (!cf.season || seasonOf(x.date) === cf.season) && (!cf.species || x.species === cf.species)
       && (!cf.month || Number(x.date.slice(5, 7)) === Number(cf.month)));
     // Your fish over everything on the sea (the region's circles, the moving lines, outlines).
     if (!map.getPane('pins')) map.createPane('pins').style.zIndex = 610;
@@ -311,7 +316,7 @@ PAGE_GROUPS.push((view) => ({
     const drawRegional = async () => {
       overlays.regional?.remove(); overlays.regional = null;
       if (!view.querySelector('[data-show=regional]')?.checked) return;
-      const gq = new URLSearchParams({ year: cf.year || 'all', month: cf.month || 'all', ...(cf.species && { species: cf.species }) });
+      const gq = new URLSearchParams({ season: cf.season || 'all', month: cf.month || 'all', ...(cf.species && { species: cf.species }) });
       try { grid = await api(`/outings/grid?${gq}`); } catch { return; }
       if (!view.isConnected || !view.querySelector('[data-show=regional]')?.checked) return;
       const most = Math.max(1, ...grid.cells.map((c) => c.fish));
@@ -325,12 +330,15 @@ PAGE_GROUPS.push((view) => ({
     const filters = () => {
       const box0 = view.querySelector('#catch-filters');
       if (!box0) return;
-      const years = [...new Set([...mySpots.map((x) => x.date.slice(0, 4)), ...(grid?.years || [])])].sort().reverse();
+      const seasons = [...new Set([...mySpots.map((x) => seasonOf(x.date)), ...(grid?.seasons || [])])].sort().reverse();
+      // The months in the season's order (September to August).
+      const m0 = Number(startMd.slice(0, 2)) - 1;
+      const months = MONTH_SHORT.map((m, n) => [String(n + 1), m]).slice(m0).concat(MONTH_SHORT.map((m, n) => [String(n + 1), m]).slice(0, m0));
       const species = [...new Set([...mySpots.map((x) => x.species), ...(grid?.speciesList || [])])].sort();
       const sel = (k, label, items) => html`<select data-cf="${k}" aria-label="${label}">${raw(items.map(([v, t]) => html`<option value="${v}"${v === cf[k] ? ' selected' : ''}>${t}</option>`).join(''))}</select>`;
-      box0.innerHTML = sel('year', 'Year', [['', 'All years'], ...years.map((y) => [y, y])])
+      box0.innerHTML = sel('season', 'JHMMC season', [['', 'All seasons'], ...seasons.map((y) => [y, `Season ${seasonName(y)}`])])
         + sel('species', 'Species', [['', 'All species'], ...species.map((x) => [x, x])])
-        + sel('month', 'Month', [['', 'All months'], ...MONTH_SHORT.map((m, n) => [String(n + 1), m])]);
+        + sel('month', 'Month', [['', 'All months'], ...months]);
     };
     if (state.me) {
       view.querySelector('#catch-filters').addEventListener('change', (e) => {

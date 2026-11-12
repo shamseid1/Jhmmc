@@ -5,7 +5,7 @@
 module.exports = (ctx) => {
   const {
     COUNTRIES, api, auth, bool, dateIn, db, fs, intId, isAdminUser, linkLogToRegistration, path,
-    photoUrl, pushWhere, readSpot, removeUpload, savePhoto, str, upload, zoneOf
+    photoUrl, pushWhere, readSpot, removeUpload, savePhoto, setting, str, upload, zoneOf
   } = ctx;
 
   // ---- the regional log: one line per outing ---------------------------------
@@ -533,10 +533,17 @@ module.exports = (ctx) => {
       FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id
       WHERE l.lat IS NOT NULL AND l.fate <> 'lost'`).all();
     const years = [...new Set(rows.map((r) => r.date.slice(0, 4)))].sort().reverse();
-    // year=all and month=all: every year, every month (the chart's catch filters).
-    const allYears = req.query.year === 'all';
-    const year = allYears ? null : years.includes(req.query.year) ? req.query.year : years[0] ?? null;
-    const inYear = allYears ? rows : rows.filter((r) => r.date.startsWith(year ?? ''));
+    // year=all and month=all: every year, every month (the chart's catch filters). season=2026:
+    // the JHMMC season starting in 2026 (from the secretary's season start, e.g. 1 September to
+    // 31 August), or season=all.
+    const startMd = (setting('season_start') || '2026-09-01').slice(5);
+    const seasonOf = (date) => String(Number(date.slice(0, 4)) - (date.slice(5) < startMd ? 1 : 0));
+    const seasons = [...new Set(rows.map((r) => seasonOf(r.date)))].sort().reverse();
+    const bySeason = req.query.season != null;
+    const allYears = req.query.year === 'all' || req.query.season === 'all';
+    const season = bySeason && !allYears ? (seasons.includes(req.query.season) ? req.query.season : seasons[0] ?? null) : null;
+    const year = allYears || bySeason ? null : years.includes(req.query.year) ? req.query.year : years[0] ?? null;
+    const inYear = allYears ? rows : season ? rows.filter((r) => seasonOf(r.date) === season) : rows.filter((r) => r.date.startsWith(year ?? ''));
     const speciesList = [...new Set(inYear.map((r) => r.species))].sort();
     const species = speciesList.includes(req.query.species) ? req.query.species : null;
     const ofSpecies = inYear.filter((r) => !species || r.species === species);
@@ -550,7 +557,7 @@ module.exports = (ctx) => {
       c.fish += 1;
       c.boats.add(r.teamId);
     }
-    res.json({ year, years, species, speciesList, month, months, size: GRID,
+    res.json({ year, years, season, seasons, seasonStart: startMd, species, speciesList, month, months, size: GRID,
       cells: Object.values(cells).map((c) => ({ south: c.south, west: c.west, north: +(c.south + GRID).toFixed(1), east: +(c.west + GRID).toFixed(1), fish: c.fish, boats: c.boats.size })) });
   });
 

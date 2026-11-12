@@ -179,6 +179,10 @@ test('the regional log: one line per outing, blank days too, and the season at a
     const everything = (await bob('GET', '/outings/grid?year=all&month=all')).body;
     assert.ok(everything.cells.reduce((n, c) => n + c.fish, 0) >= grid.cells.reduce((n, c) => n + c.fish, 0), 'all years and months together');
     assert.equal(everything.month, null);
+    const bySeason = (await bob('GET', '/outings/grid?season=all&month=all')).body;
+    assert.ok(bySeason.seasons.length >= 1 && bySeason.seasonStart === '09-01', 'JHMMC seasons, from 1 September');
+    const one = (await bob('GET', `/outings/grid?season=${bySeason.seasons[0]}&month=all`)).body;
+    assert.equal(one.season, bySeason.seasons[0]);
     // Depth charts: everyone signed in, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
     assert.equal((await visitor('GET', '/charts')).status, 200, 'not on a boat, but signed in');
