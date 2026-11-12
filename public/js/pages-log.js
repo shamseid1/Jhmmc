@@ -26,13 +26,8 @@ PAGE_GROUPS.push((view) => ({
       } catch { /* no signal: today's trip */ }
     }
     // Without signal these fail; the fish waiting on the phone still show.
-    const [got, list0] = await Promise.all([
-      api(`/outings/trip?date=${day}`, { once: true }).catch(() => null),
-      state.techniques ? null : api('/outings?country=__none__', { once: true }).catch(() => null),
-    ]);
+    const got = await api(`/outings/trip?date=${day}`, { once: true }).catch(() => null);
     let trip = got?.trip ?? null;
-    if (list0) state.techniques = list0.techniques;
-    const techniques = state.techniques || [];
     // Big buttons for the boat's usual fish, always the same four in the same place.
     const QUICK = {
       ocean: ['Blue marlin', 'Yellowfin tuna', 'Sailfish', 'Dorado'],
@@ -60,9 +55,8 @@ PAGE_GROUPS.push((view) => ({
       <h2>The fish</h2>
       <div class="card"><ul class="list" id="fo-list"></ul></div>
       <p><a class="btn" href="#/spots">${raw(icon('pin'))} See them on my catch map</a></p>
-      <div id="fo-finish"></div>`;
+`;
     const list = view.querySelector('#fo-list');
-    const finish = view.querySelector('#fo-finish');
     const QUEUE = 'fishon-queue';
     // Fish logged on this phone and not sent yet. Each belongs to whoever logged it (its id starts
     // with theirs): with two accounts on one phone, one person's fish never go out under the other's.
@@ -95,33 +89,6 @@ PAGE_GROUPS.push((view) => ({
         || `<li class="muted">${trip?.noCatch ? 'Logged as no catch.' : live ? 'No fish yet today.' : 'No fish logged that day.'}</li>`;
       list.insertAdjacentHTML('beforeend', (trip?.fish || []).filter((f) => f.weighedKg.length > 1).map((f) => html`<li class="fo-weighed">${raw(weighedLine(f))}</li>`).join(''));
       view.querySelector('#fo-nocatch').hidden = !!trip || waiting.length > 0;
-      if (!trip) {
-        finish.innerHTML = '';
-        return;
-      }
-      finish.innerHTML = html`<h2>Trip details <span class="muted small">(optional)</span></h2>
-        <form class="card pad stack" id="fo-trip">
-          <span class="spot-head">Technique</span>
-          <div class="chips">${techniques.map((t) => raw(html`<label class="chip2"><input type="checkbox" name="technique" value="${t}" ${trip.technique.includes(t) ? 'checked' : ''}> ${t}</label>`))}</div>
-          <div class="three">
-            <label>Rough area <input name="area" maxlength="80" placeholder="e.g. Off Marshall" value="${trip.area || ''}"></label>
-            <label>Depth (${unit('depth')}) <input name="depthM" type="number" min="0" step="1" inputmode="numeric" placeholder="optional" value="${trip.depthM == null ? '' : Math.round(toUnit('depth', trip.depthM))}"></label>
-            <label>Water (${unit('temp')}) <input name="waterC" type="number" min="${toUnit('temp', 10)}" max="${toUnit('temp', 40)}" step="0.5" inputmode="decimal" placeholder="optional" value="${toUnit('temp', trip.waterC)}"></label>
-          </div>
-          <p class="small muted">In the log: ${trip.line}</p>
-          <p class="error"></p>
-          <div><button type="submit" class="primary">Save the trip</button></div>
-        </form>`;
-      const form = finish.querySelector('#fo-trip');
-      bindForm(form, async () => {
-        const fd = formData(form);
-        trip = (await api(`/outings/${trip.id}`, { method: 'PATCH', body: {
-          area: fd.area, depthM: fromUnit('depth', fd.depthM), waterC: fromUnit('temp', fd.waterC),
-          technique: [...form.querySelectorAll('[name=technique]:checked')].map((x) => x.value),
-        } })).trip;
-        toast('Trip saved to the log.');
-        draw();
-      });
     }
     // Send whatever is waiting, oldest first; stop at the first one that can't go.
     let sending = false;
@@ -462,7 +429,7 @@ PAGE_GROUPS.push((view) => ({
           ${sz.best ? raw(html`<span>${[sz.best.water && `Water ${span(sz.best.water.map((c) => toUnit('temp', c)))}${unit('temp')}`, sz.best.depth && `${span(sz.best.depth.map((m) => Math.round(toUnit('depth', m))))} ${unit('depth')}`,
             sz.best.techniques.join(' and ')].filter(Boolean).join(' · ')}</span>
             <span class="small muted">From the ${plural(sz.best.days, 'day')} with billfish caught, ${scope === 'mine' ? 'your boat' : 'all boats'}.</span>`)
-            : raw('<span class="muted">Once billfish are logged, the water, depth and techniques of those days show here.</span>')}
+            : raw('<span class="muted">Once billfish are logged at sea, the water temperature they came aboard in shows here.</span>')}
         </div>
         ${scope === 'mine' ? raw(html`<p><a class="btn" href="#/spots?year=${sz.year}">${raw(icon('pin'))} See them on my catch map</a></p>`) : ''}
         <p class="log-buttons"><a class="btn" href="/api/outings.csv${teamQ ? `?${teamQ}` : ''}">${raw(icon('download'))} One line per trip</a>

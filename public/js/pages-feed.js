@@ -25,8 +25,7 @@ PAGE_GROUPS.push((view) => ({
       <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
       <div id="feed"></div>`;
-    // Today's trip, for the cards at the top: fish boated but not weighed in yet,
-    // and from 3 pm a reminder to finish the trip (the boat's captain).
+    // Today's trip, for the card at the top: fish boated but not weighed in yet.
     if (state.me?.teamId) {
       api(`/outings/trip?date=${today()}`).then(({ trip }) => {
         if (!trip) return;

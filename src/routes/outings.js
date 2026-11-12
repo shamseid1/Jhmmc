@@ -430,6 +430,10 @@ module.exports = (ctx) => {
     };
     const range = (vals) => (vals.length ? [Math.min(...vals), Math.max(...vals)] : null);
     const good = outings.filter((o) => caught(o, billfish) > 0);
+    // The water billfish came aboard in: saved with each fish now (typed in by hand on older trips).
+    const billfishWater = good.length ? db.prepare(`SELECT l.conditions FROM outing_landings l JOIN species s ON s.id = l.species_id
+      WHERE l.outing_id IN (${good.map(() => '?').join(',')}) AND l.conditions IS NOT NULL AND s.category = 'Billfish' AND l.fate <> 'lost'`)
+      .all(...good.map((o) => o.id)).map((r) => { try { return JSON.parse(r.conditions).waterC; } catch { return null; } }).filter((v) => v != null) : [];
     const techniqueCount = {};
     for (const o of good) for (const t of o.technique) techniqueCount[t] = (techniqueCount[t] || 0) + 1;
     res.json({
@@ -439,7 +443,7 @@ module.exports = (ctx) => {
       months, report,
       best: good.length ? {
         days: good.length,
-        water: range(good.map((o) => o.waterC).filter((v) => v != null)),
+        water: range([...billfishWater, ...good.map((o) => o.waterC).filter((v) => v != null)]),
         depth: range(good.map((o) => o.depthM).filter((v) => v != null)),
         techniques: Object.entries(techniqueCount).sort((a, b2) => b2[1] - a[1]).slice(0, 2).map(([t]) => t),
       } : null,
