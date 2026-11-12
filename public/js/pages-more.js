@@ -354,6 +354,8 @@ PAGE_GROUPS.push((view) => ({
       lastPop = pop;
     };
     let lastPop = null;
+    // Zooming closes the box (and takes the ring away).
+    map.on('zoomstart', () => map.closePopup());
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
     const earlyTap = (e) => tapBox(e.latlng, navRows([e.latlng.lat, e.latlng.lng]));
