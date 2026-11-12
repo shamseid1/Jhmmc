@@ -250,9 +250,8 @@ PAGE_GROUPS.push((view) => ({
     const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, bounceAtZoomLimits: false,
       maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 8);
     // The map's layers, bottom to top over the sea's colours (400): the hotspot outlines and
-    // temperature lines (420), the moving lines (450), today's track (605), your fish, spots and
-    // position (610). Made at once, so nothing is put on a layer that isn't there yet.
-    for (const [name, z] of [['outlines', 420], ['track', 605], ['pins', 610]]) {
+    // temperature lines (420), the moving lines (450), your fish, spots and position (610). Made at once, so nothing is put on a layer that isn't there yet.
+    for (const [name, z] of [['outlines', 420], ['pins', 610]]) {
       const pane = map.createPane(name);
       pane.style.zIndex = z;
       if (name !== 'pins') pane.style.pointerEvents = 'none';
@@ -285,9 +284,8 @@ PAGE_GROUPS.push((view) => ({
     }));
     // The buttons down the side, as on a plotter: zoom, and the map on where you are.
     view.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => map.setZoom(map.getZoom() + Number(b.dataset.zoom))));
-    // ---- where you are, and today's track ----
-    // The blue button follows you (the dot moves with the boat) and draws today's track; tap it
-    // again to stop. The track is kept on this phone for the day.
+    // ---- where you are ----
+    // The blue button follows you (the dot moves with the boat); tap it again to stop.
     // The coast's ports and towns: the time strip's tides are for the one nearest the part of
     // the map you're looking at. Nothing to set up, whichever boat or club.
     const PORTS = [['Marshall', 6.15, -10.3833], ['Monrovia', 6.33, -10.8], ['Robertsport', 6.753, -11.367], ['Buchanan', 5.877, -10.047],
@@ -298,28 +296,13 @@ PAGE_GROUPS.push((view) => ({
     let myPos = null;
     let me = null;
     let watch = null;
-    const today = () => new Date().toISOString().slice(0, 10);
-    let track = { date: today(), pts: [] };
-    try { const t = JSON.parse(localStorage.getItem('chart-track') || 'null'); if (t?.date === today()) track = t; } catch { /* none */ }
-    // Drawn once it has two points (an empty line upsets the map).
-    const trackLine = L.polyline(track.pts, { pane: 'track', color: '#00e5ff', weight: 3, opacity: 0.9, interactive: false });
-    const showTrack = () => { if (track.pts.length > 1 && !map.hasLayer(trackLine)) trackLine.addTo(map); };
-    showTrack();
+    try { localStorage.removeItem('chart-track'); } catch { /* a track kept by an earlier version: not used now */ }
     const locBtn = view.querySelector('[data-locate]');
     const place = (pos, centre) => {
       myPos = [pos.coords.latitude, pos.coords.longitude];
       if (!me) me = L.circleMarker(myPos, { pane: 'pins', radius: 8, weight: 3, color: '#fff', fillColor: '#1a73e8', fillOpacity: 1, interactive: false }).addTo(map);
       else me.setLatLng(myPos);
       if (centre) map.setView(myPos, Math.max(map.getZoom(), 10));
-      // A point on the track every 25 m or so (not every small wobble of the GPS).
-      const last = track.pts.at(-1);
-      if (track.date !== today()) track = { date: today(), pts: [] };
-      if (!last || navTo(last, myPos).nm > 0.0135) {
-        track.pts.push([+myPos[0].toFixed(5), +myPos[1].toFixed(5)]);
-        trackLine.setLatLngs(track.pts);
-        showTrack();
-        try { localStorage.setItem('chart-track', JSON.stringify(track)); } catch { /* not kept */ }
-      }
     };
     const stopFollowing = () => { if (watch != null) navigator.geolocation.clearWatch(watch); watch = null; locBtn.classList.remove('on'); };
     locBtn.addEventListener('click', () => {
