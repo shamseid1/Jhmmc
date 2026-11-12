@@ -4,7 +4,7 @@
 'use strict';
 
 // Home's cards, filled in as their data comes: the tournament on or next, today's fish to
-// weigh (crews), today's sea with its tides, sun, moon and best times, what's biting, and the
+// weigh (crews), today's sea with its sun, moon and best times, what's biting, and the
 // offer of notifications.
 function homeCards(view) {
     // What's biting: every boat's fish in the last 14 days against the 14 before, the top few.
@@ -76,7 +76,6 @@ function homeCards(view) {
             <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
             ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>
             <a class="card pad day-card" href="#/sea">
-              <span class="day-col day-tides"><span class="k">Tides today <span class="hint">▲ high ▼ low</span></span><span class="tides">${raw((s.tide?.turns || []).map((t) => html`<span><i class="${t.type === 'high' ? 'hi' : 'lo'}">${t.type === 'high' ? '▲' : '▼'}</i> <b>${t.time.slice(11, 16)}</b></span>`).join('') || '<span class="muted">—</span>')}</span></span>
               <span class="day-col"><span class="k">Sun</span><span>Rise <b>${s.sun.rise || '—'}</b></span><span>Set <b>${s.sun.set || '—'}</b></span></span>
               <span class="day-col"><span class="k">Moon</span><span><b>${s.moon.lit}%</b></span><span class="muted">${s.moon.name}</span></span>
               <span class="day-col"><span class="k">Best times</span>${raw(s.solunar.major.map((p) => html`<span class="nowrap"><b>${hhmm(p.from)}</b>–${hhmm(p.to)}</span>`).join(''))}</span>
