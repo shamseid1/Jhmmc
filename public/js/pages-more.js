@@ -868,6 +868,29 @@ PAGE_GROUPS.push((view) => ({
     show();
   },
 
+  // The chart's forecast, for the admin: when it was last fetched, whether the forecast service
+  // turned the server away (and when it tries next), and a try now.
+  async forecast() {
+    if (!state.me?.isAdmin) return needLogin(view, 'see this');
+    const when = (t) => (t ? new Date(t).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—');
+    const draw = (st) => {
+      const c = st.chart;
+      view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p><h1>Forecast</h1>
+        ${c ? raw(html`<div class="card pad stack">
+          <p><b>Last fetched:</b> ${when(c.fetchedAt)}</p>
+          <p><b>Now:</b> ${c.fetching ? 'fetching (about 5 minutes)…' : c.refusal ? 'refused' : 'fine'}</p>
+          ${c.refusal ? raw(html`<p><b>Refused:</b> ${when(c.refusal.at)} · ${c.refusal.message.replace(/^Currents \d+: /, '')}</p><p><b>Tries again by itself:</b> ${when(c.nextTry)}</p>`) : ''}
+          <div><button type="button" class="primary" id="fc-try" ${c.fetching ? 'disabled' : ''}>Try now</button></div>
+          <p class="small muted">A try now asks the forecast service at once. If it's still refusing, nothing changes and the chart keeps what it has.</p>
+        </div>`) : raw('<div class="card pad muted">The chart\'s forecast isn\'t set up on this server.</div>')}`;
+      view.querySelector('#fc-try')?.addEventListener('click', async () => {
+        try { draw(await api('/admin/forecast', { method: 'POST' })); toast('Asking the forecast service now.'); setTimeout(() => { if (view.isConnected) load(); }, 20000); } catch (err) { toast(err.message); }
+      });
+    };
+    const load = async () => draw(await api('/admin/forecast'));
+    await load();
+  },
+
   // Depth check: the seabed map's depth (GEBCO) at positions typed as a chart plotter shows
   // them, or at your own logged fish, to compare with your chart.
   async depth() {
@@ -1009,6 +1032,7 @@ PAGE_GROUPS.push((view) => ({
       </div>`) : ''}
       ${me?.isAdmin ? raw(`<h2>Platform admin</h2><div class="card menu">
         ${item('#/members', 'key', 'Members', 'Accounts, roles, password reset links')}
+        ${item('#/forecast', 'wave', 'Forecast', "The chart's forecast: when it came, refused or not, and try now")}
         ${item('#/admin-boats', 'boat', 'Boats', 'Weigh stations, Ocean or River')}
         ${item('#/clubs', 'clubs', 'Clubs', clubRequests ? 'Requests to open a club waiting for you' : 'Open clubs and answer requests', clubRequests)}
         ${item('#/backups', 'download', 'Backups', 'Copies of every fish, account and point')}

@@ -212,6 +212,10 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).
     warm: () => { if (!cached || cached.otherGrid || Date.now() - cached.at >= ttlMs) refresh(); },
+    // For the admin: when the chart was last fetched, whether a fetch is on, the last refusal;
+    // and a fetch now, whatever the wait after a refusal (the admin's own try).
+    status: () => ({ fetchedAt: cached?.at ?? null, fetching: !!pending, refusal: lastError, nextTry: retryAt || null }),
+    tryNow: () => { retryAt = 0; failedAt = 0; return refresh(); },
   };
 }
 

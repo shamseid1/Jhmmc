@@ -5,6 +5,15 @@
 module.exports = (ctx) => {
   const { api, auth, chlorophyll, currents, db, depth, sea } = ctx;
 
+  // For the admin: the chart's forecast (when fetched, refused and why), and a try now.
+  const adminOnly = (req, res, next) => (ctx.isAdminUser(req.user) ? next() : res.status(403).json({ error: 'Only the club admin can do that.' }));
+  api.get('/admin/forecast', auth.requireUser, adminOnly, (_req, res) => res.json({ chart: currents?.status?.() ?? null }));
+  api.post('/admin/forecast', auth.requireUser, adminOnly, async (_req, res) => {
+    if (!currents?.tryNow) return res.status(503).json({ error: 'The chart\'s forecast is not set up here.' });
+    currents.tryNow(); // in the background: about 5 minutes, a minute between its parts
+    res.json({ chart: currents.status() });
+  });
+
   // The water colour (chlorophyll, newest clear view of the last week), for the fishing chart.
   api.get('/chlorophyll', async (_req, res) => {
     if (!chlorophyll) return res.status(503).json({ error: 'The water colour is not available right now.' });
