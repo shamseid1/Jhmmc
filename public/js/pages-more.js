@@ -258,12 +258,14 @@ PAGE_GROUPS.push((view) => ({
     let cur = frameAt(hour);
     // Each layer: its colours, the lines' field (and how fast they look), and its scale's ends.
     // per: screen area per line, Windy's density for each (the wind far sparser than the water).
+    const num1 = (x) => String(Math.round(x * 10) / 10);
     const LAYER = {
-      fishing: { colour: 'fishing', stops: FISH_SCALE, lines: ['u', 'v', 1], per: 260, ends: () => ['Less likely', 'Best'] },
-      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0].toFixed(1)} kn`] },
-      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], ends: (s) => [tempTxt(s[0][0]), tempTxt(s.at(-1)[0])] },
-      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, ends: (s) => [`${s[0][0]} kn`, `${s.at(-1)[0]} kn`] },
-      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, ends: (s) => [`${s[0][0]} m`, `${s.at(-1)[0]} m`] },
+      // The scale's unit, and each colour's value in it (the fishing chart: a score out of 10).
+      fishing: { colour: 'fishing', stops: FISH_SCALE, lines: ['u', 'v', 1], per: 260, unit: () => 'Score', label: (v) => num1(v * 10) },
+      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], unit: () => 'kn', label: num1 },
+      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
+      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
+      wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
     let layer = 'fishing';
     let image = null;
@@ -280,8 +282,12 @@ PAGE_GROUPS.push((view) => ({
       // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
       image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-      const [lo, hi] = L1.ends(L1.stops);
-      view.querySelector('#chart-legend').innerHTML = html`<span>${lo}</span><i style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})"></i><span>${hi}</span>`;
+      // The scale like Windy's: the unit, then each colour's value where it sits (every other
+      // one when there are many).
+      const n = L1.stops.length;
+      const every = n > 9 ? 2 : 1;
+      view.querySelector('#chart-legend').innerHTML = html`<span class="lg-unit">${L1.unit()}</span><span class="lg-bar" style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})">${
+        L1.stops.map(([v], k) => (k !== n - 1 && (k % every || n - 1 - k < every) ? '' : raw(html`<b style="left:${(k / (n - 1)) * 100}%" class="${k === 0 ? 'first' : k === n - 1 ? 'last' : ''}">${L1.label(v)}</b>`)))}</span>`;
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
@@ -295,11 +301,11 @@ PAGE_GROUPS.push((view) => ({
       const d = new Date(t0 + h * 3600e3);
       const key = d.toDateString();
       if (days.at(-1)?.key !== key) days.push({ key, d, hours: [] });
-      days.at(-1).hours.push(d.getHours());
+      days.at(-1).hours.push({ h: d.getHours(), label: d.toLocaleTimeString(undefined, { hour: 'numeric' }) });
     }
     tl.innerHTML = html`<span class="tl-pad"></span>${days.map((day, n) => raw(html`<div class="tl-day${n % 2 ? ' alt' : ''}" style="width:${day.hours.length * PX}px">
       <b>${day.d.toLocaleDateString(undefined, { weekday: 'long' })} ${day.d.getDate()}</b>
-      <span class="tl-hours">${day.hours.map((hh) => raw(`<i class="${hh % 6 ? '' : 'big'}"></i>`))}</span></div>`))}<span class="tl-pad"></span>`;
+      <span class="tl-hours">${day.hours.map(({ h, label }) => raw(h % 3 ? '<i></i>' : html`<i class="big"><em>${label}</em></i>`))}</span></div>`))}<span class="tl-pad"></span>`;
     const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
     pads();
     tl.scrollLeft = hour * PX;
@@ -359,7 +365,7 @@ PAGE_GROUPS.push((view) => ({
       const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
       const rows = [
-        fish != null && `<b>Fishing</b> ${fish >= 0.75 ? 'very promising' : fish >= 0.6 ? 'promising' : fish >= 0.45 ? 'fair' : 'quiet'}${reasons.length ? ` (${reasons.join(', ')})` : ''}`,
+        fish != null && `<b>Fishing</b> ${Math.round(fish * 10)}/10, ${fish >= 0.75 ? 'very promising' : fish >= 0.6 ? 'promising' : fish >= 0.45 ? 'fair' : 'quiet'}${reasons.length ? ` (${reasons.join(', ')})` : ''}`,
         d != null && `<b>Depth</b> about ${depthTxt(d)}`,
         u != null && `<b>Current</b> ${Math.hypot(u, v).toFixed(1)} kn to the ${compassName(deg(u, v))}`,
         t != null && `<b>Water</b> ${tempTxt(t)}`,

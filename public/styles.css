@@ -1312,9 +1312,12 @@ body.chart-mode main > div { animation: none; }
 .chart-toggles { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; padding: 8px 12px 0; }
 .chart-toggles:empty { display: none; }
 .chart-toggles label { display: inline-flex; align-items: center; gap: 6px; }
-.chart-legend { position: relative; isolation: isolate; display: flex; justify-content: space-between; align-items: center; height: 22px; padding: 0 10px;
-  font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
-.chart-legend i { position: absolute; inset: 0; z-index: -1; }
+.chart-legend { display: flex; height: 22px; font-size: 12px; font-weight: 700; }
+.lg-unit { flex: none; display: grid; place-items: center; padding: 0 8px; background: rgba(0, 0, 0, 0.35); }
+.lg-bar { position: relative; flex: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+.lg-bar b { position: absolute; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; }
+.lg-bar b.first { transform: translate(4px, -50%); }
+.lg-bar b.last { transform: translate(calc(-100% - 4px), -50%); }
 .chart .leaflet-control-attribution { margin-bottom: 0; }
 .chart .leaflet-bottom { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 .chart-play { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: #fff; color: #0a1a33; }
@@ -1326,12 +1329,14 @@ body.chart-mode main > div { animation: none; }
 .tl { display: flex; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; outline-offset: -2px; }
 .tl::-webkit-scrollbar { display: none; }
 .tl-pad { flex: none; }
-.tl-day { flex: none; position: relative; height: 40px; background: rgba(255, 255, 255, 0.10); box-shadow: inset 1px 0 rgba(255, 255, 255, 0.3); }
+.tl-day { flex: none; position: relative; height: 48px; background: rgba(255, 255, 255, 0.10); box-shadow: inset 1px 0 rgba(255, 255, 255, 0.3); }
 .tl-day.alt { background: rgba(255, 255, 255, 0.04); }
-.tl-day b { position: sticky; left: 0; display: inline-block; padding: 4px 8px 0; font-size: 13px; white-space: nowrap; }
-.tl-hours { position: absolute; left: 0; right: 0; bottom: 0; display: flex; height: 10px; align-items: flex-end; }
+.tl-day b { position: sticky; left: 0; display: inline-block; padding: 3px 8px 0; font-size: 12px; white-space: nowrap; }
+.tl-hours { position: absolute; left: 0; right: 0; bottom: 0; display: flex; height: 26px; align-items: flex-end; }
 .tl-hours i { flex: 0 0 22px; height: 5px; background: linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)) center / 1px 100% no-repeat; scroll-snap-align: center; }
+.tl-hours i em { position: absolute; bottom: 11px; transform: translateX(-50%); margin-left: 11px; font-style: normal; font-size: 11px; opacity: 0.85; white-space: nowrap; }
+.tl-hours i { position: relative; }
 .tl-hours i.big { height: 10px; background-image: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)); }
-.tl-mark { position: absolute; left: 50%; bottom: 0; top: 26px; width: 2px; margin-left: -1px; background: #f5a524; pointer-events: none; }
-.tl-bubble { position: absolute; left: 50%; top: 0; transform: translateX(-50%); padding: 3px 10px; border-radius: 8px; background: #f5a524; color: #0a1a33;
+.tl-mark { position: absolute; left: 50%; bottom: 0; top: 26px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.tl-bubble { position: absolute; left: 50%; top: 0; transform: translateX(-50%); padding: 3px 10px; border-radius: 8px; background: #fff; color: #0a1a33;
   font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
