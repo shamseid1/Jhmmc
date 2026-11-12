@@ -131,24 +131,27 @@ PAGE_GROUPS.push((view) => ({
       <p class="small muted center">Forecast: Open-Meteo. Good: wind under 12 kn and waves under 1.5 m. Rough: wind 18 kn or more, or waves 2.2 m or more.</p>`;
   },
 
-  // The chart: full screen, like Windy. One layer at a time (currents, water temperature, wind
-  // or waves: colours, with moving lines), the depth contours and your own fish on top, and the
-  // time from now to 3 days ahead. Tap the sea for everything at that spot.
+  // The chart: full screen, like Windy, on the fishing chart (Esri's ocean map with the club's
+  // depth contours) or the satellite. On top, one layer at a time: none, the hotspots (outlined),
+  // currents, water temperature, wind or waves (colours, with moving lines); your own fish too.
+  // The time from now to 3 days ahead. Tap the sea for everything at that spot.
   currents() { location.replace('#/chart'); },
   async chart() {
     const crew = !!(state.me?.teamId || state.me?.isAdmin);
     const LAYERS = [
-      ['fishing', 'Fishing chart'], ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
+      ['none', 'None'], ['hotspots', 'Hotspots'], ['currents', 'Currents'], ['sst', 'Temperature'], ['wind', 'Wind'], ['wave', 'Waves'],
     ];
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
-        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'fishing'}">${label}</button>`))}</div>
+        <div class="chart-layers" role="tablist">${LAYERS.map(([k, label]) => raw(html`<button type="button" role="tab" data-layer="${k}" aria-selected="${k === 'none'}">${label}</button>`))}</div>
       </div>
       <div class="chart-bottom">
         <div class="chart-toggles">
-          ${crew ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label><label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
+          <div class="chart-base" role="group" aria-label="Map"><button type="button" data-base="chart" aria-pressed="true">Chart</button><button type="button" data-base="satellite" aria-pressed="false">Satellite</button></div>
+          ${state.me ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label>') : ''}
+          ${crew ? raw('<label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
         </div>
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
           <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span></div></div>
@@ -206,24 +209,37 @@ PAGE_GROUPS.push((view) => ({
       try { data = await api('/currents'); } catch { /* try again in a moment */ }
     }
     box.innerHTML = '';
-    const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.0, -10.6], 7);
-    addSatellite(L, map, { fullScreen: true });
+    // Opens close enough in for the depth contours (they show from zoom 8), off Marshall.
+    const map = L.map(box, { zoomControl: false, attributionControl: true, minZoom: 5 }).setView([6.05, -10.55], 8);
+    const { imagery } = addSatellite(L, map, { fullScreen: true });
+    // The base: the fishing chart (Esri's ocean map, the contours on it) or the satellite.
+    const ocean = oceanBase(L);
+    let base = 'chart';
+    const setBase = (b) => {
+      base = b;
+      if (b === 'chart') { imagery.remove(); ocean.addTo(map).bringToBack(); } else { ocean.remove(); imagery.addTo(map).bringToBack(); }
+      view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.base === b)));
+      if (at) show();
+    };
     const overlays = {};
-    if (crew) {
+    if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
         overlays.contours = depthLayer(L, charts);
         if (view.querySelector('[data-show=contours]')?.checked) overlays.contours.addTo(map);
       }).catch(() => {});
+    }
+    view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
+      const o = overlays[c.dataset.show];
+      if (o) { if (c.checked) o.addTo(map); else o.remove(); }
+    }));
+    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => setBase(b.dataset.base)));
+    if (crew) {
       api('/me/spots').then(({ spots }) => {
         overlays.fish = L.layerGroup(spots.filter((x) => x.lat != null).map((s) => L.circleMarker([s.lat, s.lng], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#0b5fff', fillOpacity: 1 })
           .bindPopup(html`${s.species}, ${s.date}`)));
         if (view.querySelector('[data-show=fish]')?.checked) overlays.fish.addTo(map);
       }).catch(() => {});
-      view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
-        const o = overlays[c.dataset.show];
-        if (o) { if (c.checked) o.addTo(map); else o.remove(); }
-      }));
     }
     // The waves' direction as a vector (where they go), worked out once per frame.
     for (const f of data.frames) {
@@ -260,14 +276,17 @@ PAGE_GROUPS.push((view) => ({
     // per: screen area per line, Windy's density for each (the wind far sparser than the water).
     const num1 = (x) => String(Math.round(x * 10) / 10);
     const LAYER = {
-      // The scale's unit, and each colour's value in it (the fishing chart: a score out of 10).
-      fishing: { colour: 'fishing', stops: FISH_SCALE, lines: ['u', 'v', 1], per: 260, unit: () => 'Score', label: (v) => num1(v * 10) },
+      // The scale's unit, and each colour's value in it. None: just the chart. Hotspots: outlined,
+      // with the current's lines faint over them.
+      none: { lines: null, per: 1e9 },
+      hotspots: { hot: true, lines: ['u', 'v', 1], per: 420 },
       currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], unit: () => 'kn', label: num1 },
       sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
-    let layer = 'fishing';
+    let layer = 'none';
+    let labels = null;
     let image = null;
     let at = null;
     let lines = null;
@@ -276,21 +295,40 @@ PAGE_GROUPS.push((view) => ({
       cur = f;
       const L1 = LAYER[layer];
       at = sampler(data, f);
-      const [ku, kv, k] = L1.lines;
-      lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
-      image?.remove();
-      // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
-      image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
+      if (L1.lines) {
+        const [ku, kv, k] = L1.lines;
+        lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
+      } else lines = null;
+      image?.remove(); image = null;
+      labels?.remove(); labels = null;
+      if (L1.hot) {
+        image = hotspotImage(L, data, f, land).addTo(map);
+        labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
+          .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
+      } else if (L1.colour) {
+        // The wind blows over the land too (as on Windy); the sea's layers stop at the shore. On
+        // the chart the colours are see-through, so the contours show under them.
+        image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
+        image.setOpacity(base === 'chart' ? 0.6 : 1);
+      }
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       // The scale like Windy's: the unit, then each colour's value where it sits (every other
       // one when there are many).
+      const legend = view.querySelector('#chart-legend');
+      legend.hidden = !L1.stops && !L1.hot;
+      if (L1.hot) {
+        legend.innerHTML = html`<span class="lg-key"><i></i>Hotspots: temperature breaks, current edges, the shelf</span>`;
+        return;
+      }
+      if (!L1.stops) return;
       const n = L1.stops.length;
       const every = n > 9 ? 2 : 1;
-      view.querySelector('#chart-legend').innerHTML = html`<span class="lg-unit">${L1.unit()}</span><span class="lg-bar" style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})">${
+      legend.innerHTML = html`<span class="lg-unit">${L1.unit()}</span><span class="lg-bar" style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})">${
         L1.stops.map(([v], k) => (k !== n - 1 && (k % every || n - 1 - k < every) ? '' : raw(html`<b style="left:${(k / (n - 1)) * 100}%" class="${k === 0 ? 'first' : k === n - 1 ? 'last' : ''}">${L1.label(v)}</b>`)))}</span>`;
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
+    setBase('chart');
     redraw = () => { show(); flow.reseed(); };
     // The time strip, like Windy's: the days as blocks with a mark for each hour, swiped under
     // a fixed pointer; it settles on whole hours and the bubble says which.
@@ -359,13 +397,14 @@ PAGE_GROUPS.push((view) => ({
       // Directions and reasons: the nearest grid point's (they don't blend).
       const i0 = Math.round((lng - data.west) / data.step); const j0 = Math.round((lat - data.south) / data.step);
       const fish = at(lat, lng, 'fish');
+      const hot = fish != null && fish >= hotspotLimit(f);
       const why = f.why?.[j0 * data.nx + i0] || 0;
       const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
       const d = data.depth?.[j0 * data.nx + i0];
       const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
       const rows = [
-        fish != null && `<b>Fishing</b> ${Math.round(fish * 10)}/10, ${fish >= 0.75 ? 'very promising' : fish >= 0.6 ? 'promising' : fish >= 0.45 ? 'fair' : 'quiet'}${reasons.length ? ` (${reasons.join(', ')})` : ''}`,
+        hot && reasons.length && `<b>Hotspot</b> ${reasons.join(', ')}`,
         d != null && `<b>Depth</b> about ${depthTxt(d)}`,
         u != null && `<b>Current</b> ${Math.hypot(u, v).toFixed(1)} kn to the ${compassName(deg(u, v))}`,
         t != null && `<b>Water</b> ${tempTxt(t)}`,

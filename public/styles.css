@@ -1319,7 +1319,7 @@ body.chart-mode main > div { animation: none; }
 .lg-bar b.first { transform: translate(4px, -50%); }
 .lg-bar b.last { transform: translate(calc(-100% - 4px), -50%); }
 .chart .leaflet-control-attribution { margin-bottom: 0; }
-.chart .leaflet-bottom { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
+.chart .leaflet-bottom { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
 .chart-play { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: #fff; color: #0a1a33; }
 .chart-play svg { width: 18px; height: 18px; }
 
@@ -1340,3 +1340,14 @@ body.chart-mode main > div { animation: none; }
 .tl-mark { position: absolute; left: 50%; bottom: 0; top: 26px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.6); pointer-events: none; }
 .tl-bubble { position: absolute; left: 50%; top: 0; transform: translateX(-50%); padding: 3px 10px; border-radius: 8px; background: #fff; color: #0a1a33;
   font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+
+/* The chart: its base (chart or satellite), the hotspots' key and names. */
+.chart-legend[hidden] { display: none; }
+.chart-base { display: inline-flex; border-radius: 999px; background: rgba(255, 255, 255, 0.12); padding: 2px; }
+.chart-base button { border: 0; border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 13px; background: none; color: #fff; }
+.chart-base button[aria-pressed="true"] { background: #fff; color: #0a1a33; }
+.chart-toggles { align-items: center; }
+.lg-key { display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-key i { flex: none; width: 18px; height: 12px; border: 2px solid #ff4081; background: rgba(255, 64, 129, 0.3); border-radius: 3px; }
+.leaflet-tooltip.hot-label { background: rgba(10, 26, 51, 0.85); color: #fff; border: 1px solid #ff4081; border-radius: 8px; padding: 2px 8px; font-weight: 700; font-size: 11px; box-shadow: none; }
+.leaflet-tooltip.hot-label::before { display: none; }

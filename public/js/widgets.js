@@ -7,7 +7,7 @@
 // names (country, city, town) on top.
 function addSatellite(L, map, { fullScreen = false } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
-  L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
+  const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri' }).addTo(map);
   L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
   if (!fullScreen) twoFingers(map);
@@ -17,6 +17,7 @@ function addSatellite(L, map, { fullScreen = false } = {}) {
       .bindTooltip(p.name, { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] })
       .addTo(map);
   }
+  return { imagery };
 }
 // On a phone, one finger scrolls the page past the map; two fingers move and zoom it (a short
 // hint says so), as Google Maps does inside a page.
@@ -41,6 +42,10 @@ function twoFingers(map) {
   }, { passive: true });
   box.addEventListener('touchend', (e) => { if (!e.touches.length) map.dragging.disable(); }, { passive: true });
 }
+// The chart's base: Esri's ocean map, drawn like a nautical chart with the seabed shaded (from
+// GEBCO and others); the club's depth contours go on top of it.
+const oceanBase = (L) => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 18, maxNativeZoom: 10, attribution: 'Chart © Esri, GEBCO, NOAA' });
 // Each with its name and position.
 const MAP_PLACES = [
   { name: 'Marshall', lat: 6.15, lng: -10.3833 },
@@ -267,8 +272,6 @@ const SST_SCALE = [[18, [175, 190, 60]], [22, [230, 200, 50]], [25, [245, 160, 4
 // Wind in Windy's own colours (knots): violet-blue when calm, teal, green, then gold and red.
 const WIND_SCALE = [[0, [98, 113, 183]], [2, [57, 97, 159]], [6, [74, 148, 169]], [10, [77, 141, 123]], [14, [83, 165, 83]], [17, [53, 159, 53]],
   [21, [167, 157, 81]], [25, [159, 127, 58]], [29, [161, 108, 92]], [33, [129, 58, 78]], [37, [175, 80, 136]], [41, [117, 74, 147]]];
-// The fishing chart: how promising the water is (0 to 1), from deep blue to hot red.
-const FISH_SCALE = [[0, [25, 45, 105]], [0.3, [35, 90, 160]], [0.5, [45, 150, 160]], [0.65, [90, 190, 110]], [0.78, [235, 210, 70]], [0.9, [240, 130, 45]], [1, [215, 40, 45]]];
 // Waves in Windy's colours: cyan for small, deepening blue to purple, red only for big seas.
 const WAVE_SCALE = [[0, [90, 200, 205]], [0.5, [70, 170, 210]], [1, [62, 125, 205]], [1.5, [62, 92, 192]], [2, [78, 66, 172]], [3, [125, 60, 160]], [4.5, [185, 70, 110]], [6, [205, 85, 85]]];
 // Each colour layer's value at a spot, from a frame's sampler.
@@ -277,7 +280,6 @@ const FIELD_VALUE = {
   speed: (at, lat, lng) => { const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v'); return u == null || v == null ? null : Math.hypot(u, v); },
   wind: (at, lat, lng) => { const u = at(lat, lng, 'wu'); const v = at(lat, lng, 'wv'); return u == null || v == null ? null : Math.hypot(u, v); },
   wave: (at, lat, lng) => at(lat, lng, 'wh'),
-  fishing: (at, lat, lng) => at(lat, lng, 'fish'),
 };
 const SPEED_SCALE = [[0, [60, 50, 160]], [0.2, [50, 110, 200]], [0.4, [40, 160, 170]], [0.8, [60, 170, 70]], [1.2, [200, 170, 60]], [1.6, [190, 60, 90]], [2.2, [230, 230, 240]]];
 function colourAt(stops, v) {
@@ -386,6 +388,58 @@ function fishingField(g, prefs = {}) {
       f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0));
     }
   }
+}
+// The fishing chart's hotspots: the most promising water (the top eighth of the sea that hour,
+// and never below a fair score) as patches with a bright outline, so the chart underneath stays
+// readable. Cut at the coast like the other layers.
+function hotspotLimit(f) {
+  const xs = (f.fish || []).filter((v) => v != null).sort((a, b) => a - b);
+  return xs.length ? Math.max(0.55, xs[Math.floor(xs.length * 0.88)]) : Infinity;
+}
+function hotspotImage(L, g, f, land) {
+  const at = sampler(g, f);
+  const lim = hotspotLimit(f);
+  const S = 28; // finer than the colour layers: the outline is what you read
+  const w = (g.nx - 1) * S; const h = (g.ny - 1) * S;
+  const inside = new Uint8Array(w * h);
+  for (let py = 0; py < h; py++) {
+    const lat = g.south + ((h - 1 - py) / S) * g.step;
+    for (let px = 0; px < w; px++) { const v = at(lat, g.west + (px / S) * g.step, 'fish'); inside[py * w + px] = v != null && v >= lim ? 1 : 0; }
+  }
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const k = py * w + px;
+      if (!inside[k]) continue;
+      const edge = px === 0 || py === 0 || px === w - 1 || py === h - 1 || !inside[k - 1] || !inside[k + 1] || !inside[k - w] || !inside[k + w];
+      img.data.set(edge ? [255, 64, 129, 255] : [255, 64, 129, 70], k * 4);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.globalCompositeOperation = 'destination-out';
+  fillLand(ctx, land, (lat, lng) => [((lng - g.west) / g.step) * S, h - 1 - ((lat - g.south) / g.step) * S]);
+  return L.imageOverlay(cv.toDataURL(), [[g.south, g.west], [g.south + (g.ny - 1) * g.step, g.west + (g.nx - 1) * g.step]],
+    { opacity: 1, className: 'hot-image', interactive: false });
+}
+// Each hotspot's name: why it's promising, at its best point (the few best, well apart).
+function hotspotLabels(g, f) {
+  const lim = hotspotLimit(f);
+  const pts = [];
+  f.fish.forEach((v, k) => { if (v != null && v >= lim) pts.push(k); });
+  pts.sort((a, b) => f.fish[b] - f.fish[a]);
+  const picked = [];
+  for (const k of pts) {
+    const lat = g.south + Math.floor(k / g.nx) * g.step; const lng = g.west + (k % g.nx) * g.step;
+    if (picked.some((p) => Math.hypot(p.lat - lat, p.lng - lng) < 0.8)) continue;
+    const why = f.why?.[k] || 0;
+    const words = [why & 1 && 'Temperature break', why & 2 && 'Current edge', why & 4 && 'Shelf', why & 8 && 'Billfish water'].filter(Boolean);
+    if (words.length) picked.push({ lat, lng, text: words.join(' · ') });
+    if (picked.length >= 6) break;
+  }
+  return picked;
 }
 // Moving particles that follow the current, leaving fading trails (drawn on a canvas over the map).
 // style() says how to draw: { crests } for waves (short crests across the way they travel,
@@ -712,7 +766,7 @@ function trendsHtml(tr, { perBoat, link, mine }) {
 async function renderGridMap(box, q, link) {
   const gq = new URLSearchParams({ ...(q.get('gyear') && { year: q.get('gyear') }), ...(q.get('gspecies') && { species: q.get('gspecies') }), ...(q.get('gmonth') && { month: q.get('gmonth') }) });
   const [g, L, { charts }] = await Promise.all([api(`/outings/grid?${gq}`), loadLeaflet().catch(() => null),
-    state.me?.teamId || state.me?.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
+    state.me ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
   if (!box.isConnected) return;
   const sel = (label, items, current) => `<select class="chip-select" data-go aria-label="${label}">${options(items, current)}</select>`;
   box.innerHTML = html`<div class="filter-chips">
@@ -725,7 +779,7 @@ async function renderGridMap(box, q, link) {
   if (!g.cells.length || !L) return;
   const map = L.map('grid-map', { zoomControl: true });
   addSatellite(L, map);
-  // The depth chart (crews only), under the circles; on unless switched off.
+  // The depth chart, under the circles; on unless switched off.
   if (charts.length) {
     // All the chart areas are one layer, "Depth contours".
     const contours = depthLayer(L, charts).addTo(map);

@@ -565,9 +565,8 @@ module.exports = (ctx) => {
       return [];
     }
   };
-  const forCrews = (req, res, next) => (req.user.teamId || isAdminUser(req.user) ? next()
-    : res.status(403).json({ error: 'Depth charts are for boat crews.' }));
-  api.get('/charts', auth.requireUser, forCrews, (_req, res) => {
+  // The depth charts: for everyone signed in (the club's choice), never public.
+  api.get('/charts', auth.requireUser, (_req, res) => {
     res.json({ charts: chartList().map(({ id, name, bounds, tiles }) => (tiles
       // The version (the pack's size and date) changes with the chart, so phones fetch the new tiles instead of saved ones.
       ? { id, name, bounds, tiles: `/api/charts/${id}/{z}/{x}/{y}.png?v=${chartVersion(tiles)}`, minZoom: tiles.minZoom, maxZoom: tiles.maxZoom }
@@ -591,7 +590,7 @@ module.exports = (ctx) => {
     return packs.get(chart.id);
   };
   const EMPTY_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==', 'base64') // fully see-through;
-  api.get('/charts/:id/:z/:x/:y.png', auth.requireUser, forCrews, (req, res) => {
+  api.get('/charts/:id/:z/:x/:y.png', auth.requireUser, (req, res) => {
     const chart = chartList().find((c) => c.id === req.params.id && c.tiles);
     if (!chart) return res.status(404).json({ error: 'Chart not found.' });
     const { index, file } = packFor(chart);
@@ -609,7 +608,7 @@ module.exports = (ctx) => {
     }
     res.send(buf);
   });
-  api.get('/charts/:id', auth.requireUser, forCrews, (req, res) => {
+  api.get('/charts/:id', auth.requireUser, (req, res) => {
     const chart = chartList().find((c) => c.id === req.params.id);
     if (!chart) return res.status(404).json({ error: 'Chart not found.' });
     res.set('Cache-Control', 'private, max-age=86400');

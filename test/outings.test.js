@@ -176,9 +176,9 @@ test('the regional log: one line per outing, blank days too, and the season at a
     assert.ok(grid.cells.length > 0 && grid.cells.every((c) => c.north - c.south > 0.09 && c.fish > 0 && c.boats >= 1));
     assert.equal(JSON.stringify(grid).includes('9.41'), false, 'no exact spots');
     assert.equal(JSON.stringify(grid).includes('Exocet'), false, 'no boat names');
-    // Depth charts: crews only, never public.
+    // Depth charts: everyone signed in, never public.
     assert.equal((await as()('GET', '/charts')).status, 401);
-    assert.equal((await visitor('GET', '/charts')).status, 403, 'not on a boat');
+    assert.equal((await visitor('GET', '/charts')).status, 200, 'not on a boat, but signed in');
     const { charts } = (await deckhand('GET', '/charts')).body;
     assert.ok(charts.length && charts[0].bounds.north > charts[0].bounds.south);
     const chart = charts[0];

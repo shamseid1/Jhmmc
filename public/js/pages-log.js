@@ -530,7 +530,7 @@ PAGE_GROUPS.push((view) => ({
     const species = sq.get('species') || '';
     const month = sq.get('month') || '';
     const [{ years, spots: allSpots }, L, { charts }] = await Promise.all([api(`/me/spots${year ? `?year=${year}` : ''}`), loadLeaflet().catch(() => null),
-      state.me.teamId || state.me.isAdmin ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
+      state.me ? api('/charts').catch(() => ({ charts: [] })) : { charts: [] }]);
     // Filter by species: only the species on the map that year are offered.
     // and by month, to see where the fish were as the season went on.
     const speciesHere = [...new Set(allSpots.map((x) => x.species))].sort();
