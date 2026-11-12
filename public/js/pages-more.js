@@ -108,6 +108,7 @@ PAGE_GROUPS.push((view) => ({
         ${item('#/club-members', 'participants', 'Club members', 'Who has paid their membership this season')}
         ${me.canReview ? item('#/history', 'history', 'Registration history', 'Every registration, dispute and decision') : ''}
         ${me.canReview || me.isAdmin ? item('#/activity', 'history', 'Activity log', 'Everything the officers and the admin changed') : ''}
+        ${me.canReview || me.isAdmin ? item('#/reports', 'flag', 'Reports', me.openReports ? `${plural(me.openReports, 'report')} to look at` : 'Posts and profiles members reported', me.openReports) : ''}
         ${me.canApprove && !me.isAdmin ? item('#/members', 'key', 'Members', 'Everyone on the app: tick who is in JHMMC') : ''}
         ${me.canApprove && !me.isAdmin ? item('#/admin-boats', 'boat', 'JHMMC boats', 'Weigh stations, Ocean or River') : ''}
         ${me.canApprove ? item('#/weighmasters', 'weight', 'Weighmasters', 'Who weighs at each weigh station') : ''}
@@ -122,6 +123,7 @@ PAGE_GROUPS.push((view) => ({
       </div>`) : ''}
       <h2>Info</h2><div class="card menu">
         ${raw(item('#/rules?book=jhmmc', 'rules', 'JHMMC rules', '2026-2027 season'))}
+        ${raw(item('#/community', 'shield', 'Community rules', 'What can be posted; reporting and blocking'))}
         ${raw(item('#/rules?book=igfa', 'scale', 'IGFA rules', 'International Angling Rules summary'))}
         ${raw(me?.canReview ? '' : item('#/scoring', 'calculator', 'How points work', 'Points per kg for each species'))}
         ${raw(me?.canReview ? '' : item('#/calendar', 'calendar', 'Season calendar', 'Tournaments'))}

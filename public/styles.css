@@ -1197,3 +1197,24 @@ button.link, .wq { white-space: normal; }
 @media (max-width: 640px) {
   #nav a { font-size: var(--nav-fs, 11px); }
 }
+
+/* Sheets (report, community rules): from the bottom, like the setup sheet. */
+dialog.sheet { border: 0; padding: 22px 20px calc(18px + env(safe-area-inset-bottom)); margin: auto auto 0; width: 100%; max-width: 560px;
+  border-radius: 22px 22px 0 0; background: var(--bg); color: var(--text); box-shadow: 0 -10px 40px rgba(0,0,0,.25); max-height: 88vh; overflow: auto; }
+dialog.sheet::backdrop { background: rgba(5, 15, 30, .45); }
+dialog.sheet h2 { margin: 0 0 4px; }
+.report-reasons { display: grid; gap: 4px; }
+label.check { display: flex; align-items: flex-start; gap: 10px; font-weight: 500; }
+label.check input { width: auto; margin-top: 4px; flex: none; }
+.report-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+.report-link .icon, .person-actions .icon { width: 15px; height: 15px; }
+.feed-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.person-actions { display: flex; gap: 18px; flex-wrap: wrap; }
+.person-actions button { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+.rules-list { display: grid; gap: 8px; padding-left: 1.2em; margin: 8px 0 12px; }
+.report-list { list-style: none; margin: 0; padding: 0; }
+.report-row { display: flex; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.report-row:first-child { border-top: 0; }
+.report-row img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: none; }
+.report-text { display: grid; gap: 4px; min-width: 0; }
+.setup-close { justify-content: center; }

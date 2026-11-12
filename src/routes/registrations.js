@@ -87,6 +87,7 @@ module.exports = (ctx) => {
           s.name AS species, NULL AS weightKg, l.fate, NULL AS angler, l.user_id AS userId, NULL AS title, l.photo AS body
         FROM outing_landings l JOIN outings o ON o.id = l.outing_id JOIN species s ON s.id = l.species_id LEFT JOIN teams t ON t.id = o.team_id
         WHERE COALESCE(l.client_id, '') NOT LIKE 'reg-%'
+          AND (l.user_id IS NULL OR l.user_id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = :me))
           -- Two posts for a fish that was logged and then weighed: "boated" with the
           -- crew's photo, and the weigh-in with the weigh station's.
           AND (:team IS NULL OR o.team_id = :team) AND (:user IS NULL OR l.user_id = :user) AND (:club IS NULL OR t.club_id = :club)`);
@@ -95,11 +96,14 @@ module.exports = (ctx) => {
     if ((type === 'all' || type === 'announcements') && !team && !user && !club) {
       parts.push(`SELECT 'announcement' AS kind, a.id, datetime(a.created_at) AS at, NULL AS teamId, NULL AS boat, NULL AS boatPhoto,
           NULL AS species, NULL AS weightKg, NULL AS fate, COALESCE(NULLIF(u.nickname, ''), u.name) AS angler, a.user_id AS userId, a.title, a.body
-        FROM announcements a LEFT JOIN users u ON u.id = a.user_id WHERE :team IS NULL AND :user IS NULL AND :club IS NULL`);
+        FROM announcements a LEFT JOIN users u ON u.id = a.user_id WHERE :team IS NULL AND :user IS NULL AND :club IS NULL
+          AND (a.user_id IS NULL OR a.user_id NOT IN (SELECT blocked_id FROM blocks WHERE user_id = :me))`);
     }
     if (!parts.length) return res.json({ items: [], nextBefore: null });
-    const rows = db.prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
-      ORDER BY at DESC, id DESC LIMIT 31`).all({ team, user, club, before });
+    const sql = `SELECT * FROM (${parts.join(' UNION ALL ')}) WHERE (:before IS NULL OR at < :before)
+      ORDER BY at DESC, id DESC LIMIT 31`;
+    // Posts by people this person blocked are left out (only where the query has them).
+    const rows = db.prepare(sql).all({ team, user, club, before, ...(sql.includes(':me') && { me: req.user?.id ?? 0 }) });
     // Each fish's own photo from the crew if they added one, then its weigh station photo,
     // and a released fish's release video. Videos of the scale are evidence.
     const fishOfDay = db.prepare(`SELECT k.id, s.name AS species, k.weight_kg AS weightKg, k.released, k.points, k.photo AS feedPhoto, k.scale_photo AS scalePhoto, k.scale_video AS scaleVideo,

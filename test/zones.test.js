@@ -28,7 +28,7 @@ test('every country has its clock; a boat\'s day follows its own country', async
     return { status: res.status, body: await res.json() };
   };
   try {
-    await call('POST', '/auth/register', { firstName: 'Tunde', lastName: 'Bello', email: 'tunde@example.com', password: 'password1' });
+    await call('POST', '/auth/register', { acceptRules: true, firstName: 'Tunde', lastName: 'Bello', email: 'tunde@example.com', password: 'password1' });
     await call('POST', '/teams', { name: 'Lagos Lady', country: 'Nigeria' });
     assert.equal((await call('GET', '/me')).body.user.timeZone, 'Africa/Lagos', "the phone is told the boat's clock");
     const sp = (await call('GET', '/meta')).body.species.find((s) => s.name === 'Dorado').id;

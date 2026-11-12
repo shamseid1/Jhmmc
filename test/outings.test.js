@@ -27,13 +27,13 @@ test('the regional log: one line per outing, blank days too, and the season at a
   };
   try {
     const marwan = as();
-    await marwan('POST', '/auth/register', { firstName: 'Marwan', lastName: 'Abdalkareem', email: 'm@example.com', password: 'password1' });
+    await marwan('POST', '/auth/register', { acceptRules: true, firstName: 'Marwan', lastName: 'Abdalkareem', email: 'm@example.com', password: 'password1' });
     await marwan('POST', '/teams', { name: 'Exocet', country: 'Guinea' });
     const bob = as();
-    await bob('POST', '/auth/register', { firstName: 'Bob', lastName: 'Baines', email: 'bob@example.com', password: 'password1' });
+    await bob('POST', '/auth/register', { acceptRules: true, firstName: 'Bob', lastName: 'Baines', email: 'bob@example.com', password: 'password1' });
     const bottomLine = (await bob('POST', '/teams', { name: 'Bottom Line', country: 'Sierra Leone' })).body.team;
     const visitor = as();
-    await visitor('POST', '/auth/register', { firstName: 'Ama', lastName: 'Owusu', email: 'ama@example.com', password: 'password1' });
+    await visitor('POST', '/auth/register', { acceptRules: true, firstName: 'Ama', lastName: 'Owusu', email: 'ama@example.com', password: 'password1' });
     const sp = Object.fromEntries((await marwan('GET', '/meta')).body.species.map((s) => [s.name, s.id]));
 
     // A good day: two species, mixed results; the boat and country come from Marwan's boat.
@@ -84,7 +84,7 @@ test('the regional log: one line per outing, blank days too, and the season at a
     // Fish on at sea: each fish as it's landed, spot and time from the phone.
     // The first one starts the boat's line for the day.
     const deckhand = as();
-    await deckhand('POST', '/auth/register', { firstName: 'Kofi', lastName: 'Mensah', email: 'kofi@example.com', password: 'password1' });
+    await deckhand('POST', '/auth/register', { acceptRules: true, firstName: 'Kofi', lastName: 'Mensah', email: 'kofi@example.com', password: 'password1' });
     const code = (await marwan('GET', '/teams/1')).body.team.joinCode;
     assert.equal((await deckhand('POST', '/teams/join', { code })).status, 200);
     const land = (who, extra) => who('POST', '/outings/fish', { speciesId: sp['Sailfish'], fate: 'released', lat: 9.4, lng: -13.9, landedAt: '2026-10-20T09:15:00Z', date: '2026-10-20', ...extra });

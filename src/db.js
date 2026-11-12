@@ -56,7 +56,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 47;
+const SCHEMA_VERSION = 48;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -147,6 +147,8 @@ CREATE TABLE IF NOT EXISTS users (
   weigh_station TEXT,
   -- Belongs to JHMMC (set by the admin); only members can hold a club role.
   jhmmc INTEGER NOT NULL DEFAULT 0,
+  -- When the person agreed to the community rules (no offensive content); asked once.
+  rules_accepted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -350,6 +352,31 @@ CREATE TABLE IF NOT EXISTS outing_fish (
 CREATE INDEX IF NOT EXISTS outing_fish_outing ON outing_fish(outing_id);
 -- Each fish as it was landed ("Fish on"), with the phone's spot and time.
 -- The spot is for the boat's crew only; the log shows the counts.
+-- Something a member reported (a photo, a logged fish, an announcement, a profile) for the
+-- officers to look at. Kept after it's dealt with, with what was done and by whom.
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reporter_name TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('log', 'catch', 'announcement', 'user')),
+  target_id INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'removed', 'dismissed')),
+  resolved_by TEXT,
+  resolved_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS reports_open ON reports(status, id DESC);
+
+-- People someone chose not to see on the feed any more.
+CREATE TABLE IF NOT EXISTS blocks (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, blocked_id)
+);
+
 CREATE TABLE IF NOT EXISTS outing_landings (
   id INTEGER PRIMARY KEY,
   outing_id INTEGER NOT NULL REFERENCES outings(id) ON DELETE CASCADE,
@@ -650,6 +677,12 @@ function openDb(file) {
       INSERT INTO registration_log SELECT * FROM registration_log_old;
       DROP TABLE registration_log_old;
       COMMIT;`);
+  }
+  if (hasTables && version < 48) {
+    // Community rules: when each person agreed (asked once, at sign-up or on their next visit).
+    if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'rules_accepted_at')) {
+      db.exec('ALTER TABLE users ADD COLUMN rules_accepted_at TEXT');
+    }
   }
   if (hasTables && version < 47) {
     // Likes and comments were taken out of the app (Nov 2026): their tables go, with what's in them.

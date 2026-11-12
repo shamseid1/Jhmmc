@@ -13,6 +13,8 @@ const pagesFor = (view) => Object.assign({}, ...PAGE_GROUPS.map((group) => group
 
 // Icons from Lucide (lucide.dev, ISC licence), 24px grid, drawn with currentColor.
 const ICONS = {
+  flag: '<path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
   feed: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
   leaderboard: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   participants: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
@@ -257,7 +259,7 @@ function renderNav(active = state.navActive) {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
     records: 'leaderboard', points: 'leaderboard', join: 'more', weighmasters: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
     'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
-    clubs: 'more', club: 'more', profile: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
+    clubs: 'more', club: 'more', profile: 'more', reports: 'more', community: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
     // The officials' Tournament sheets live in More; the Tournaments tab in the Leaderboard.
     tournaments: /[?&]sheets=1/.test(location.hash) ? 'more' : 'leaderboard',
@@ -300,6 +302,7 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     await pages[page](arg);
+    rulesCheck().catch(() => {});
     firstOpenSetup().catch(() => {});
   } catch (ex) {
     view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;

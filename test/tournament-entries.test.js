@@ -23,7 +23,7 @@ test('captains enter their anglers; the secretary keeps the registration sheet',
   const person = async (name, nickname, email) => {
     if (!email) [nickname, email] = [undefined, nickname];
     const c = as();
-    await c('POST', '/auth/register', { name, nickname, email, password: 'password1' });
+    await c('POST', '/auth/register', { acceptRules: true, name, nickname, email, password: 'password1' });
     return c;
   };
   const day = (o) => new Date(Date.now() + o * 864e5).toISOString().slice(0, 10);

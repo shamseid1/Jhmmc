@@ -34,7 +34,7 @@ test('posts and registrations: videos, editing back on land, spots on the catch 
   };
   const person = async (firstName, lastName, email) => {
     const c = as();
-    await c('POST', '/auth/register', { firstName, lastName, email, password: 'password1' });
+    await c('POST', '/auth/register', { acceptRules: true, firstName, lastName, email, password: 'password1' });
     return c;
   };
   const form = (fields) => {

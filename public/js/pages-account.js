@@ -5,6 +5,14 @@
 
 PAGE_GROUPS.push((view) => ({
   // The JHMMC season rules and a summary of the IGFA angling rules.
+  // The community rules: what's allowed, how reporting and blocking work.
+  async community() {
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Community rules</h1>
+      <div class="card pad">${raw(rulesList())}</div>
+      ${state.me ? '' : raw('<p class="small muted">You agree to these when you create an account.</p>')}`;
+  },
+
   async rules() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const which = q.get('book') === 'igfa' ? 'igfa' : 'jhmmc';
@@ -133,8 +141,22 @@ PAGE_GROUPS.push((view) => ({
       <p class="muted">${user.teamName ? raw(html`<a href="#/boat/${user.teamId}">${user.teamName}</a> · `) : 'Individual angler · '}${user.country || ''}</p>
       ${user.bio ? raw(html`<p>${user.bio}</p>`) : ''}
       ${state.me?.id === user.id ? raw('<a class="btn" href="#/profile">Edit profile</a>') : ''}
+      ${state.me && state.me.id !== user.id ? raw(html`<p class="person-actions">
+        ${raw(reportBtn('user', user.id, { userId: null, label: 'Report profile' }))}
+        <button type="button" class="link small muted" data-block="${user.id}">${raw(icon('shield'))} ${state.me.blocked?.includes(user.id) ? 'Unblock' : 'Block'}</button></p>`) : ''}
       <h2>Catches</h2>
       <div id="trophies"></div>`;
+    view.querySelector('[data-block]')?.addEventListener('click', async (e) => {
+      const blocked = state.me.blocked?.includes(user.id);
+      try {
+        await api(blocked ? `/blocks/${user.id}` : '/blocks', { method: blocked ? 'DELETE' : 'POST', body: blocked ? undefined : { userId: user.id } });
+        state.me = (await api('/me')).user;
+        e.target.closest('button').innerHTML = `${icon('shield')} ${blocked ? 'Block' : 'Unblock'}`;
+        toast(blocked ? `${user.name} unblocked.` : `${user.name} blocked: you won't see their posts on the feed.`);
+      } catch (err) {
+        toast(err.message);
+      }
+    });
     await renderTrophies(view.querySelector('#trophies'), { user: user.id });
   },
 
@@ -320,10 +342,11 @@ PAGE_GROUPS.push((view) => ({
         <label>Country <select name="country">${raw(options(state.meta.countries, null, 'Choose…'))}</select></label>
         <fieldset class="units"><legend>Units</legend>${raw(unitFields())}
           <span class="small muted">How weights, depths and water temperatures show for you. You can change them in your profile.</span></fieldset>
+        <label class="check"><input type="checkbox" name="acceptRules" value="yes" required> I agree to the <a href="#/community" target="_blank">community rules</a>: no offensive content, and reported posts are removed.</label>
         <p class="error"></p>
         <div><button type="submit" class="primary">Create account</button></div>
       </form>
-      <p class="small muted">By creating an account you agree to the <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>
+      <p class="small muted">By creating an account you agree to the <a href="/privacy" target="_blank" rel="noopener">privacy policy</a> and the <a href="#/community">community rules</a>.</p>
       <p>Already a member? <a href="#/login">Sign in</a>.</p>`;
     const form = view.querySelector('#f');
     bindForm(form, async () => {

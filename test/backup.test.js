@@ -28,8 +28,8 @@ test('backups: a complete copy of the database, emailed to the admin, kept 14 da
   };
   try {
     const boss = as(); const crew = as();
-    const reg = await boss('POST', '/auth/register', { name: 'Boss Admin', email: 'boss@example.com', password: 'password1' }); assert.equal(reg.status, 201, JSON.stringify(reg.body));
-    await crew('POST', '/auth/register', { name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
+    const reg = await boss('POST', '/auth/register', { acceptRules: true, name: 'Boss Admin', email: 'boss@example.com', password: 'password1' }); assert.equal(reg.status, 201, JSON.stringify(reg.body));
+    await crew('POST', '/auth/register', { acceptRules: true, name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
     await boss('POST', '/teams', { name: 'Liberian Girl', country: 'Liberia' });
     assert.equal((await crew('GET', '/admin/backups')).status, 403);
     const r = await boss('POST', '/admin/backups', { email: true });

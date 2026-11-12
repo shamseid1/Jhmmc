@@ -21,7 +21,7 @@ async function seedDemo(base, { adminEmail = 'admin@example.com' } = {}) {
   async function member(first, last, email, password = PASSWORD) {
     const r = await fetch(`${base}/api/auth/register`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ firstName: first, lastName: last, email, password }),
+      body: JSON.stringify({ firstName: first, lastName: last, email, password, acceptRules: true }),
     });
     const body = await r.json();
     if (!r.ok) throw Object.assign(new Error(`register ${email}: ${body.error}`), { status: r.status });

@@ -71,7 +71,7 @@ test('weighmasters: appointed members weigh their station\'s boats; a captain on
     assert.equal((await shams('PUT', `/weighmasters/${shamsId}`, { station: 'Beerville' })).status, 403);
     assert.equal((await sec('PUT', `/weighmasters/${rayanId}`, { station: 'Nowhere' })).status, 400);
     const outsider2 = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ firstName: 'Not', lastName: 'Member', email: 'nm@example.com', password: 'password123' }) });
+      body: JSON.stringify({ firstName: 'Not', lastName: 'Member', email: 'nm@example.com', password: 'password123', acceptRules: true }) });
     const nmId = (await outsider2.json()).user.id;
     assert.match((await sec('PUT', `/weighmasters/${nmId}`, { station: 'Beerville' })).body.error, /isn't a JHMMC member/);
     // Rayan (crew on Liberian Girl, not a captain) weighs at Beerville.

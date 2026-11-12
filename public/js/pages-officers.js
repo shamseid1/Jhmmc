@@ -8,6 +8,44 @@ PAGE_GROUPS.push((view) => ({
   // Admin: every boat. JHMMC boats get their weigh station (their home port)
   // and Ocean or River here; the rest of a boat's details are on its page.
   // The secretary's desk: one screen to start the day.
+  // What members reported: look at it, then remove it or dismiss the report.
+  async reports() {
+    if (!state.me?.canReview && !state.me?.isAdmin) return needLogin(view, 'see reports');
+    const { reports } = await api('/reports');
+    const open = reports.filter((r) => r.status === 'open');
+    const done = reports.filter((r) => r.status !== 'open');
+    const row = (r) => html`<li class="report-row" data-id="${r.id}">
+      ${r.target.photoUrl ? raw(html`<img src="${r.target.photoUrl}" alt="" loading="lazy">`) : ''}
+      <div class="report-text"><span><b>${r.reasonText}</b>: ${r.target.href ? raw(html`<a href="${r.target.href}">${r.target.what}</a>`) : r.target.what}</span>
+        ${r.note ? raw(html`<span class="small">"${r.note}"</span>`) : ''}
+        <span class="small muted">Reported by ${r.reporter || 'a member'} · ${fmtWhen(r.createdAt)}${r.status !== 'open' ? ` · ${r.status === 'removed' ? 'Removed' : 'No action'} by ${r.resolvedBy || 'an officer'}` : ''}</span>
+        ${r.status === 'open' ? raw(html`<span class="row-buttons">
+          ${r.target.removable ? raw('<button type="button" class="danger" data-resolve="remove">Remove it</button>') : ''}
+          <button type="button" data-resolve="dismiss">No action needed</button></span>`) : ''}
+      </div></li>`;
+    view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
+      <h1>Reports</h1>
+      <p class="small muted">Photos, logged fish, announcements and profiles that members reported. Look at each within 24 hours:
+      remove what breaks the <a href="#/community">community rules</a>. Removing takes away the photo (the fish's record stays),
+      the announcement, or the profile's photo, nickname and about text. Each decision goes in the activity log.</p>
+      <h2>To look at (${open.length})</h2>
+      ${open.length ? raw(html`<ul class="card report-list">${open.map((r) => raw(row(r)))}</ul>`) : raw('<div class="card pad muted">Nothing reported. All clear.</div>')}
+      ${done.length ? raw(html`<h2>Dealt with</h2><ul class="card report-list">${done.map((r) => raw(row(r)))}</ul>`) : ''}`;
+    view.querySelectorAll('[data-resolve]').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.closest('[data-id]').dataset.id;
+      b.disabled = true;
+      try {
+        await api(`/reports/${id}/resolve`, { method: 'POST', body: { action: b.dataset.resolve } });
+        state.me = (await api('/me')).user;
+        toast(b.dataset.resolve === 'remove' ? 'Removed.' : 'Report closed.');
+        route();
+      } catch (err) {
+        toast(err.message);
+        b.disabled = false;
+      }
+    }));
+  },
+
   async desk() {
     if (!state.me?.canReview) return needLogin(view, 'open the secretary desk');
     const d = await api('/desk');
@@ -20,6 +58,7 @@ PAGE_GROUPS.push((view) => ({
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Secretary desk</h1>
       <p class="small muted">${hello}, ${first}. ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}.</p>
+      ${state.me.openReports ? raw(html`<a class="card pad desk-link hot" href="#/reports"><b>${plural(state.me.openReports, 'report')}</b> from members to look at</a>`) : ''}
       <div class="desk-kpis">
         <a class="card ${d.toReview ? 'hot' : ''}" href="#/review"><b>${d.toReview}</b><span>fish to review</span></a>
         <a class="card ${d.disputed.length ? 'hot' : ''}" href="#/review"><b>${d.disputed.length}</b><span>${d.disputed.length === 1 ? 'dispute open' : 'disputes open'}</span></a>

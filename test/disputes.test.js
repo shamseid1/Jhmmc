@@ -37,7 +37,7 @@ test('captains see pending registrations, dispute them within 24 hours, and ever
   const person = async (name, nickname, email) => {
     if (!email) [nickname, email] = [undefined, nickname];
     const c = as();
-    await c('POST', '/auth/register', { name, nickname, email, password: 'password1' });
+    await c('POST', '/auth/register', { acceptRules: true, name, nickname, email, password: 'password1' });
     return c;
   };
   try {

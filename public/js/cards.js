@@ -168,6 +168,7 @@ function catchCard(c, { full = false } = {}) {
         ${full && c.canEdit ? raw(html`<a class="btn" href="#/edit/${c.id}">${raw(icon('edit'))} Edit</a>`) : ''}
         ${full && c.canAddPhoto ? raw(html`<label class="btn">${raw(icon('camera'))} ${c.ownPhoto ? 'Change your photo' : 'Add your photo'}<input type="file" accept="image/*" hidden data-add-photo="${c.id}"></label>`) : ''}
         ${full && c.canDelete ? raw('<button data-act="delete" class="danger">Delete</button>') : ''}
+        ${full && c.ownPhoto ? raw(reportBtn('catch', c.id, { userId: c.userId, name: c.angler, label: 'Report photo' })) : ''}
       </div>
       ${full && ['pending_review', 'approved'].includes(c.status) && state.me?.canApprove ? raw(html`<details class="secretary-box" data-fix>
         <summary><b>Secretary: fix species, angler or photo</b></summary>
@@ -334,7 +335,7 @@ const feedItem = (x) => (x.kind === 'log' && !x.photoUrl ? feedRow(x) : x.kind =
   <h3 class="ann-title">${x.title}</h3>
   ${x.body ? raw(html`<p class="ann-body">${x.body}</p>`) : ''}
   <div class="ann-foot"><span class="pill ann">Announcement</span><span class="small muted">${x.angler || ''}</span>
-    ${x.canDelete ? raw('<button type="button" class="link danger small" data-act="drop-ann">Remove</button>') : ''}</div>
+    ${x.canDelete ? raw('<button type="button" class="link danger small" data-act="drop-ann">Remove</button>') : raw(reportBtn('announcement', x.id, { userId: x.userId, name: x.angler }))}</div>
 </article>` : html`<article class="feed-item">
   <div class="feed-head">
     <a class="feed-boat" href="${x.teamId ? `#/boat/${x.teamId}` : '#/participants?tab=boats'}">
@@ -358,7 +359,9 @@ const feedItem = (x) => (x.kind === 'log' && !x.photoUrl ? feedRow(x) : x.kind =
       ${x.fish.filter((f) => !f.ownPhoto).map((f) => raw(html`<label class="btn small">${raw(icon('camera'))} ${f.species}${f.weightKg ? ` ${fmtWeight(f.weightKg)}` : ''}<input type="file" accept="image/*" hidden data-add-photo="${f.id}"></label>`))}
     </div>`) : ''}
     ${x.day !== today() ? raw(html`<span class="small muted">Caught ${fmtDate(x.day)}</span>`) : ''}`) : ''}
-  <span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
+  <div class="feed-foot"><span class="pill ${x.kind === 'weighin' ? 'kept' : x.fate}">${x.kind === 'weighin' ? 'Weigh-in' : x.fate === 'released' ? 'Released' : x.fate === 'kept' ? 'Boated' : 'Lost'}</span>
+    ${x.kind === 'log' && x.photoUrl ? raw(reportBtn('log', x.id, { userId: x.userId, name: x.boat })) : ''}
+    ${x.kind === 'weighin' && x.fish.some((f) => f.ownPhoto) ? raw(reportBtn('catch', x.fish.find((f) => f.ownPhoto).id, { name: x.boat })) : ''}</div>
 </article>`);
 // Several of a species weighed the same day: their weights together, heaviest first.
 const weighedLine = (f) => html`⚖️ <b>${f.weighedKg.length} ${f.species.toLowerCase()}</b> weighed: ${f.weighedKg.map((kg) => fmtWeight(kg)).join(', ')} · ${fmtWeight(f.weighedKg.reduce((a, b) => a + b, 0))} in all`;

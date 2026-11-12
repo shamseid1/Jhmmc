@@ -159,6 +159,93 @@ function readAnglerEditor(form) {
   return [...crew, ...guests];
 }
 
+// ---- keeping it decent: community rules, reporting, blocking ----------------
+// The rules everyone agrees to (at sign-up, or once on their next visit). Shown on #/community too.
+const COMMUNITY_RULES = [
+  ['Fishing only', 'Post fish, boats, trips and club news. Nothing unrelated.'],
+  ['Be respectful', 'No insults, harassment, threats, hate or discrimination, in posts, names or photos.'],
+  ['Nothing offensive', 'No nudity, sexual, violent or shocking content.'],
+  ['Be honest', 'Weights, photos and catches must be real and your own boat\'s.'],
+  ['No spam', 'No advertising or links to sell things.'],
+];
+const rulesList = () => html`<ol class="rules-list">${COMMUNITY_RULES.map(([t, d]) => raw(html`<li><b>${t}.</b> ${d}</li>`))}</ol>
+  <p class="small muted">Anything can be reported (the flag button): the club's officers look at every report within 24 hours and remove
+  what breaks the rules. Someone who keeps breaking them loses their account. You can also block a person so you don't see their posts.</p>`;
+
+// A small "Report" button, for something someone else posted (signed in only).
+const REASONS = [['offensive', 'Offensive or inappropriate'], ['harassment', 'Harassment or abuse'], ['spam', 'Spam or advertising'],
+  ['false', 'Not true or misleading'], ['other', 'Something else']];
+const reportBtn = (kind, id, { userId = null, name = '', label = 'Report' } = {}) => (!state.me || (userId && userId === state.me.id) ? ''
+  : html`<button type="button" class="link small muted report-link" data-report="${kind}" data-id="${id}" data-user="${userId || ''}" data-name="${name}">${raw(icon('flag'))} ${label}</button>`);
+
+function openSheet(id, inner) {
+  document.getElementById(id)?.remove();
+  const dlg = document.createElement('dialog');
+  dlg.id = id;
+  dlg.className = 'sheet';
+  dlg.innerHTML = inner;
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+  return dlg;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-report]');
+  if (!btn) return;
+  e.preventDefault();
+  const { report: kind, id, user, name } = btn.dataset;
+  const what = { log: 'this fish', catch: 'this photo', announcement: 'this announcement', user: 'this profile' }[kind];
+  const dlg = openSheet('report-sheet', html`<h2>Report ${what}</h2>
+    <p class="small muted">The club's officers will look at it within 24 hours. The person isn't told who reported it.</p>
+    <form class="stack">
+      <div class="report-reasons">${REASONS.map(([v, t], i) => raw(html`<label class="check"><input type="radio" name="reason" value="${v}" ${i ? '' : 'required'}> ${t}</label>`))}</div>
+      <label>More detail (optional) <textarea name="note" maxlength="500" rows="2"></textarea></label>
+      ${user && kind !== 'user' && Number(user) !== state.me?.id ? raw(html`<label class="check"><input type="checkbox" name="block"> Also hide posts from ${name || 'this person'}</label>`) : ''}
+      <p class="error"></p>
+      <div class="row-buttons"><button type="submit" class="primary">Send report</button><button type="button" data-close>Cancel</button></div>
+    </form>`);
+  dlg.querySelector('[data-close]').onclick = () => dlg.close();
+  dlg.querySelector('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    const sendBtn = f.querySelector('[type=submit]');
+    sendBtn.disabled = true;
+    try {
+      await api('/reports', { method: 'POST', body: { kind, id: Number(id), reason: f.reason.value, note: f.note.value } });
+      if (f.block?.checked) {
+        await api('/blocks', { method: 'POST', body: { userId: Number(user) } });
+        state.me = (await api('/me')).user;
+      }
+      dlg.close();
+      toast(f.block?.checked ? "Thanks. Reported, and you won't see their posts any more." : "Thanks. The club's officers will look at it.");
+      if (f.block?.checked) route();
+    } catch (err) {
+      f.querySelector('.error').textContent = err.message;
+      sendBtn.disabled = false;
+    }
+  });
+});
+
+// Once, for accounts made before the rules: agree to carry on.
+async function rulesCheck() {
+  if (!state.me || state.me.rulesAccepted || document.getElementById('rules-sheet')) return;
+  const dlg = openSheet('rules-sheet', html`<h2>Community rules</h2>
+    <p class="small muted">To keep Africa Sportfishing a good place for every angler:</p>${raw(rulesList())}
+    <button type="button" class="primary setup-close" data-agree>I agree</button>`);
+  // Agreeing is the only way on.
+  dlg.addEventListener('cancel', (e) => e.preventDefault());
+  dlg.querySelector('[data-agree]').onclick = async () => {
+    try {
+      await api('/me/accept-rules', { method: 'POST' });
+      state.me.rulesAccepted = true;
+      dlg.close();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+}
+
 // The phone's position for the registration record, or null if it isn't
 // allowed or takes too long: never holds up sending.
 function phoneSpot(timeout = 8000) {

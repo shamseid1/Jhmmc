@@ -69,12 +69,15 @@ module.exports = (ctx) => {
     }
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     if (country && !COUNTRIES.includes(country)) return res.status(400).json({ error: 'Unknown country.' });
+    if (req.body.acceptRules !== true && req.body.acceptRules !== 'yes') {
+      return res.status(400).json({ error: 'Tick that you agree to the community rules.' });
+    }
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
       return res.status(409).json({ error: 'An account with that email already exists.' });
     }
 
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (name, first_name, last_name, nickname, email, password_hash, country, units) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .prepare("INSERT INTO users (name, first_name, last_name, nickname, email, password_hash, country, units, rules_accepted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))")
       .run(`${first} ${last}`, first, last, nickname, email, auth.hashPassword(password), country, readUnits(req.body.units));
     markAdminMember();
     auth.createSession(db, res, Number(lastInsertRowid), secureCookies);
@@ -172,13 +175,14 @@ module.exports = (ctx) => {
     const me = db.prepare(`
       SELECT u.id, u.name, u.first_name AS firstName, u.last_name AS lastName, u.nickname, ${SHOWN} AS displayName, u.email, u.country, u.bio, u.photo,
         t.id AS teamId, t.name AS teamName, t.country AS teamCountry, t.captain_id = u.id AS isCaptain, t.club_id AS clubId, u.role, u.jhmmc,
-        t.weigh_station AS weighStation, t.division AS division, u.units, u.notify
+        t.weigh_station AS weighStation, t.division AS division, u.units, u.notify, u.rules_accepted_at AS rulesAcceptedAt
       FROM users u LEFT JOIN teams t ON t.id = u.team_id WHERE u.id = ?
     `).get(id);
-    const { photo, units, notify, teamCountry, ...rest } = me;
+    const { photo, units, notify, teamCountry, rulesAcceptedAt, ...rest } = me;
     return {
       // "Today" for this member: the boat's clock (its country), else their own country's.
       ...rest, timeZone: zoneOf(teamCountry || me.country), photoUrl: photoUrl(photo), units: units ? JSON.parse(units) : null, notify: notifyPrefs(notify), isCaptain: !!me.isCaptain, jhmmc: !!me.jhmmc || isAdminUser(me),
+      rulesAccepted: !!rulesAcceptedAt, blocked: ctx.blockedBy(me.id), openReports: ctx.openReports(me),
       isAdmin: isAdminUser(me), canWeigh: canWeigh(me), weighmasterAt: weighmasterAt(me), canReview: canReview(me), canApprove: canApprove(me), canHandleMoney: canHandleMoney(me),
     };
   }

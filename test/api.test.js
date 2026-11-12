@@ -53,7 +53,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   const kofi = client();
   const ibra = client();
 
-  let r = await awa('POST', '/auth/register', { name: 'Awa Diop', email: 'awa@example.com', password: 'marlin123', country: 'Senegal' });
+  let r = await awa('POST', '/auth/register', { acceptRules: true, name: 'Awa Diop', email: 'awa@example.com', password: 'marlin123', country: 'Senegal' });
   assert.equal(r.status, 201);
   assert.equal(r.body.user.teamId, null);
   assert.equal(r.body.user.units, null, 'no units picked: the defaults');
@@ -72,7 +72,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   r = await awa('POST', '/teams', { name: 'Second Boat' });
   assert.equal(r.status, 409, 'one boat at a time');
 
-  await kofi('POST', '/auth/register', { name: 'Kofi Mensah', email: 'kofi@example.com', password: 'tuna12345' });
+  await kofi('POST', '/auth/register', { acceptRules: true, name: 'Kofi Mensah', email: 'kofi@example.com', password: 'tuna12345' });
   r = await kofi('GET', `/teams/${team.id}`);
   assert.equal(r.body.team.joinCode, undefined, 'code hidden from non-crew');
   // An invite link shows the boat and its captain before joining.
@@ -119,7 +119,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
   assert.ok((await kofi('GET', '/meta')).body.lineClasses.includes('100 lb'));
 
   // Individual angler without a boat: can browse, like and comment, but not post.
-  await ibra('POST', '/auth/register', { name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });
+  await ibra('POST', '/auth/register', { acceptRules: true, name: 'Ibrahima Fall', email: 'ibra@example.com', password: 'sailfish1' });
   const solo = new FormData();
   solo.set('speciesId', marlin.id);
   solo.set('caughtOn', '2026-06-14');
@@ -173,7 +173,7 @@ test('boat crews: register, invite code, crew logging, captain controls', async 
 
 test('participants: boats and anglers with photos and tallies', async () => {
   const cap = client();
-  await cap('POST', '/auth/register', { name: 'Musa Kamara', email: 'musa@example.com', password: 'password1' });
+  await cap('POST', '/auth/register', { acceptRules: true, name: 'Musa Kamara', email: 'musa@example.com', password: 'password1' });
   let r = await cap('POST', '/teams', { name: 'Freetown Flyer', lengthFt: '9', make: 'Bertram' });
   assert.equal(r.status, 400, 'length is checked');
   r = await cap('POST', '/teams', { name: 'Freetown Flyer', lengthFt: '42', make: 'Bertram', country: 'Sierra Leone' });
@@ -218,10 +218,10 @@ test('participants: boats and anglers with photos and tallies', async () => {
   assert.notEqual(musa.photoUrl, boat.photoUrl);
 
   const crew = client();
-  assert.match((await crew('POST', '/auth/register', { name: 'Fatu', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/,
+  assert.match((await crew('POST', '/auth/register', { acceptRules: true, name: 'Fatu', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/,
     'first and last name');
-  assert.match((await crew('POST', '/auth/register', { firstName: 'Fatu', lastName: ' ', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/);
-  r = await crew('POST', '/auth/register', { firstName: 'Fatu', lastName: 'Kollie', nickname: 'Fatu', email: 'fatu@example.com', password: 'password1' });
+  assert.match((await crew('POST', '/auth/register', { acceptRules: true, firstName: 'Fatu', lastName: ' ', email: 'fatu@example.com', password: 'password1' })).body.error, /last name/);
+  r = await crew('POST', '/auth/register', { acceptRules: true, firstName: 'Fatu', lastName: 'Kollie', nickname: 'Fatu', email: 'fatu@example.com', password: 'password1' });
   assert.deepEqual([r.body.user.name, r.body.user.firstName, r.body.user.lastName, r.body.user.nickname, r.body.user.displayName],
     ['Fatu Kollie', 'Fatu', 'Kollie', 'Fatu', 'Fatu']);
   await crew('POST', '/teams/join', { code: team.joinCode });
@@ -240,7 +240,7 @@ test('participants: boats and anglers with photos and tallies', async () => {
 
 test('anglers without an account: catches logged under a typed name', async () => {
   const cap = client();
-  await cap('POST', '/auth/register', { name: 'Joseph Kollie', email: 'joseph@example.com', password: 'password1' });
+  await cap('POST', '/auth/register', { acceptRules: true, name: 'Joseph Kollie', email: 'joseph@example.com', password: 'password1' });
   await cap('POST', '/teams', { name: 'Mesurado Queen', country: 'Liberia' });
   const meta = (await cap('GET', '/meta')).body;
   const wahoo = meta.species.find((s) => s.name === 'Wahoo');
@@ -272,7 +272,7 @@ test('anglers without an account: catches logged under a typed name', async () =
   const team = (await cap('GET', `/teams/${teamId}`)).body.team;
   assert.deepEqual(team.guests, [{ name: 'Guest Varney', catches: 2 }]);
   const varney = client();
-  await varney('POST', '/auth/register', { name: 'Varney Doe', email: 'varney@example.com', password: 'password1' });
+  await varney('POST', '/auth/register', { acceptRules: true, name: 'Varney Doe', email: 'varney@example.com', password: 'password1' });
   const varneyId = (await varney('GET', '/me')).body.user.id;
   assert.equal((await cap('POST', `/teams/${teamId}/guests/link`, { name: 'guest varney', userId: varneyId })).status, 400, 'must be crew');
   await varney('POST', '/teams/join', { code: team.joinCode });
@@ -314,8 +314,8 @@ test('validation and auth errors', async () => {
   assert.equal((await anon('POST', '/auth/login', { email: 'nobody@example.com', password: 'x' })).status, 401);
 
   const u = client();
-  await u('POST', '/auth/register', { name: 'Ade Bello', nickname: 'Ade', email: 'ade@example.com', password: 'password1' });
-  assert.equal((await u('POST', '/auth/register', { name: 'Ade Bello', nickname: 'Ade', email: 'ADE@example.com', password: 'password1' })).status, 409);
+  await u('POST', '/auth/register', { acceptRules: true, name: 'Ade Bello', nickname: 'Ade', email: 'ade@example.com', password: 'password1' });
+  assert.equal((await u('POST', '/auth/register', { acceptRules: true, name: 'Ade Bello', nickname: 'Ade', email: 'ADE@example.com', password: 'password1' })).status, 409);
   assert.equal((await u('POST', '/clubs', { name: 'Atlantis', country: 'France' })).status, 400);
   await u('POST', '/teams', { name: 'Lagos Lady', country: 'Nigeria' });
 
@@ -347,7 +347,7 @@ test('repeated failed sign-ins are slowed down', async () => {
 
 test('forgotten and changed passwords', async () => {
   const ama = client();
-  await ama('POST', '/auth/register', { name: 'Ama Owusu', email: 'ama@example.com', password: 'oldpassword' });
+  await ama('POST', '/auth/register', { acceptRules: true, name: 'Ama Owusu', email: 'ama@example.com', password: 'oldpassword' });
   const otherDevice = client();
   await otherDevice('POST', '/auth/login', { email: 'ama@example.com', password: 'oldpassword' });
 
@@ -404,7 +404,7 @@ test('without email: members contact the admin, who makes reset links', async ()
     assert.deepEqual([meta.emailEnabled, meta.contactEmail, meta.adminEmail], [false, 'info@example.com', undefined]);
 
     const kojo = as();
-    await kojo('POST', '/auth/register', { name: 'Kojo Asante', email: 'kojo@example.com', password: 'forgotten1' });
+    await kojo('POST', '/auth/register', { acceptRules: true, name: 'Kojo Asante', email: 'kojo@example.com', password: 'forgotten1' });
     let r = await as()('POST', '/auth/forgot', { email: 'kojo@example.com' });
     assert.equal(r.status, 503);
     assert.match(r.body.error, /info@example\.com/);
@@ -414,7 +414,7 @@ test('without email: members contact the admin, who makes reset links', async ()
     assert.equal((await kojo('GET', '/me')).body.user.isAdmin, false);
 
     const admin = as();
-    r = await admin('POST', '/auth/register', { name: 'Club Admin', email: 'admin@example.com', password: 'adminpass1' });
+    r = await admin('POST', '/auth/register', { acceptRules: true, name: 'Club Admin', email: 'admin@example.com', password: 'adminpass1' });
     assert.equal(r.body.user.isAdmin, true);
     const kojoRow = (await admin('GET', '/admin/users')).body.users.find((u) => u.email === 'kojo@example.com');
     r = await admin('POST', `/admin/users/${kojoRow.id}/reset-link`);
@@ -463,11 +463,11 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
   };
   try {
     const boss = as();
-    await boss('POST', '/auth/register', { name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
+    await boss('POST', '/auth/register', { acceptRules: true, name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
     const sec = as();
-    await sec('POST', '/auth/register', { name: 'Robert Secretary', email: 'sec@example.com', password: 'password1' });
+    await sec('POST', '/auth/register', { acceptRules: true, name: 'Robert Secretary', email: 'sec@example.com', password: 'password1' });
     const wm = as();
-    await wm('POST', '/auth/register', { name: 'Weigh Master', email: 'wm@example.com', password: 'password1' });
+    await wm('POST', '/auth/register', { acceptRules: true, name: 'Weigh Master', email: 'wm@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
     assert.equal((await sec('PATCH', `/admin/users/${idOf('wm@example.com')}`, { role: 'secretary' })).status, 403, 'only the admin sets roles');
@@ -487,18 +487,18 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     assert.equal((await sec('GET', '/me')).body.user.canReview, true);
 
     const cap = as();
-    await cap('POST', '/auth/register', { name: 'Ocean Captain', email: 'oc@example.com', password: 'password1' });
+    await cap('POST', '/auth/register', { acceptRules: true, name: 'Ocean Captain', email: 'oc@example.com', password: 'password1' });
     const jhmmc = (await cap('GET', '/clubs')).body.clubs.find((c) => c.name === 'JHMMC').id;
     const ocean = (await cap('POST', '/teams', { name: 'Sea Hunter', clubId: jhmmc })).body.team;
     assert.equal(ocean.division, 'ocean');
     assert.equal((await cap('GET', '/me')).body.user.canWeigh, true, 'JHMMC captains register their fish');
     const rcap = as();
-    await rcap('POST', '/auth/register', { name: 'River Captain', email: 'rc@example.com', password: 'password1' });
+    await rcap('POST', '/auth/register', { acceptRules: true, name: 'River Captain', email: 'rc@example.com', password: 'password1' });
     const river = (await rcap('POST', '/teams', { name: 'Lofa Runner', division: 'river', clubId: jhmmc })).body.team;
     assert.equal(river.division, 'river');
     // A boat from another club: no division, no JHMMC weigh-in or points.
     const other = as();
-    await other('POST', '/auth/register', { name: 'Tema Captain', email: 'tc@example.com', password: 'password1' });
+    await other('POST', '/auth/register', { acceptRules: true, name: 'Tema Captain', email: 'tc@example.com', password: 'password1' });
     const tema = (await other('POST', '/clubs', { name: 'Tema Game Fishing', country: 'Ghana' })).body.club;
     const visitor = (await other('POST', '/teams', { name: 'Black Star', division: 'river', clubId: tema.id })).body.team;
     assert.equal(visitor.division, 'river', 'any boat can be Ocean or River');
@@ -736,7 +736,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
 
     // A boat fishing on a tournament day without entering scores for the season only.
     const cap2 = as();
-    await cap2('POST', '/auth/register', { name: 'Reel Captain', email: 'reel@example.com', password: 'password1' });
+    await cap2('POST', '/auth/register', { acceptRules: true, name: 'Reel Captain', email: 'reel@example.com', password: 'password1' });
     const reel = (await cap2('POST', '/teams', { name: 'Reel Deal', clubId: jhmmc, weighStation: 'Extreme' })).body.team;
     r = await sec('POST', '/weigh', weighed({ teamId: reel.id, anglerId: 'other', anglerName: 'Guest', speciesId: sp('Bonito').id,
       caughtOn: TODAY, weightKg: '5', weighStation: 'Extreme', deviceLat: '6.3', deviceLng: '-10.8' }));
@@ -776,7 +776,7 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     // The admin deletes an account: the captain's catches stay under their name
     // and a crew member takes over the boat.
     const mate = as();
-    await mate('POST', '/auth/register', { name: 'Deck Hand', email: 'dh@example.com', password: 'password1' });
+    await mate('POST', '/auth/register', { acceptRules: true, name: 'Deck Hand', email: 'dh@example.com', password: 'password1' });
     await mate('POST', '/teams/join', { code: (await cap('GET', `/teams/${ocean.id}`)).body.team.joinCode });
     const mateId = (await mate('GET', '/me')).body.user.id;
     const people = (await boss('GET', '/admin/users')).body.users;

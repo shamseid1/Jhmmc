@@ -46,13 +46,13 @@ test('the secretary gets a phone notification when fish are registered', async (
   const settle = () => new Promise((r) => setTimeout(r, 50));
   try {
     const boss = as();
-    await boss('POST', '/auth/register', { name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
+    await boss('POST', '/auth/register', { acceptRules: true, name: 'Boss Admin', nickname: 'Boss', email: 'boss@example.com', password: 'password1' });
     const sec = as();
-    await sec('POST', '/auth/register', { name: 'Robert Khoueiry', nickname: 'Robert', email: 'sec@example.com', password: 'password1' });
+    await sec('POST', '/auth/register', { acceptRules: true, name: 'Robert Khoueiry', nickname: 'Robert', email: 'sec@example.com', password: 'password1' });
     const crew = as();
-    await crew('POST', '/auth/register', { name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
+    await crew('POST', '/auth/register', { acceptRules: true, name: 'Deck Hand', email: 'crew@example.com', password: 'password1' });
     const cap = as();
-    await cap('POST', '/auth/register', { name: 'Moses Doe', nickname: 'Moses', email: 'cap@example.com', password: 'password1' });
+    await cap('POST', '/auth/register', { acceptRules: true, name: 'Moses Doe', nickname: 'Moses', email: 'cap@example.com', password: 'password1' });
     const users = (await boss('GET', '/admin/users')).body.users;
     const idOf = (email) => users.find((u) => u.email === email).id;
     await boss('PATCH', `/admin/users/${idOf('sec@example.com')}`, { jhmmc: true, role: 'secretary' });

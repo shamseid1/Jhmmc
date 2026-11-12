@@ -411,7 +411,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     withVideo,
     zoneOf,
   };
-  for (const part of ['account', 'activity', 'notifications', 'admin', 'boats', 'catches', 'registrations', 'scoring', 'tournaments', 'posts', 'outings', 'people']) {
+  for (const part of ['account', 'activity', 'notifications', 'reports', 'admin', 'boats', 'catches', 'registrations', 'scoring', 'tournaments', 'posts', 'outings', 'people']) {
     Object.assign(ctx, require(`./routes/${part}`)(ctx));
   }
 

@@ -36,7 +36,7 @@ test('weigh station photo first, the crew\'s own second; log photo on the boated
   const person = async (name, nickname, email) => {
     if (!email) [nickname, email] = [undefined, nickname];
     const c = as();
-    await c('POST', '/auth/register', { name, nickname, email, password: 'password1' });
+    await c('POST', '/auth/register', { acceptRules: true, name, nickname, email, password: 'password1' });
     return c;
   };
   try {
