@@ -288,9 +288,8 @@ PAGE_GROUPS.push((view) => ({
     // ---- where you are, and today's track ----
     // The blue button follows you (the dot moves with the boat) and draws today's track; tap it
     // again to stop. The track is kept on this phone for the day.
-    // The coast's ports and towns: a tap gives the distance from the nearest (and from you), and
-    // the time strip's tides are for the one nearest the part of the map you're looking at.
-    // Nothing to set up, whichever boat or club.
+    // The coast's ports and towns: the time strip's tides are for the one nearest the part of
+    // the map you're looking at. Nothing to set up, whichever boat or club.
     const PORTS = [['Marshall', 6.15, -10.3833], ['Monrovia', 6.33, -10.8], ['Robertsport', 6.753, -11.367], ['Buchanan', 5.877, -10.047],
       ['River Cess', 5.457, -9.583], ['Greenville', 5.011, -9.039], ['Harper', 4.375, -7.717], ['Tabou', 4.42, -7.353],
       ['Sulima', 6.97, -11.58], ['Bonthe', 7.526, -12.505], ['Freetown', 8.484, -13.234], ['Conakry', 9.509, -13.712],
@@ -334,14 +333,15 @@ PAGE_GROUPS.push((view) => ({
     });
     window.addEventListener('hashchange', stopFollowing, { once: true });
     // From Marshall, and from you when the app knows where you are.
-    const navRows = (to) => {
-      const p = nearestPort(to);
-      return [myPos && ['From you', navTxt(myPos, to)], [`From ${p[0]}`, navTxt([p[1], p[2]], to)]].filter(Boolean);
-    };
+    // From you, once the app knows where you are (the blue button).
+    const navRows = (to) => (myPos ? [['From you', navTxt(myPos, to)]] : []);
     map.on('click', () => openLayers(false));
     // Before the forecast is in (or without it), a tap still gives the distances.
-    const earlyTap = (e) => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
-      .setContent(`<dl>${navRows([e.latlng.lat, e.latlng.lng]).map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+    const earlyTap = (e) => {
+      const rows = navRows([e.latlng.lat, e.latlng.lng]);
+      if (rows.length) L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
+        .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+    };
     map.on('click', earlyTap);
     // ---- the catches: your fish (exact spots) and the region's (10 km circles) ----
     // One set of filters for both: year, species and month.
@@ -500,7 +500,7 @@ PAGE_GROUPS.push((view) => ({
         where = [e.latlng.lat, e.latlng.lng];
         openLayers(false);
         view.querySelector('#chart-list').hidden = true;
-        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])} · ${navTxt([nearestPort(where)[1], nearestPort(where)[2]], where)} from ${nearestPort(where)[0]}`;
+        view.querySelector('#spot-where').textContent = `${fmtCoords(where[0], where[1])}${myPos ? ` · ${navTxt(myPos, where)} from you` : ''}`;
         form.reset();
         form.hidden = false;
         form.name.focus();
@@ -820,8 +820,7 @@ PAGE_GROUPS.push((view) => ({
     map.off('click', earlyTap);
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
-      const navOnly = () => L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
-        .setContent(`<dl>${navRows([lat, lng]).map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
+      const navOnly = () => earlyTap(e);
       if (!at) return navOnly();
       const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
