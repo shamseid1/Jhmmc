@@ -477,7 +477,13 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
   const box = map.getContainer();
   const cv = document.createElement('canvas');
   cv.className = 'flow-canvas';
-  box.appendChild(cv);
+  // In a pane of its own inside the map: over the colours and contours, under the place names
+  // and the tap box. Placed back on the screen's corner after each move.
+  const pane = map.getPane('flow') || map.createPane('flow');
+  pane.style.zIndex = 450;
+  pane.style.pointerEvents = 'none';
+  pane.appendChild(cv);
+  const place = () => { const p0 = map.containerPointToLayerPoint([0, 0]); cv.style.transform = `translate3d(${p0.x}px, ${p0.y}px, 0)`; };
   const ctx = cv.getContext('2d');
   let parts = [];
   let raf = 0;
@@ -514,6 +520,7 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
     return p;
   };
   const seed = () => {
+    place();
     mask();
     const r = box.getBoundingClientRect();
     let x0 = 0; let y0 = 0; let x1 = r.width; let y1 = r.height;

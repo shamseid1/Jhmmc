@@ -451,15 +451,18 @@ PAGE_GROUPS.push((view) => ({
       const d = data.depth?.[j0 * data.nx + i0];
       const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
+      // Short, as a plotter shows it: the name, then the value (compass points as N, SE…).
+      const pt = (deg0) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
       const rows = [
-        hot && reasons.length && `<b>Hotspot</b> ${reasons.join(', ')}`,
-        d != null && `<b>Depth</b> about ${depthTxt(d)}`,
-        u != null && `<b>Current</b> ${Math.hypot(u, v).toFixed(1)} kn to the ${compassName(deg(u, v))}`,
-        t != null && `<b>Water</b> ${tempTxt(t)}`,
-        wu != null && `<b>Wind</b> ${Math.round(Math.hypot(wu, wv))} kn from the ${compassName(deg(wu, wv) + 180)}`,
-        wh != null && `<b>Waves</b> ${wavesTxt(wh)}${wd != null ? ` from the ${compassName(wd)}` : ''}`,
+        hot && reasons.length && ['Hotspot', reasons.join(', ')],
+        d != null && ['Depth', depthTxt(d)],
+        u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn → ${pt(deg(u, v))}`],
+        t != null && ['Water', tempTxt(t)],
+        wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn from ${pt(deg(wu, wv) + 180)}`],
+        wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` from ${pt(wd)}` : ''}`],
       ].filter(Boolean);
-      L.popup().setLatLng(e.latlng).setContent(rows.join('<br>')).openOn(map);
+      L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90] }).setLatLng(e.latlng)
+        .setContent(`<dl>${rows.map(([k, val]) => html`<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl>`).openOn(map);
     });
     show();
   },
