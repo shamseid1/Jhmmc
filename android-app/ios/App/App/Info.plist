@@ -53,6 +53,10 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location marks the spot of each fish you log, for your crew only.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your location marks the spot of each fish you log, for your crew only. The app only uses it while it's open.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Your location marks the spot of each fish you log, for your crew only. The app only uses it while it's open.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos and videos of your catch and the weigh-in.</string>
 	<key>NSMicrophoneUsageDescription</key>
