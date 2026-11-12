@@ -1401,8 +1401,9 @@ body.chart-mode main > div { animation: none; }
 .panel-switches.catches label > span { display: grid; }
 .panel-switches small { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
 .chart-tool[hidden] { display: none; }
-.catch-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.catch-filters select { min-width: 0; padding: 9px 8px; border-radius: 10px; border: 0; background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
+.catch-filters { display: grid; gap: 8px; margin-top: 12px; }
+.catch-filters label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; }
+.catch-filters select { flex: 0 1 60%; min-width: 0; padding: 9px 10px; border-radius: 10px; border: 0; background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit; font-size: 14px; font-weight: 700; }
 .catch-filters select option { color: #0a1a33; }
 .catch-list { list-style: none; margin: 0; padding: 0; }
 .catch-list li + li { border-top: 1px solid rgba(255, 255, 255, 0.1); }

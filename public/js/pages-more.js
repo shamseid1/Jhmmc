@@ -273,6 +273,7 @@ PAGE_GROUPS.push((view) => ({
     // One set of filters for both: year, species and month.
     let mySpots = [];
     let grid = null;
+    let choices = null; // every season and species with fish logged in the region, for the filters
     const pins = new Map(); // a fish -> its pin
     const est = (x) => [x.depthM != null && estTxt(depthTxt(x.depthM)), x.waterC != null && estTxt(tempTxt(x.waterC))].filter(Boolean).join(' · ');
     const fishLink = (x) => (x.kind === 'catch' ? `#/catch/${x.id}` : x.kind === 'log' ? `#/fishon?date=${x.date}` : null);
@@ -330,15 +331,16 @@ PAGE_GROUPS.push((view) => ({
     const filters = () => {
       const box0 = view.querySelector('#catch-filters');
       if (!box0) return;
-      const seasons = [...new Set([...mySpots.map((x) => seasonOf(x.date)), ...(grid?.seasons || [])])].sort().reverse();
+      const seasons = [...new Set([...mySpots.map((x) => seasonOf(x.date)), ...(grid?.seasons || []), ...(choices?.seasons || [])])].sort().reverse();
       // The months in the season's order (September to August).
       const m0 = Number(startMd.slice(0, 2)) - 1;
       const months = MONTH_SHORT.map((m, n) => [String(n + 1), m]).slice(m0).concat(MONTH_SHORT.map((m, n) => [String(n + 1), m]).slice(0, m0));
-      const species = [...new Set([...mySpots.map((x) => x.species), ...(grid?.speciesList || [])])].sort();
+      const species = [...new Set([...mySpots.map((x) => x.species), ...(grid?.speciesList || []), ...(choices?.speciesList || [])])].sort();
       const sel = (k, label, items) => html`<select data-cf="${k}" aria-label="${label}">${raw(items.map(([v, t]) => html`<option value="${v}"${v === cf[k] ? ' selected' : ''}>${t}</option>`).join(''))}</select>`;
-      box0.innerHTML = sel('season', 'JHMMC season', [['', 'All seasons'], ...seasons.map((y) => [y, `Season ${seasonName(y)}`])])
-        + sel('species', 'Species', [['', 'All species'], ...species.map((x) => [x, x])])
-        + sel('month', 'Month', [['', 'All months'], ...months]);
+      const row = (label, k, items) => html`<label><span>${label}</span>${raw(sel(k, label, items))}</label>`;
+      box0.innerHTML = row('Season', 'season', [['', 'All seasons'], ...seasons.map((y) => [y, seasonName(y)])])
+        + row('Species', 'species', [['', 'All species'], ...species.map((x) => [x, x])])
+        + row('Month', 'month', [['', 'All months'], ...months]);
     };
     if (state.me) {
       view.querySelector('#catch-filters').addEventListener('change', (e) => {
@@ -362,6 +364,8 @@ PAGE_GROUPS.push((view) => ({
       }).catch(() => {});
       filters();
       drawRegional();
+      // The filters' choices, whether or not the region's circles are on.
+      api('/outings/grid?season=all&month=all').then((g) => { choices = g; filters(); }).catch(() => {});
     }
     syncContours();
     // Until the forecast is here: the chart alone (with its contours), a note on top, and the
