@@ -122,16 +122,18 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
   let pending = null;
   let failedAt = 0;
   // A refusal is remembered on disk too, so a restart (every update) doesn't ask again before then.
-  let retryAt = saved?.refusal?.retryAt > Date.now() ? saved.refusal.retryAt : 0; // when to try again after a refusal
+  // When to try again after a refusal (never more than an hour off, whatever an older one said).
+  let retryAt = saved?.refusal?.retryAt > Date.now() ? Math.min(saved.refusal.retryAt, Date.now() + 3600e3) : 0;
   let lastError = retryAt ? saved.refusal : null; // what went wrong last, for the waiting page
   const save = () => {
     if (file) fs.promises.writeFile(file, JSON.stringify({ ...(cached || {}), refusal: lastError })).catch((err) => console.warn(`Chart not saved: ${err.message}`));
   };
-  // When to ask again after a refusal: Open-Meteo says which allowance ran out.
+  // When to ask again after a refusal: Open-Meteo says which allowance ran out. The day's can
+  // come back sooner than midnight (it has before), and a refused try costs nothing (it's
+  // turned away at the first request), so it's tried again every hour.
   const nextTry = (msg) => {
     const now = new Date();
-    if (/daily/i.test(msg)) return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 5);
-    if (/hourly/i.test(msg)) return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1, 2);
+    if (/daily|hourly/i.test(msg)) return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1, 2);
     return Date.now() + retryMs;
   };
   const pause = () => new Promise((r) => setTimeout(r, gapMs));

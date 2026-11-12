@@ -78,7 +78,7 @@ test('the fishing chart: no preferences until there are billfish to go by', asyn
   }
 });
 
-test('turned away for the day: the chart says so and waits until after midnight GMT', async () => {
+test('turned away for the day: the chart says so and tries again in the next hour', async () => {
   const region = { south: 5, north: 5.3, west: -11, east: -10.7, step: 0.3 };
   let asked = 0;
   const currents = createCurrents({ region, gapMs: 0, fetchImpl: async () => {
@@ -89,7 +89,7 @@ test('turned away for the day: the chart says so and waits until after midnight 
   const err = await currents.get().catch((e) => e);
   assert.ok(err.preparing);
   assert.match(err.lastError.message, /Daily API request limit/);
-  assert.ok(new Date(err.lastError.retryAt).getUTCHours() === 0, 'tries again just after midnight GMT');
+  assert.ok(err.lastError.retryAt - Date.now() <= 3600e3 + 3 * 60e3, 'tries again within the hour');
   const before = asked;
   await currents.get().catch(() => {});
   assert.equal(asked, before, 'no knocking again before then');

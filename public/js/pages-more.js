@@ -280,9 +280,8 @@ PAGE_GROUPS.push((view) => ({
     while (!Array.isArray(data?.frames)) {
       // If the forecast service turned the server away, say why and when it tries again.
       const r = data?.refused;
-      const again = r && new Date(r.retryAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
       say(r && !data.fetching
-        ? html`<b>No forecast layers until ${again}.</b> ${r.daily ? 'The forecast service\'s free daily allowance has run out.' : r.hourly ? 'The forecast service\'s free allowance for this hour has run out.' : `The forecast service said: ${r.reason}`} They come back by themselves.`
+        ? html`<b>No forecast layers for now.</b> ${r.daily ? 'The forecast service\'s free daily allowance has run out.' : r.hourly ? 'The forecast service\'s free allowance for this hour has run out.' : `The forecast service said: ${r.reason}`} They come back by themselves.`
         : html`<b>Getting the latest sea forecast…</b> The layers come on by themselves in a few minutes.`);
       await wait(20000);
       if (!view.isConnected) return;
