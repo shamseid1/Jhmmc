@@ -4,7 +4,7 @@
 'use strict';
 
 // Home's cards, filled in as their data comes: the tournament on or next, today's fish to
-// weigh (crews), today's sea with its sun, moon and best times, what's biting, and the
+// weigh (crews), today's sea, what's biting, and the
 // offer of notifications.
 function homeCards(view) {
     // What's biting: every boat's fish in the last 14 days against the 14 before, the top few.
@@ -71,15 +71,11 @@ function homeCards(view) {
       if (navigator.onLine !== false) {
         seaFor(place).then((s) => {
           const n = s.now;
-          // One box: the sea now, then the sun, the moon and the day's best times.
-          seaBox.innerHTML = html`<a class="card sea-card" href="#/sea"><span class="sea-card-today">
+          const next = s.solunar.major.find((p) => p.to > Number(s.localTime.slice(11, 13)) * 60 + Number(s.localTime.slice(14, 16)));
+          seaBox.innerHTML = html`<a class="card pad sea-card sea-card-plain" href="#/sea">
             <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
-            <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span></span>
-            <span class="day-card">
-              <span class="day-col"><span class="k">Sun</span><span>Rise <b>${s.sun.rise || '—'}</b></span><span>Set <b>${s.sun.set || '—'}</b></span></span>
-              <span class="day-col"><span class="k">Moon</span><span><b>${s.moon.lit}%</b></span><span class="muted">${s.moon.name}</span></span>
-              <span class="day-col"><span class="k">Best times</span>${raw(s.solunar.major.map((p) => html`<span class="nowrap"><b>${hhmm(p.from)}</b>–${hhmm(p.to)}</span>`).join(''))}</span>
-            </span></a>`;
+            <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
+            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a>`;
         }).catch(() => {});
       }
     }
