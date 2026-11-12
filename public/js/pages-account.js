@@ -271,8 +271,9 @@ PAGE_GROUPS.push((view) => ({
       });
     }
     bindForm(form, async () => {
-      if (state.me) await api('/auth/logout', { method: 'POST' }).catch(() => {});
+      if (state.me) await signOut();
       state.me = (await api('/auth/login', { method: 'POST', body: formData(form) })).user;
+      afterSignIn();
       location.hash = state.afterLogin || '#/';
       state.afterLogin = null;
     });
@@ -353,6 +354,7 @@ PAGE_GROUPS.push((view) => ({
       const units = unitsFrom(form);
       saveUnitsHere(units);
       state.me = (await api('/auth/register', { method: 'POST', body: { ...formData(form), units } })).user;
+      afterSignIn();
       toast('Welcome!');
       // Came from an invite link: back to it, to join that boat.
       location.hash = state.afterLogin?.startsWith('#/join/') ? state.afterLogin : '#/crew';

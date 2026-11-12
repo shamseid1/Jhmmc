@@ -134,10 +134,7 @@ PAGE_GROUPS.push((view) => ({
       </div>
       ${me ? raw('<p class="center"><button id="logout">Sign out</button></p>') : ''}`;
     view.querySelector('#logout')?.addEventListener('click', async () => {
-      await api('/auth/logout', { method: 'POST' });
-      state.me = null;
-      try { localStorage.removeItem('kept-me'); } catch {}
-      state.clubs = null;
+      await signOut();
       location.hash = '#/';
     });
   },

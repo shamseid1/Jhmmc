@@ -192,6 +192,28 @@ async function pushSubscription() {
   return { reg, sub: await reg.pushManager.getSubscription() };
 }
 
+// Signing out: this phone stops getting that account's notifications, and nothing of that
+// account stays shown (its saved copy is cleared, here and in the offline copy).
+async function signOut() {
+  try {
+    const { sub } = await pushSubscription();
+    if (sub) await api('/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } });
+  } catch { /* the server forgets it anyway when it's gone */ }
+  await api('/auth/logout', { method: 'POST' }).catch(() => {});
+  state.me = null;
+  state.clubs = null;
+  try { localStorage.removeItem('kept-me'); } catch { /* fine */ }
+  try { for (const key of await caches.keys()) await (await caches.open(key)).delete('/api/me'); } catch { /* no offline copy */ }
+}
+// Signed in (or a new account): this phone's notifications now go to that account.
+async function afterSignIn() {
+  try {
+    if (!pushSupported() || (await notifyPermission()) !== 'granted') return;
+    const { sub } = await pushSubscription();
+    if (sub) await api('/push/subscribe', { method: 'POST', body: sub.toJSON() });
+  } catch { /* set again from More → Notifications */ }
+}
+
 // The "notifications on this phone" switch: on More for everyone (announcements),
 // on the Review page for officials (fish to review), and on the feed until it's on.
 async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn = false } = {}) {

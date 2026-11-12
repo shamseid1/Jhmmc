@@ -64,8 +64,12 @@ PAGE_GROUPS.push((view) => ({
     const list = view.querySelector('#fo-list');
     const finish = view.querySelector('#fo-finish');
     const QUEUE = 'fishon-queue';
-    const queued = () => { try { return JSON.parse(localStorage.getItem(QUEUE) || '[]'); } catch { return []; } };
-    const saveQueue = (q) => { try { localStorage.setItem(QUEUE, JSON.stringify(q)); } catch {} };
+    // Fish logged on this phone and not sent yet. Each belongs to whoever logged it (its id starts
+    // with theirs): with two accounts on one phone, one person's fish never go out under the other's.
+    const mine = (x) => String(x.clientId).startsWith(`${state.me.id}-`);
+    const allQueued = () => { try { return JSON.parse(localStorage.getItem(QUEUE) || '[]'); } catch { return []; } };
+    const queued = () => allQueued().filter(mine);
+    const saveQueue = (q) => { try { localStorage.setItem(QUEUE, JSON.stringify([...allQueued().filter((x) => !mine(x)), ...q])); } catch {} };
     const time = (iso) => parseTime(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     // Fish logged at sea have a time and a spot; fish added afterwards have neither.
     const where = (x) => (x.lat != null && x.lat !== '' ? `${time(x.landedAt)} · ${fmtCoords(x.lat, x.lng)}` : x.fromScale ? 'from the weigh station' : 'added afterwards');
