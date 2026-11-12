@@ -3,9 +3,28 @@
 
 'use strict';
 
-// Home's cards, filled in as their data comes: the tournament on or next, today's fish to
-// weigh (crews), today's sea, and the offer of notifications.
-function homeCards(view) {
+PAGE_GROUPS.push((view) => ({
+  async home() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    // Fish logged at sea show under All; Weigh-ins and Announcements have their own tabs.
+    const type = ['weighins', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
+    const tab = (key, label) => html`<a role="tab" href="#/${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
+    // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
+    const officer = !!state.me?.canReview;
+    view.innerHTML = html`${raw(noBoatBanner())}
+      ${officer ? raw(html`<details class="card pad ann-new"><summary>${raw(icon('edit'))} New announcement</summary>
+        <form class="stack" id="ann">
+          <label>Title <input name="title" required maxlength="120" placeholder="e.g. Tournament this Saturday"></label>
+          <label>Message <textarea name="body" maxlength="2000" rows="3" placeholder="e.g. Remember to pay your membership before Friday."></textarea></label>
+          <p class="error"></p>
+          <div><button type="submit" class="primary">Post announcement</button></div>
+        </form></details>`) : ''}
+      <div id="tournament-call"></div>
+      <div id="weigh-call"></div>
+      ${type === 'all' ? raw('<div id="sea-card"></div>') : ''}
+      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
+      ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
+      <div id="feed"></div>`;
     // Today's trip, for the card at the top: fish boated but not weighed in yet.
     if (state.me?.teamId) {
       api(`/outings/trip?date=${today()}`).then(({ trip }) => {
@@ -52,10 +71,13 @@ function homeCards(view) {
     }
     // Until this phone has notifications on, offer them here (announcements, reminders).
     if (state.me) renderNotify(view.querySelector('#notify'), { what: 'announcements from JHMMC, like tournament reminders', hideWhenOn: true });
-    // Today's sea, quietly: nothing shows if the forecast can't be had.
+    // Today's sea and the fishing chart: the chart's link always (it opens without signal or a
+    // forecast too); today's sea above it, quietly, when the forecast can be had.
     const seaBox = view.querySelector('#sea-card');
     const place = seaPlace();
+    const chartRow = html`<a class="sea-card-chart" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span class="small muted">Contours, hotspots, currents, water colour and your fish</span></span><span aria-hidden="true">›</span></a>`;
     if (seaBox) {
+      seaBox.innerHTML = html`<div class="card sea-card">${raw(chartRow)}</div>`;
       if (navigator.onLine !== false && place.key !== 'here') {
         seaFor(place).then((s) => {
           const n = s.now;
@@ -63,51 +85,10 @@ function homeCards(view) {
           seaBox.innerHTML = html`<div class="card sea-card"><a class="sea-card-today" href="#/sea">
             <span class="sea-card-top"><b>${raw(icon('wave'))} Sea today · ${place.name}</b>${n.rating ? raw(html`<span class="rating ${n.rating}">${n.rating[0].toUpperCase() + n.rating.slice(1)}</span>`) : ''}</span>
             <span class="small">${[n.windKn != null && `${n.windDir || ''} ${n.windKn} kn`, n.waveM != null && `waves ${wavesTxt(n.waveM)}`, n.waterC != null && `water ${tempTxt(n.waterC)}`, n.tide && `tide ${n.tide}`].filter(Boolean).join(' · ')}</span>
-            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a></div>`;
+            ${next ? raw(html`<span class="small muted">Best time: ${hhmm(next.from)} – ${hhmm(next.to)} · sunset ${s.sun.set || ''}</span>`) : ''}</a>${raw(chartRow)}</div>`;
         }).catch(() => {});
       }
     }
-}
-
-PAGE_GROUPS.push((view) => ({
-  // Home: what's on (a tournament, today's weigh-in), today's sea, the main places a tap away
-  // (the fishing chart first), notifications and your account. The feed is a tab of its own.
-  async home() {
-    view.innerHTML = html`${raw(noBoatBanner())}
-      <div id="tournament-call"></div>
-      <div id="weigh-call"></div>
-      <div id="sea-card"></div>
-      <div class="home-tiles">
-        <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
-        <a class="home-tile" href="#/leaderboard">${raw(icon('leaderboard'))}<b>Leaderboard</b><span>The season's points</span></a>
-        <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
-        <a class="home-tile" href="#/records">${raw(icon('scale'))}<b>Records</b><span>The biggest fish</span></a>
-        <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
-        <a class="home-tile" href="#/sea">${raw(icon('wave'))}<b>Sea conditions</b><span>The week ahead</span></a>
-        <a class="home-tile" href="#/calendar">${raw(icon('calendar'))}<b>Calendar</b><span>The club's dates</span></a>
-      </div>
-      ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}
-      ${state.me ? raw(html`<a class="card pad home-account" href="#/profile">${raw(icon('user'))}<span><b>My account</b><span class="small muted">${state.me.displayName || state.me.name}${state.me.teamName ? ` · ${state.me.teamName}` : ''}</span></span><span aria-hidden="true">›</span></a>`)
-        : raw(html`<a class="card pad home-account" href="#/login">${raw(icon('user'))}<span><b>Sign in</b><span class="small muted">Or create an account</span></span><span aria-hidden="true">›</span></a>`)}`;
-    homeCards(view);
-  },
-
-  async feed() {
-    const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    // Fish logged at sea show under All; Weigh-ins and Announcements have their own tabs.
-    const type = ['weighins', 'announcements'].includes(q.get('type')) ? q.get('type') : 'all';
-    const tab = (key, label) => html`<a role="tab" href="#/feed${key === 'all' ? '' : `?type=${key}`}" aria-selected="${type === key}">${label}</a>`;
-    // JHMMC's officers (and the admin) post announcements: a tournament, membership to pay…
-    const officer = !!state.me?.canReview;
-    view.innerHTML = html`${officer ? raw(html`<details class="card pad ann-new"><summary>${raw(icon('edit'))} New announcement</summary>
-        <form class="stack" id="ann">
-          <label>Title <input name="title" required maxlength="120" placeholder="e.g. Tournament this Saturday"></label>
-          <label>Message <textarea name="body" maxlength="2000" rows="3" placeholder="e.g. Remember to pay your membership before Friday."></textarea></label>
-          <p class="error"></p>
-          <div><button type="submit" class="primary">Post announcement</button></div>
-        </form></details>`) : ''}
-      <div class="line-tabs feed-tabs" role="tablist">${raw(tab('all', 'All'))}${raw(tab('weighins', 'Weigh-ins'))}${raw(tab('announcements', 'Announcements'))}</div>
-      <div id="feed"></div>`;
     const form = view.querySelector('#ann');
     if (form) {
       bindForm(form, async () => {
@@ -143,7 +124,7 @@ PAGE_GROUPS.push((view) => ({
     const res = await fetch(`/api/teams/invite/${encodeURIComponent(code)}`);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      view.innerHTML = html`<div class="card pad empty"><p>${body.error || "This invite link doesn't work."}</p><a href="#/feed">Go to the feed</a></div>`;
+      view.innerHTML = html`<div class="card pad empty"><p>${body.error || "This invite link doesn't work."}</p><a href="#/">Go to the feed</a></div>`;
       return;
     }
     const { team } = body;
@@ -246,7 +227,7 @@ PAGE_GROUPS.push((view) => ({
           <div><button type="submit" class="primary">Register boat</button></div>
         </form>
       </div>
-      <p class="small muted">Club not listed? <a href="#/clubs">Register it</a> first. No boat? <a href="#/feed">Continue to the feed</a>; you can join a crew any time.</p>`;
+      <p class="small muted">Club not listed? <a href="#/clubs">Register it</a> first. No boat? <a href="#/">Continue to the feed</a>; you can join a crew any time.</p>`;
     const done = async ({ team, user }, msg) => {
       state.me = user;
       toast(msg);

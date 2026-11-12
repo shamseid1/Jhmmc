@@ -295,7 +295,7 @@ function wireCards(root, byId) {
       try {
         await api(`/catches/${c.id}`, { method: 'DELETE', body: official ? { reason: reason.trim() } : undefined });
         toast('Catch deleted');
-        location.hash = '#/feed';
+        location.hash = '#/';
       } catch (ex) {
         toast(ex.message);
       }

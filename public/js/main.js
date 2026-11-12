@@ -14,7 +14,6 @@ const pagesFor = (view) => Object.assign({}, ...PAGE_GROUPS.map((group) => group
 // Icons from Lucide (lucide.dev, ISC licence), 24px grid, drawn with currentColor.
 const ICONS = {
   back: '<path d="m15 18-6-6 6-6"/>',
-  home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
   list: '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
@@ -291,30 +290,26 @@ async function renderNotify(el, { what = 'a captain registers fish', hideWhenOn 
 function renderNav(active = state.navActive) {
   state.navActive = active;
   syncHeader();
-  // Home, the feed, then for a crew Log fish (the leaderboard is a tile on Home), for everyone
-  // else the leaderboard; participants and More. Captains and officials weigh in from More or
-  // Home's card.
+  // One bar for everyone. Captains and officials do the weigh-in from More (or the feed's card).
   const me0 = state.me;
   const links = [
-    ['#/', 'Home', 'home', 'home'],
-    ['#/feed', 'Feed', 'feed', 'feed'],
-    me0?.teamId ? ['#/fishon', 'Log fish', 'fishon', 'fish', 'cta'] : ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
+    ['#/', 'Feed', 'home', 'feed'],
+    ['#/leaderboard', 'Leaderboard', 'leaderboard', 'leaderboard'],
+    ...(me0?.teamId ? [['#/fishon', 'Log fish', 'fishon', 'fish', 'cta']] : []),
     ['#/participants', 'Participants', 'participants', 'participants'],
   ];
   links.push(['#/more', 'More', 'more', 'more']);
   const current = {
     boat: 'participants', user: 'participants', guest: 'participants', weigh: 'more',
     records: 'leaderboard', points: 'leaderboard', join: 'more', weighmasters: 'more', tournament: 'leaderboard', enter: 'leaderboard', sheet: 'more', 'tournament-sheets': 'more',
-    'points-fish': 'leaderboard', scoring: 'more', new: 'feed', edit: 'feed', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
+    'points-fish': 'leaderboard', scoring: 'more', new: 'home', edit: 'home', rules: 'more', install: 'more', spots: 'more', outing: 'more', log: 'more',
     clubs: 'more', club: 'more', profile: 'more', reports: 'more', community: 'more', sea: 'more', depth: 'more', currents: 'more', chart: 'more', crew: 'more', login: 'more', register: 'more', forgot: 'more', reset: 'more', members: 'more',
     'admin-boats': 'more', backups: 'more', activity: 'more', desk: 'more', 'club-members': 'more', notifications: 'more', pending: 'more', history: 'more', review: 'more', calendar: 'more',
     // The officials' Tournament sheets live in More; the Tournaments tab in the Leaderboard.
     tournaments: /[?&]sheets=1/.test(location.hash) ? 'more' : 'leaderboard',
   }[active] || active;
-  // A crew's bar has no Leaderboard tab: its pages light Home, where its tile is.
-  const shown = links.some(([, , key]) => key === current) ? current : current === 'leaderboard' ? 'home' : current;
   document.getElementById('nav').innerHTML = links
-    .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === shown ? ' aria-current="page"' : ''}${key === 'more' ? ' data-nav="more"' : ''}>
+    .map(([href, label, key, icon, cls]) => `<a href="${href}" class="${cls || ''}"${key === current ? ' aria-current="page"' : ''}${key === 'more' ? ' data-nav="more"' : ''}>
       <span class="nav-icon">${icon === 'fish' ? '<span class="fish-mark" aria-hidden="true"></span>' : `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`}${key === 'more' && state.pending
         ? `<span class="count-badge" aria-label="${state.pending} to review">${state.pending > 99 ? '99+' : state.pending}</span>` : ''}</span><span>${label}</span></a>`)
     .join('');
@@ -357,7 +352,7 @@ async function route() {
     rulesCheck().catch(() => {});
     firstOpenSetup().catch(() => {});
   } catch (ex) {
-    view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to Home</a></div>`;
+    view.innerHTML = html`<div class="card pad empty"><p>${ex.message}</p><a href="#/">Back to the feed</a></div>`;
   }
 }
 
@@ -549,7 +544,7 @@ showOffline();
 (() => {
   let startY = null; let dy = 0; let spin = null;
   // Only on pages that just show things: redrawing a form (a weigh-in half filled in) would empty it.
-  const REFRESHABLE = new Set(['', 'feed', 'leaderboard', 'tournaments', 'tournament', 'records', 'participants', 'boat', 'user', 'guest', 'catch',
+  const REFRESHABLE = new Set(['', 'leaderboard', 'tournaments', 'tournament', 'records', 'participants', 'boat', 'user', 'guest', 'catch',
     'log', 'spots', 'pending', 'history', 'activity', 'desk', 'review', 'points-fish', 'club', 'clubs']);
   const skip = (t) => !REFRESHABLE.has(location.hash.replace(/^#\/?/, '').split(/[/?]/)[0])
     || t.closest('.leaflet-container, input, textarea, select, dialog, form, details[open], .gallery, .hour-bars')
