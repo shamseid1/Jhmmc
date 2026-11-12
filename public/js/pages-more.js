@@ -151,7 +151,8 @@ PAGE_GROUPS.push((view) => ({
           ${crew ? raw('<label><input type="checkbox" data-show="contours" checked> Depth contours</label><label><input type="checkbox" data-show="fish" checked> My fish</label>') : ''}
         </div>
         <div class="chart-legend" id="chart-legend"></div>
-        <div class="cur-time"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button><input type="range" id="cur-t" min="0" max="0" value="0" aria-label="Time"><span id="cur-when"></span></div>
+        <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
+          <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span></div></div>
       </div>
     </div>`;
     // The layer buttons a little smaller to fit (never too small to read; past that the row scrolls).
@@ -233,11 +234,28 @@ PAGE_GROUPS.push((view) => ({
     fishingField(data, prefs);
     const hasWind = data.frames.some((f) => f.wu);
     if (!hasWind) view.querySelector('[data-layer=wind]').disabled = true;
-    const slider = view.querySelector('#cur-t');
-    const when = view.querySelector('#cur-when');
-    slider.max = String(data.frames.length - 1);
-    const nowIso = new Date().toISOString().slice(0, 13);
-    slider.value = String(Math.max(0, data.frames.findLastIndex((f) => f.time.slice(0, 13) <= nowIso)));
+    // Every hour, from the first of the forecast's 3-hour steps to the last; the hours between
+    // two steps are blended from them (as Windy does between its model's steps).
+    const t0 = Date.parse(`${data.frames[0].time}:00Z`);
+    const HOURS = (data.frames.length - 1) * 3 + 1;
+    const BLEND = ['u', 'v', 'sst', 'wh', 'wu', 'wv', 'xu', 'xv', 'fish'];
+    const hourCache = new Map();
+    const frameAt = (h) => {
+      const i = Math.floor(h / 3); const t = (h % 3) / 3;
+      if (!t || i >= data.frames.length - 1) return data.frames[Math.min(i, data.frames.length - 1)];
+      if (hourCache.has(h)) return hourCache.get(h);
+      const a = data.frames[i]; const b = data.frames[i + 1];
+      const f = { time: new Date(t0 + h * 3600e3).toISOString().slice(0, 16), wd: t < 0.5 ? a.wd : b.wd, why: t < 0.5 ? a.why : b.why };
+      for (const k of BLEND) {
+        if (!a[k] || !b[k]) { f[k] = a[k] || b[k] || null; continue; }
+        f[k] = a[k].map((x, n) => (x == null || b[k][n] == null ? (x ?? b[k][n]) : x + (b[k][n] - x) * t));
+      }
+      hourCache.set(h, f);
+      return f;
+    };
+    let hour = Math.min(HOURS - 1, Math.max(0, Math.floor((Date.now() - t0) / 3600e3)));
+    const nowHour = hour;
+    let cur = frameAt(hour);
     // Each layer: its colours, the lines' field (and how fast they look), and its scale's ends.
     // per: screen area per line, Windy's density for each (the wind far sparser than the water).
     const LAYER = {
@@ -252,7 +270,8 @@ PAGE_GROUPS.push((view) => ({
     let at = null;
     let lines = null;
     const show = () => {
-      const f = data.frames[Number(slider.value)];
+      const f = frameAt(hour);
+      cur = f;
       const L1 = LAYER[layer];
       at = sampler(data, f);
       const [ku, kv, k] = L1.lines;
@@ -260,30 +279,61 @@ PAGE_GROUPS.push((view) => ({
       image?.remove();
       // The wind blows over the land too (as on Windy); the sea's layers stop at the shore.
       image = fieldImage(L, data, f, L1.colour, L1.stops, L1.overLand ? null : land).addTo(map);
-      const t = new Date(`${f.time}:00Z`);
-      when.textContent = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+      view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       const [lo, hi] = L1.ends(L1.stops);
       view.querySelector('#chart-legend').innerHTML = html`<span>${lo}</span><i style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})"></i><span>${hi}</span>`;
     };
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
     redraw = () => { show(); flow.reseed(); };
-    slider.addEventListener('input', () => { stopPlay(); show(); });
-    // Play: through the next 3 days, a step every second, round again from now; the slider or
-    // the button stops it.
+    // The time strip, like Windy's: the days as blocks with a mark for each hour, swiped under
+    // a fixed pointer; it settles on whole hours and the bubble says which.
+    const PX = 22; // per hour
+    const tl = view.querySelector('#tl');
+    const days = [];
+    for (let h = 0; h < HOURS; h++) {
+      const d = new Date(t0 + h * 3600e3);
+      const key = d.toDateString();
+      if (days.at(-1)?.key !== key) days.push({ key, d, hours: [] });
+      days.at(-1).hours.push(d.getHours());
+    }
+    tl.innerHTML = html`<span class="tl-pad"></span>${days.map((day, n) => raw(html`<div class="tl-day${n % 2 ? ' alt' : ''}" style="width:${day.hours.length * PX}px">
+      <b>${day.d.toLocaleDateString(undefined, { weekday: 'long' })} ${day.d.getDate()}</b>
+      <span class="tl-hours">${day.hours.map((hh) => raw(`<i class="${hh % 6 ? '' : 'big'}"></i>`))}</span></div>`))}<span class="tl-pad"></span>`;
+    const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
+    pads();
+    tl.scrollLeft = hour * PX;
+    let ticking = false;
+    tl.addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const h = Math.min(HOURS - 1, Math.max(0, Math.round(tl.scrollLeft / PX)));
+        if (h !== hour) { hour = h; show(); }
+      });
+    }, { passive: true });
+    window.addEventListener('resize', () => { if (view.isConnected) { pads(); tl.scrollLeft = hour * PX; } });
+    // Play: hour by hour to 3 days ahead, round again from now; touching the strip stops it.
     const playBtn = view.querySelector('#cur-play');
     let playing = 0;
-    const startAt = Number(slider.value);
     const stopPlay = () => { clearInterval(playing); playing = 0; playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play'); };
+    tl.addEventListener('pointerdown', stopPlay);
+    tl.addEventListener('wheel', stopPlay, { passive: true });
     playBtn.addEventListener('click', () => {
       if (playing) return stopPlay();
       playBtn.innerHTML = icon('pause'); playBtn.setAttribute('aria-label', 'Pause');
       playing = setInterval(() => {
         if (!view.isConnected) return stopPlay();
-        const next = Number(slider.value) + 1;
-        slider.value = String(next > Number(slider.max) ? startAt : next);
-        show();
-      }, 1000);
+        const next = hour + 1 >= HOURS ? nowHour : hour + 1;
+        tl.scrollTo({ left: next * PX, behavior: next === nowHour ? 'auto' : 'smooth' });
+      }, 500);
+    });
+    // Keys (a keyboard or a screen reader): left and right step an hour.
+    tl.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      tl.scrollTo({ left: Math.min(HOURS - 1, Math.max(0, hour + (e.key === 'ArrowRight' ? 1 : -1))) * PX });
     });
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
@@ -298,7 +348,7 @@ PAGE_GROUPS.push((view) => ({
       const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
       const t = at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
-      const f = data.frames[Number(slider.value)];
+      const f = cur;
       if (u == null && wu == null) return;
       // Directions and reasons: the nearest grid point's (they don't blend).
       const i0 = Math.round((lng - data.west) / data.step); const j0 = Math.round((lat - data.south) / data.step);
