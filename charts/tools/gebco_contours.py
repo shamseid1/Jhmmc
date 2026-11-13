@@ -2,15 +2,16 @@
 # arc-seconds, about 450 m), made once and kept in public/contours/: one file per 1° square
 # ("lat_lng.json"), each line [depth in m, the zoom it shows from, [lat*1e4, lng*1e4, ...]].
 # More lines the closer in: 200 m apart far out, down to 5 m in shallow water from zoom 12.
-# The grid (the chart's area) from NOAA's PFEG server, as NetCDF:
-#   curl -o region.nc "https://coastwatch.pfeg.noaa.gov/erddap/griddap/GEBCO_2020.nc?elevation%5B(1.5):1:(12.0)%5D%5B(-17.8):1:(-7.0)%5D"
-# then: python3 gebco_contours.py  (needs numpy, scipy, matplotlib); copy out/*.json to public/contours/.
+# The grid (all of West Africa, Mauritania to Cameroon) from NOAA's PFEG server, as NetCDF:
+#   curl -o westafrica.nc "https://coastwatch.pfeg.noaa.gov/erddap/griddap/GEBCO_2020.nc?elevation%5B(-1.0):1:(22.0)%5D%5B(-20.0):1:(10.0)%5D"
+# then: python3 gebco_contours.py westafrica.nc  (needs numpy, scipy, matplotlib); copy out/*.json
+# to public/contours/ and list them in public/contours/index.json.
 import json, os, sys, numpy as np
 from scipy.io import netcdf_file
 from scipy.ndimage import gaussian_filter
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-f = netcdf_file('region.nc', 'r', mmap=False)
+f = netcdf_file(sys.argv[1] if len(sys.argv) > 1 else 'region.nc', 'r', mmap=False)
 lats = f.variables['latitude'].data.astype(float); lngs = f.variables['longitude'].data.astype(float)
 z = f.variables['elevation'].data.astype(float)
 if lats[0] > lats[-1]: lats = lats[::-1]; z = z[::-1]

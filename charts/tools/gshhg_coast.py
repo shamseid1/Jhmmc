@@ -1,6 +1,7 @@
 # The Plotter map's land: GSHHG's coastline (Wessel & Smith, version 2.3.7, LGPL;
 # https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-2.3.7.zip): full resolution (simplified
-# to about 45 m) on the chart's coast, 'intermediate' over the rest of what the map shows.
+# to about 45 m) along all of West Africa (Mauritania to Cameroon), 'intermediate' over the rest
+# of what the map shows.
 # public/land-fine.json: { fill (the chart's coast), wide (the rest): [[ring, ...holes], ...],
 # coast: [line, ...] }, points [lat, lng]; fill and wide drawn apart (they overlap a little);
 # the coast kept apart so the cut edges between the two are never drawn as a coastline.
@@ -8,7 +9,7 @@
 import json, shapefile
 from shapely.geometry import shape, box, Polygon
 from shapely.ops import unary_union
-CHART = box(-19.0, 0.5, -5.5, 13.5)   # lng/lat: the chart's area: full detail (about 45 m)
+CHART = box(-20.0, -1.0, 10.0, 22.0)   # lng/lat: West Africa, Mauritania to Cameroon: full detail (about 45 m)
 WIDE = box(-35.0, -12.0, 10.0, 24.0)  # everything the map can be moved to: GSHHG's 'intermediate'
 def land(res, area):
     r = shapefile.Reader(f'GSHHS_shp/{res}/GSHHS_{res}_L1')

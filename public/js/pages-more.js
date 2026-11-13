@@ -476,10 +476,12 @@ PAGE_GROUPS.push((view) => ({
     // changes; the app keeps it (with the forecast, your fish and spots, kept as they load) ----
     const saveForSea = async () => {
       if (!navigator.onLine || !('serviceWorker' in navigator) || navigator.connection?.saveData) return;
-      // The depth lines for the whole coast (about 1.5 MB), once (again only when they change).
+      // The depth lines for our stretch of coast (Guinea-Bissau to Cape Palmas, about 1.5 MB),
+      // once (again only when they change); the rest of West Africa's are kept as they're seen.
       try { if (localStorage.getItem('contours-saved') === CONTOURS_V) return; } catch { /* no memory: fetch (the app keeps them once) */ }
       let keys = [];
       try { keys = await (await fetch(`/contours/index.json?v=${CONTOURS_V}`)).json(); } catch { return; }
+      keys = keys.filter((k) => { const [la, lo] = k.split('_').map(Number); return la >= 0 && la <= 12 && lo >= -19 && lo <= -7; });
       const urls = keys.map((k) => `/contours/${k}.json?v=${CONTOURS_V}`);
       let failed = 0;
       // Two at a time, so the map you're looking at isn't slowed down; stops if you leave.

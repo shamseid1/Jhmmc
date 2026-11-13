@@ -27,9 +27,9 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   landPane.style.zIndex = 250;
   landPane.style.pointerEvents = 'none';
   let landLayer = null;
-  // (GSHHG's coastline: full resolution, about 45 m, on the chart's coast, coarser beyond:
+  // (GSHHG's coastline: full resolution, about 45 m, along all of West Africa, coarser beyond:
   // charts/tools/gshhg_coast.py.)
-  const drawLand = () => fetch('/land-fine.json?v=4').then((r) => r.json()).then(({ fill, wide = [], coast }) => {
+  const drawLand = () => fetch('/land-fine.json?v=5').then((r) => r.json()).then(({ fill, wide = [], coast }) => {
     if (!map.getContainer().classList.contains('base-plotter')) return;
     landLayer?.remove();
     // Its colours from the page's style (--plotter-land, --plotter-coast), so they're set in one place.
@@ -100,7 +100,7 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '3';
+const CONTOURS_V = '4';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {
