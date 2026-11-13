@@ -780,11 +780,10 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
     parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.life; return p; });
     ctx.clearRect(0, 0, W, H);
   };
-  // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen).
-  // Like Windy: a lively flow that still reads (1 knot: 22 pixels a second), with weak water
-  // still creeping along so its direction shows.
+  // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen), and
+  // strictly in proportion to the water's (1 knot: 22 pixels a second, half a knot 11): a line
+  // shows the real current, its way and how fast relative to the rest; slack water barely moves.
   const PX_PER_KNOT_SECOND = 22;
-  const MIN_PX_SECOND = 5;
   // As on Windy, the faster the water the brighter its line: four shades, by speed relative
   // to the layer's own (currents up to about 1 kn, wind about 20).
   const SHADES = [0.35, 0.55, 0.75, 0.95];
@@ -818,7 +817,7 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
       }
       // A gentle drift, faster where the current is stronger (the same at every zoom).
       const kn = Math.hypot(u, v);
-      const k = kn > 0.001 ? (Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) * zoomK) / kn : 0;
+      const k = PX_PER_KNOT_SECOND * zoomK; // pixels a second per knot, the same everywhere on the map
       const nx = p.x + u * k * dt;
       const ny = p.y - v * k * dt;
       // Brighter for faster water, and faded in and out over the line's life (no popping).
