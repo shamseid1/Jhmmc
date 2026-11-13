@@ -123,6 +123,26 @@ async function load(set, { fetchImpl, area, hours, now, parallel }) {
   };
 }
 
+// The seabed's depth at each point of a 1/12° grid (metres, null on land), from GEBCO's world
+// seabed map (every 15", so every 20th point) on NOAA's PFEG server: one request. For the
+// hotspots at full detail (deep enough to fish, the shelf break). The seabed doesn't change:
+// fetched once for a grid and kept.
+const GEBCO = 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/GEBCO_2020.csv';
+async function depthFor(fetchImpl, g) {
+  const north = g.south + (g.ny - 1) * g.step; const east = g.west + (g.nx - 1) * g.step;
+  const q = `elevation[(${g.south}):20:(${north.toFixed(5)})][(${g.west}):20:(${east.toFixed(5)})]`;
+  const res = await fetchImpl(`${GEBCO}?${encodeURIComponent(q).replace(/%2C/g, ',')}`, { signal: AbortSignal.timeout(120000) });
+  if (!res.ok) throw new Error(`Seabed depth ${res.status}`);
+  const out = new Array(g.nx * g.ny).fill(null);
+  for (const line of (await res.text()).split('\n').slice(2)) {
+    const [la, lo, el] = line.split(',').map(Number);
+    if (!Number.isFinite(el)) continue;
+    const i = Math.round((lo - g.west) / g.step); const j = Math.round((la - g.south) / g.step);
+    if (i >= 0 && j >= 0 && i < g.nx && j < g.ny) out[j * g.nx + i] = el < 0 ? -el : null;
+  }
+  return out;
+}
+
 function createCopernicus({ fetchImpl = globalThis.fetch, file = null, ttlMs = 12 * 3600e3, maxAgeMs = 36 * 3600e3,
   retryMs = 60 * 60e3, area = AREA, hours = 72, parallel = 6 } = {}) {
   let cached = null;
@@ -134,7 +154,7 @@ function createCopernicus({ fetchImpl = globalThis.fetch, file = null, ttlMs = 1
   function refresh() {
     if (pending || Date.now() < retryAt) return pending;
     const opts = { fetchImpl, area, hours, now: Date.now(), parallel };
-    pending = Promise.allSettled([load(SETS.currents, opts), load(SETS.waves, opts)]).then(([c, w]) => {
+    pending = Promise.allSettled([load(SETS.currents, opts), load(SETS.waves, opts)]).then(async ([c, w]) => {
       const errs = [c, w].filter((x) => x.status === 'rejected').map((x) => x.reason.message);
       lastError = errs.length ? errs.join('; ') : null;
       if (errs.length) { retryAt = Date.now() + retryMs; console.warn(`Copernicus: ${lastError}`); }
@@ -142,6 +162,12 @@ function createCopernicus({ fetchImpl = globalThis.fetch, file = null, ttlMs = 1
       const old = cached && Date.now() - cached.at < maxAgeMs ? cached.data : {};
       if (c.status === 'rejected' && w.status === 'rejected') return;
       const data = { currents: c.value || old.currents || null, waves: w.value || old.waves || null };
+      // The seabed under the current's grid: kept from before for the same grid, else fetched.
+      const C = data.currents; const was = cached?.data?.currents;
+      if (C && !C.depth) {
+        if (was?.depth && was.south === C.south && was.west === C.west && was.nx === C.nx && was.ny === C.ny) C.depth = was.depth;
+        else C.depth = await depthFor(fetchImpl, C).catch((err) => { console.warn(`Copernicus: ${err.message}`); return null; });
+      }
       cached = { at: Date.now(), data };
       if (file) fs.promises.writeFile(file, JSON.stringify(cached)).catch(() => {});
     }).finally(() => { pending = null; });
@@ -158,7 +184,7 @@ function createCopernicus({ fetchImpl = globalThis.fetch, file = null, ttlMs = 1
     ready: () => !!(fresh() && cached.data.currents && cached.data.waves),
     warm: () => { if (!cached || Date.now() - cached.at >= ttlMs) refresh(); },
     status: () => ({ at: cached ? new Date(cached.at).toISOString() : null, fetching: !!pending, error: lastError,
-      currents: !!cached?.data?.currents, waves: !!cached?.data?.waves }),
+      currents: !!cached?.data?.currents, waves: !!cached?.data?.waves, seabed: !!cached?.data?.currents?.depth }),
   };
 }
 
