@@ -717,93 +717,102 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
   const cv = document.createElement('canvas');
   cv.className = 'flow-canvas';
   // In a pane of its own inside the map: over the colours and contours, under the place names
-  // and the tap box. Placed back on the screen's corner after each move.
+  // and the tap box. The canvas is pinned to the map (it moves with it while you drag, as the
+  // map's own pictures do), so the lines stay on the water they're on and keep flowing; only a
+  // zoom starts them afresh.
   const pane = map.getPane('flow') || map.createPane('flow');
   pane.style.zIndex = 450;
   pane.style.pointerEvents = 'none';
   pane.appendChild(cv);
-  const place = () => { const p0 = map.containerPointToLayerPoint([0, 0]); cv.style.transform = `translate3d(${p0.x}px, ${p0.y}px, 0)`; };
   const ctx = cv.getContext('2d');
+  let dpr = 1;
+  let origin = map.containerPointToLayerPoint([0, 0]); // the canvas's corner on the map
+  let W = 0; let H = 0;
+  const place = () => { origin = map.containerPointToLayerPoint([0, 0]); cv.style.transform = `translate3d(${origin.x}px, ${origin.y}px, 0)`; };
+  // A point on the canvas and the map's position there, and back.
+  const toLatLng = (x, y) => map.layerPointToLatLng([x + origin.x, y + origin.y]);
+  const toXY = (ll) => { const p = map.latLngToLayerPoint(ll); return [p.x - origin.x, p.y - origin.y]; };
   let parts = [];
   let raf = 0;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const size = () => {
     const r = box.getBoundingClientRect();
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    cv.width = r.width * dpr; cv.height = r.height * dpr;
-    cv.style.width = `${r.width}px`; cv.style.height = `${r.height}px`;
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = `${W}px`; cv.style.height = `${H}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  // Where the land is on screen (redrawn when the map moves), so no line runs over it.
+  // Where the land is on the canvas (redrawn when it's placed again), so no line runs over it.
   let landAt = () => false;
   const mask = () => {
     const land = getLand();
-    const r = box.getBoundingClientRect();
-    if (!land || !r.width) { landAt = () => false; return; }
-    const W = Math.ceil(r.width); const H = Math.ceil(r.height);
-    const m = document.createElement('canvas'); m.width = W; m.height = H;
+    if (!land || !W) { landAt = () => false; return; }
+    const w = Math.ceil(W); const h = Math.ceil(H);
+    const m = document.createElement('canvas'); m.width = w; m.height = h;
     const mc = m.getContext('2d');
-    fillLand(mc, land, (lat, lng) => { const pt = map.latLngToContainerPoint([lat, lng]); return [pt.x, pt.y]; });
-    const px = mc.getImageData(0, 0, W, H).data;
-    landAt = (x, y) => { const i = Math.floor(y) * W + Math.floor(x); return x >= 0 && y >= 0 && x < W && y < H && px[i * 4 + 3] > 0; };
+    fillLand(mc, land, (lat, lng) => toXY([lat, lng]));
+    const px = mc.getImageData(0, 0, w, h).data;
+    landAt = (x, y) => { const i = Math.floor(y) * w + Math.floor(x); return x >= 0 && y >= 0 && x < w && y < h && px[i * 4 + 3] > 0; };
   };
-  // Lines start only where there is data on screen (the map's grid, not the whole view), with
-  // the same density at every zoom: zoomed out, fewer lines in the smaller patch of sea.
+  // Lines start only where there is data (the map's grid, not the whole view), with the same
+  // density at every zoom: zoomed out, fewer lines in the smaller patch of sea.
   let area = { x: 0, y: 0, w: 0, h: 0 };
+  const findArea = () => {
+    let x0 = 0; let y0 = 0; let x1 = W; let y1 = H;
+    if (bounds) {
+      const [ax, ay] = toXY(bounds[1]); const [bx, by] = toXY(bounds[0]); // north-east, south-west
+      x0 = Math.max(0, bx); x1 = Math.min(W, ax); y0 = Math.max(0, ay); y1 = Math.min(H, by);
+    }
+    area = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+  };
   const spawn = (p) => {
     for (let k = 0; k < 6; k++) {
       p.x = area.x + Math.random() * area.w; p.y = area.y + Math.random() * area.h;
       if (!landAt(p.x, p.y)) break;
     }
-    p.age = 0; p.life = 3 + Math.random() * 3;
+    p.age = 0; p.life = 2.5 + Math.random() * 3.5;
     return p;
   };
   const seed = () => {
-    place();
-    mask();
-    const r = box.getBoundingClientRect();
-    let x0 = 0; let y0 = 0; let x1 = r.width; let y1 = r.height;
-    if (bounds) {
-      const a = map.latLngToContainerPoint(bounds[1]); const b = map.latLngToContainerPoint(bounds[0]); // north-east, south-west
-      x0 = Math.max(0, b.x); x1 = Math.min(r.width, a.x); y0 = Math.max(0, a.y); y1 = Math.min(r.height, b.y);
-    }
-    area = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    place(); mask(); findArea();
     const n = Math.round(Math.min(2200, (area.w * area.h) / (style().per || 140)));
     parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.life; return p; });
-    ctx.clearRect(0, 0, r.width, r.height);
+    ctx.clearRect(0, 0, W, H);
   };
   // Speed by the clock, not the screen's frame rate (the same on a 60 or 120 Hz screen).
   // Like Windy: a lively flow that still reads (1 knot: 22 pixels a second), with weak water
   // still creeping along so its direction shows.
   const PX_PER_KNOT_SECOND = 22;
   const MIN_PX_SECOND = 5;
+  // As on Windy, the faster the water the brighter its line: four shades, by speed relative
+  // to the layer's own (currents up to about 1 kn, wind about 20).
+  const SHADES = [0.35, 0.55, 0.75, 0.95];
   let last = 0;
-  // One animation loop at a time, and none while the map is being moved or pinched (the
-  // lines are in screen pixels, so they would be left behind or dragged across the map).
   let running = false;
   const step = (now) => {
     if (!running) return;
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
     last = now;
-    const r = box.getBoundingClientRect();
     const at = getField();
+    const st = style();
     // Slower when zoomed out (the sea is smaller on screen), a little faster zoomed in.
     const zoomK = Math.min(1.6, Math.max(0.35, 2 ** ((map.getZoom() - 7) * 0.6)));
-    // Fade the old trails (each layer its own: the current's long and soft, as on Windy).
+    // Fade the old trails (each layer its own: the current's long and soft).
     ctx.globalCompositeOperation = 'destination-in';
-    const st = style();
     const crests = !!st.crests;
     ctx.fillStyle = `rgba(0,0,0,${Math.pow(crests ? 0.02 : st.fade || 0.12, dt).toFixed(3)})`;
-    ctx.fillRect(0, 0, r.width, r.height);
+    ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
     ctx.lineWidth = crests ? 2.2 : st.width || 1.3;
-    ctx.strokeStyle = `rgba(255,255,255,${st.alpha || 0.85})`;
-    ctx.beginPath();
+    ctx.lineCap = 'round';
+    const full = st.full || 1; // the speed that draws brightest, in the field's units
+    const paths = SHADES.map(() => new Path2D());
     for (const p of parts) {
-      const ll = map.containerPointToLatLng([p.x, p.y]);
+      const ll = toLatLng(p.x, p.y);
       const u = at && at(ll.lat, ll.lng, 'u');
       const v = at && at(ll.lat, ll.lng, 'v');
-      if (u == null || v == null || p.age > p.life || landAt(p.x, p.y)) {
+      if (u == null || v == null || p.age > p.life || landAt(p.x, p.y) || p.x < 0 || p.y < 0 || p.x > W || p.y > H) {
         spawn(p);
         continue;
       }
@@ -812,22 +821,27 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
       const k = kn > 0.001 ? (Math.max(PX_PER_KNOT_SECOND * kn, MIN_PX_SECOND) * zoomK) / kn : 0;
       const nx = p.x + u * k * dt;
       const ny = p.y - v * k * dt;
+      // Brighter for faster water, and faded in and out over the line's life (no popping).
+      const life = Math.sin(Math.PI * Math.min(1, p.age / p.life));
+      const shade = Math.min(SHADES.length - 1, Math.floor(Math.min(0.999, (kn / full) * 0.75 + life * 0.25) * SHADES.length));
+      const path = paths[life < 0.25 ? 0 : shade];
       if (crests) {
         // A crest about 12 px long, square to the way the wave travels, fading in and out.
         const dx = nx - p.x; const dy = ny - p.y; const d = Math.hypot(dx, dy) || 1;
-        const half = 6 * Math.sin(Math.PI * Math.min(1, p.age / p.life));
-        ctx.moveTo(nx - (dy / d) * half, ny + (dx / d) * half);
-        ctx.lineTo(nx + (dy / d) * half, ny - (dx / d) * half);
+        const half = 6 * life;
+        path.moveTo(nx - (dy / d) * half, ny + (dx / d) * half);
+        path.lineTo(nx + (dy / d) * half, ny - (dx / d) * half);
       } else {
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(nx, ny);
+        path.moveTo(p.x, p.y);
+        path.lineTo(nx, ny);
       }
       p.x = nx; p.y = ny; p.age += dt;
     }
-    ctx.stroke();
+    const alpha = st.alpha || 0.85;
+    paths.forEach((path, i) => { ctx.strokeStyle = `rgba(255,255,255,${(alpha * SHADES[i] / 0.95).toFixed(3)})`; ctx.stroke(path); });
     raf = requestAnimationFrame(step);
   };
-  const halt = () => { running = false; cancelAnimationFrame(raf); cv.style.visibility = 'hidden'; ctx.clearRect(0, 0, cv.width, cv.height); };
+  const halt = () => { running = false; cancelAnimationFrame(raf); cv.style.visibility = 'hidden'; ctx.clearRect(0, 0, W, H); };
   const start = () => {
     halt();
     seed(); last = 0;
@@ -836,13 +850,28 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
     running = true;
     raf = requestAnimationFrame(step);
   };
-  // Restart a moment after the last move ends (a pinch fires several).
+  // After a drag: the canvas back on the screen's corner, its trails and lines moved with it
+  // (they keep flowing, nothing restarts), the land and the area worked out for the new view.
+  const settle = () => {
+    const old = origin;
+    place();
+    const dx = origin.x - old.x; const dy = origin.y - old.y;
+    if (!dx && !dy) return;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(cv, -dx * dpr, -dy * dpr);
+    ctx.restore();
+    for (const p of parts) { p.x -= dx; p.y -= dy; }
+    mask(); findArea();
+  };
+  // Restart a moment after a zoom ends (a pinch fires several); a drag just settles.
   let timer = 0;
+  let zooming = false;
   const later = () => { clearTimeout(timer); timer = setTimeout(start, 120); };
   size();
-  map.on('movestart zoomstart', () => { clearTimeout(timer); halt(); });
-  map.on('move zoom', () => { clearTimeout(timer); if (running) halt(); });
-  map.on('moveend zoomend', later);
+  map.on('zoomstart', () => { zooming = true; clearTimeout(timer); halt(); });
+  map.on('zoomend', () => { zooming = false; later(); });
+  map.on('moveend', () => { if (!zooming && running) settle(); });
   map.on('resize', () => { size(); later(); });
   start();
   // Stop when the page is left.

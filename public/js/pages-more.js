@@ -719,11 +719,11 @@ PAGE_GROUPS.push((view) => ({
       // with the current's lines faint over them.
       none: { lines: null, per: 1e9 },
       // The current's lines as on Windy: few, thin and soft, with long trails.
-      hotspots: { hot: true, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.7, fade: 0.3 },
-      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], per: 420, width: 1, alpha: 0.75, fade: 0.3, unit: () => 'kn', label: num1 },
-      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
-      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
-      chl: { colour: 'chl', stops: CHL_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, unit: () => 'mg/m³', label: (v) => String(v) },
+      hotspots: { hot: true, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.7, fade: 0.3, full: 1 },
+      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], per: 420, width: 1.1, alpha: 0.85, fade: 0.3, full: 1, unit: () => 'kn', label: num1 },
+      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, full: 1, unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
+      wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, full: 3, overLand: true, unit: () => 'kn', label: (v) => v },
+      chl: { colour: 'chl', stops: CHL_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, full: 1, unit: () => 'mg/m³', label: (v) => String(v) },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
 
