@@ -398,13 +398,17 @@ function fieldCanvas(g, f, kind, stops, land, S = 12) {
 function fishingField(g, prefs = {}, chl = null) {
   const { nx, ny } = g;
   const depth = g.depth || null;
+  // Fishable water: 80 m deep or more (with depths to go by). Edges are measured only between
+  // such points, so the coast itself (land, shallows, river mouths next to the sea) never looks
+  // like a temperature break or a current edge; nearer shore there are no hotspots.
+  const fishable = (k) => !depth || (depth[k] != null && depth[k] >= 80);
   // The water colour's edges (green water meeting blue) at each forecast point: the change of
   // its logarithm to the next points (it doesn't change with the hour here: a week's views).
   let colourEdge = null;
   if (chl?.values) {
     const at = sampler(chl, { chl: chl.values });
     const lg = [];
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = at(g.south + j * g.step, g.west + i * g.step, 'chl'); lg.push(v > 0 ? Math.log10(v) : null); }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = fishable(j * nx + i) ? at(g.south + j * g.step, g.west + i * g.step, 'chl') : null; lg.push(v > 0 ? Math.log10(v) : null); }
     const get = (i, j) => (i < 0 || j < 0 || i >= nx || j >= ny ? null : lg[j * nx + i]);
     const raw0 = lg.map((v, k) => {
       if (v == null) return null;
@@ -439,7 +443,7 @@ function fishingField(g, prefs = {}, chl = null) {
   };
   for (const f of g.frames) {
     if (f.fish) continue;
-    const at = (key, i, j) => (i < 0 || j < 0 || i >= nx || j >= ny ? null : f[key][j * nx + i]);
+    const at = (key, i, j) => (i < 0 || j < 0 || i >= nx || j >= ny || !fishable(j * nx + i) ? null : f[key][j * nx + i]);
     const grad = (val, i, j) => {
       const c = val(i, j); if (c == null) return null;
       const dx = [val(i + 1, j), val(i - 1, j)].filter((v) => v != null).map((v) => Math.abs(v - c));
@@ -462,22 +466,41 @@ function fishingField(g, prefs = {}, chl = null) {
     const rt = rank(tb); const rc = rank(ce); const rg = colourEdge && rank(colourEdge);
     f.fish = []; f.why = [];
     for (let k = 0; k < nx * ny; k++) {
-      if (f.sst[k] == null && f.u[k] == null) { f.fish.push(null); f.why.push(0); continue; }
+      if ((f.sst[k] == null && f.u[k] == null) || !fishable(k)) { f.fish.push(null); f.why.push(0); continue; }
       const b = rt(tb[k]) ** 2; const e = rc(ce[k]) ** 2; const sh = depth ? shelf(depth[k]) : 0.5; const w = warm(f.sst[k]);
       // With the water colour, its edges count too (green water meeting blue: bait).
       const ge = rg && colourEdge[k] != null ? rg(colourEdge[k]) ** 2 : null;
-      const score = ge == null ? 0.3 * b + 0.25 * e + 0.3 * sh + 0.15 * w : 0.25 * b + 0.2 * e + 0.25 * sh + 0.15 * ge + 0.15 * w;
+      // An edge makes a spot: a temperature break, a current edge or a colour edge. The shelf
+      // and the water billfish like only raise it; on their own they never make a hotspot.
+      const edge = ge == null ? 0.55 * b + 0.45 * e : 0.4 * b + 0.3 * e + 0.3 * ge;
+      const score = edge * (0.65 + 0.35 * sh) * (0.85 + 0.15 * w);
       f.fish.push(Math.round(score * 100) / 100);
       f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0) | (ge != null && ge > 0.55 ? 16 : 0));
     }
+    // Peaks, not bands: a spot keeps its score only where it's among the strongest around it
+    // (within two grid points, about 60 km); a long even front along the shelf is otherwise
+    // one band, and what matters is where along it the edge is sharpest.
+    const raw0 = f.fish.slice();
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        if (raw0[k] == null) continue;
+        let top = 0;
+        for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+          const ii = i + di; const jj = j + dj;
+          if (ii >= 0 && jj >= 0 && ii < nx && jj < ny && raw0[jj * nx + ii] != null) top = Math.max(top, raw0[jj * nx + ii]);
+        }
+        if (raw0[k] < 0.98 * top) f.fish[k] = Math.round(raw0[k] * 0.6 * 100) / 100;
+      }
+    }
   }
 }
-// The fishing chart's hotspots: the most promising water (the top eighth of the sea that hour,
-// and never below a fair score) as patches with a bright outline, so the chart underneath stays
+// The fishing chart's hotspots: the most promising water (the top 8% of the fishable sea that
+// hour, and never below a fair score) as patches with a bright outline, so the chart underneath stays
 // readable. Cut at the coast like the other layers.
 function hotspotLimit(f) {
   const xs = (f.fish || []).filter((v) => v != null).sort((a, b) => a - b);
-  return xs.length ? Math.max(0.55, xs[Math.floor(xs.length * 0.88)]) : Infinity;
+  return xs.length ? Math.max(0.4, xs[Math.floor(xs.length * 0.92)]) : Infinity;
 }
 // The patches' fill, a light see-through pink (the outline is drawn as lines, sharp at any zoom).
 function hotspotCanvas(g, f, land) {
@@ -588,7 +611,7 @@ function hotspotLabels(g, f) {
     const lat = g.south + Math.floor(k / g.nx) * g.step; const lng = g.west + (k % g.nx) * g.step;
     if (picked.some((p) => Math.hypot(p.lat - lat, p.lng - lng) < 0.8)) continue;
     const why = f.why?.[k] || 0;
-    const words = [why & 1 && 'Temperature break', why & 2 && 'Current edge', why & 16 && 'Colour edge', why & 4 && 'Shelf', why & 8 && 'Billfish water'].filter(Boolean);
+    const words = [why & 1 && 'Temp break', why & 2 && 'Current', why & 16 && 'Colour', why & 4 && 'Shelf', why & 8 && 'Billfish water'].filter(Boolean);
     if (words.length) picked.push({ lat, lng, text: words.join(' · ') });
     if (picked.length >= 6) break;
   }
