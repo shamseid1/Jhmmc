@@ -4,11 +4,13 @@
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
   const { api, auth, chlorophyll, copernicus, currents, db, depth, satSst, sea } = ctx;
-  const { mergeInto, NONE } = require('../copernicus');
-  // The grid with Copernicus's current put in, worked out once for each pair of downloads.
-  let merged = { grid: null, cop: null, out: null };
-  const withCopernicus = (grid, cop) => {
-    if (merged.grid !== grid || merged.cop !== cop) merged = { grid, cop, out: mergeInto(grid, cop) };
+  const { mergeInto, hourOf, NONE } = require('../copernicus');
+  const { sstInto } = require('../sst');
+  // The grid with Copernicus's current and waves and the satellites' temperature put in,
+  // worked out once for each set of downloads.
+  let merged = { grid: null, cop: null, sat: null, out: null };
+  const withBest = (grid, cop, sat) => {
+    if (merged.grid !== grid || merged.cop !== cop || merged.sat !== sat) merged = { grid, cop, sat, out: sstInto(mergeInto(grid, cop), sat) };
     return merged.out;
   };
 
@@ -45,21 +47,25 @@ module.exports = (ctx) => {
     }
   });
 
-  // The current at Copernicus's full detail (1/12°, about 9 km), one hour at a time, for the
-  // chart's current lines and colours: what it covers, then each hour's east and north
-  // (whole cm/s, null on land).
+  // The sea at Copernicus's full detail (1/12°, about 9 km), one hour at a time, for the chart's
+  // lines and colours: what it covers, then each hour's current east and north (whole cm/s)
+  // and waves (height in cm, the way they come from), null on land. The waves only when they
+  // come on the same grid as the current.
+  const sameGrid = (a, b) => a && b && a.south === b.south && a.west === b.west && a.nx === b.nx && a.ny === b.ny;
   api.get('/currents/fine', async (_req, res) => {
-    const cop = await copernicus?.get().catch(() => null);
-    if (!cop) return res.set('Cache-Control', 'no-store').json({ ready: false });
-    const { south, west, step, nx, ny, t0, hours } = cop;
-    res.set('Cache-Control', 'public, max-age=900').json({ ready: true, south, west, step, nx, ny, t0, hours });
+    const C = (await copernicus?.get().catch(() => null))?.currents;
+    if (!C) return res.set('Cache-Control', 'no-store').json({ ready: false });
+    const { south, west, step, nx, ny } = C;
+    res.set('Cache-Control', 'public, max-age=900').json({ ready: true, south, west, step, nx, ny });
   });
   api.get('/currents/fine/:t', async (req, res) => {
     const cop = await copernicus?.get().catch(() => null);
-    const h = cop ? Math.round((Date.parse(`${req.params.t}:00Z`) - Date.parse(`${cop.t0}:00Z`)) / 3600e3) : NaN;
-    if (!(h >= 0 && h < cop.hours)) return res.status(404).json({ error: 'No current for that hour.' });
-    const out = (a) => a.map((x) => (x === NONE ? null : x));
-    res.set('Cache-Control', 'public, max-age=3600').json({ t0: cop.t0, u: out(cop.u[h]), v: out(cop.v[h]) });
+    const C = cop?.currents; const W = sameGrid(C, cop?.waves) ? cop.waves : null;
+    const u = C && hourOf(C, req.params.t, 'u');
+    if (!u) return res.status(404).json({ error: 'No current for that hour.' });
+    const out = (a) => (a ? a.map((x) => (x === NONE ? null : x)) : null);
+    res.set('Cache-Control', 'public, max-age=3600').json({ u: out(u), v: out(hourOf(C, req.params.t, 'v')),
+      wh: out(W && hourOf(W, req.params.t, 'wh')), wd: out(W && hourOf(W, req.params.t, 'wd')) });
   });
 
   // The fishing chart's preferences: the water temperature and depth billfish have been
@@ -85,7 +91,8 @@ module.exports = (ctx) => {
     try {
       const grid = await currents.get();
       const cop = await copernicus?.get().catch(() => null);
-      res.set('Cache-Control', 'public, max-age=900').json(withCopernicus(grid, cop));
+      const sat = await satSst?.get().catch(() => null);
+      res.set('Cache-Control', 'public, max-age=900').json(withBest(grid, cop, sat));
     } catch (err) {
       // Not ready yet (just after an update): said at once, and the page asks again by itself.
       if (err.preparing) {

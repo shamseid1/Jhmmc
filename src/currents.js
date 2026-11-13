@@ -2,17 +2,17 @@
 
 const fs = require('fs');
 
-// The chart's data: the ocean model's surface currents, water temperature and waves (Open-Meteo's
-// marine forecast, from Copernicus/Mercator) and the wind (its weather forecast) on a grid over
-// the fishing grounds, every 3 hours for 3 days. One grid for everyone, fetched every 6 hours, in
-// parts to keep each request small; the wind, smooth over this distance, on every other
-// point and filled in between (Open-Meteo counts each point, so this keeps well inside the
-// free allowance).
+// The chart's data on a grid over the fishing grounds, every hour for 3 days: the wind (Open-
+// Meteo's weather forecast, ECMWF's model here) and, when Copernicus can't give them, the
+// ocean model's surface currents, water temperature and waves (Open-Meteo's marine forecast).
+// One grid for everyone, fetched every 6 hours, in parts to keep each request small.
+// Open-Meteo counts each point: with the sea from Copernicus, the wind is asked for at every
+// point (about 1,300 a fetch); with the sea from Open-Meteo too, the wind is asked for at every
+// other point and filled in between, so the two keep inside the free 10,000 a day.
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
 const FORECAST = 'https://api.open-meteo.com/v1/forecast';
 // From Guinea-Bissau and the Bissagos (12°N) past Conakry and Freetown to the Ivory Coast border,
-// well out past the shelf (1.5°N): about 1,300 points 0.3° (33 km) apart, with the wind on
-// every other one, about 1,700 a fetch, four times a day, inside the free 10,000 a day.
+// well out past the shelf (1.5°N): about 1,300 points 0.3° (33 km) apart.
 const REGION = { south: 1.5, north: 12.0, west: -17.8, east: -7.0, step: 0.3 };
 const KN_PER_KMH = 1 / 1.852;
 
@@ -28,10 +28,10 @@ function grid(r = REGION) {
 // east and north: the real current at that hour, the tide in it), water temperature, waves and
 // wind; null on land.
 // The wind grid: every other row and column (and the last), as indexes into the full grid.
-const coarse = (n) => { const xs = []; for (let i = 0; i < n; i += 2) xs.push(i); if (xs.at(-1) !== n - 1) xs.push(n - 1); return xs; };
-function windGrid(r = REGION) {
+const coarse = (n, every) => { const xs = []; for (let i = 0; i < n; i += every) xs.push(i); if (xs.at(-1) !== n - 1) xs.push(n - 1); return xs; };
+function windGrid(r = REGION, every = 2) {
   const { nx, ny } = grid(r);
-  const cx = coarse(nx); const cy = coarse(ny);
+  const cx = coarse(nx, every); const cy = coarse(ny, every);
   const pts = [];
   for (const j of cy) for (const i of cx) pts.push([+(r.south + j * r.step).toFixed(3), +(r.west + i * r.step).toFixed(3)]);
   return { cx, cy, pts };
@@ -47,8 +47,10 @@ function fill(vals, cx, cy, i, j) {
   for (const [v, wt] of c) if (v != null && wt > 0) { sum += v * wt; w += wt; }
   return w > 0 ? Math.round((sum / w) * 10) / 10 : null;
 }
-function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
-  const times = results.find((x) => x?.hourly?.time)?.hourly.time || [];
+function frames(results0, r = REGION, { nx, ny } = grid(r), wind = null) {
+  // Without the marine forecast (the sea from Copernicus): the hours from the wind's, the sea empty.
+  const times = (results0.length ? results0 : wind?.results || []).find((x) => x?.hourly?.time)?.hourly.time || [];
+  const results = results0.length ? results0 : Array(nx * ny).fill(null);
   // Each point's hourly u and v.
   const uv = results.map((x) => {
     const hu = []; const hv = [];
@@ -65,7 +67,7 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
   });
   const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
   // The wind (knots, where it blows to) on the coarse grid, by the same hour.
-  const wg = wind && windGrid(r);
+  const wg = wind && windGrid(r, wind.every || 2);
   const windAt = (h, key) => {
     if (!wind) return null;
     const vals = wg.cy.map((_, b) => wg.cx.map((__, a) => {
@@ -94,7 +96,7 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
     });
     out.push({ time: times[h], u, v, sst, wh, wd, wu: windAt(h, 'u'), wv: windAt(h, 'v') });
   }
-  return { south: r.south, west: r.west, step: r.step, nx, ny, hours: 1, frames: out };
+  return { south: r.south, west: r.west, step: r.step, nx, ny, hours: 1, seaFrom: results0.length ? 'Open-Meteo' : null, frames: out };
 }
 
 // Open-Meteo's free limit is 600 points a minute (and 5,000 an hour, 10,000 a day): the grid is
@@ -104,8 +106,10 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
 // a chart more than 12 hours old is never shown.
 // Until the very first chart is ready it says so (err.preparing). A refused fetch isn't tried
 // again for 10 minutes, so visits don't keep knocking.
+// seaElsewhere(): whether the currents, waves and temperature come from elsewhere (Copernicus
+// and the satellites) just now; then only the wind is fetched here.
 function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, region = REGION, depth = null, file = null,
-  gapMs = 61000, partSize = 360, retryMs = 10 * 60e3, maxAgeMs = 12 * 3600e3 } = {}) {
+  gapMs = 61000, partSize = 360, retryMs = 10 * 60e3, maxAgeMs = 12 * 3600e3, seaElsewhere = () => false } = {}) {
   let cached = null;
   let saved = null;
   try { if (file) saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = null; }
@@ -132,16 +136,19 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     return Date.now() + retryMs;
   };
   const pause = () => new Promise((r) => setTimeout(r, gapMs));
-  async function load() {
-    const g = grid(region);
-    const n = Math.ceil(g.pts.length / partSize);
-    const size = Math.ceil(g.pts.length / n);
-    const parts = Array.from({ length: n }, (_, k) => g.pts.slice(k * size, (k + 1) * size));
+  // Time for a new chart: none yet, another grid, 6 hours old, or only the wind while the sea
+  // can't come from Copernicus any more.
+  const stale = () => !cached || cached.otherGrid || Date.now() - cached.at >= ttlMs || (cached.data.seaFrom === null && !seaElsewhere());
+  // Points asked for in parts of about partSize, a minute apart; each part's answers in order.
+  let asked = 0;
+  async function inParts(base, query, pts) {
+    const n = Math.ceil(pts.length / partSize);
+    const size = Math.ceil(pts.length / n);
     const results = [];
-    for (const [k, part] of parts.entries()) {
-      if (k) await pause();
-      const url = `${MARINE}?latitude=${part.map((p) => p[0]).join(',')}&longitude=${part.map((p) => p[1]).join(',')}`
-        + '&hourly=ocean_current_velocity,ocean_current_direction,sea_surface_temperature,wave_height,wave_direction&forecast_days=3&timezone=GMT&cell_selection=nearest';
+    for (let k = 0; k < n; k++) {
+      if (asked++) await pause();
+      const part = pts.slice(k * size, (k + 1) * size);
+      const url = `${base}?latitude=${part.map((p) => p[0]).join(',')}&longitude=${part.map((p) => p[1]).join(',')}&${query}`;
       // Refused for going over the minute's allowance: wait a minute and ask again (twice).
       let res;
       for (let tries = 0; ; tries++) {
@@ -158,16 +165,22 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
       const body = await res.json();
       results.push(...(Array.isArray(body) ? body : [body]));
     }
-    // The wind: if it fails, the chart still has the sea.
+    return results;
+  }
+  async function load() {
+    const g = grid(region);
+    asked = 0;
+    // The sea from Open-Meteo only when Copernicus can't give it just now.
+    const onlyWind = seaElsewhere();
+    const results = onlyWind ? [] : await inParts(MARINE, 'hourly=ocean_current_velocity,ocean_current_direction,sea_surface_temperature,wave_height,wave_direction&forecast_days=3&timezone=GMT&cell_selection=nearest', g.pts);
+    // The wind: at every point when it's all that's asked for here (then without it there's no
+    // chart: an error), else every other point (if it fails, the chart still has the sea).
     let wind = null;
+    const every = onlyWind ? 1 : 2;
     try {
-      await pause();
-      const wgr = windGrid(region);
-      const url = `${FORECAST}?latitude=${wgr.pts.map((p) => p[0]).join(',')}&longitude=${wgr.pts.map((p) => p[1]).join(',')}`
-        + '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&forecast_days=3&timezone=GMT';
-      const res = await fetchImpl(url, { signal: AbortSignal.timeout(30000) });
-      if (res.ok) { const body = await res.json(); wind = { results: Array.isArray(body) ? body : [body] }; }
-    } catch { /* no wind this time */ }
+      const wgr = windGrid(region, every);
+      wind = { every, results: await inParts(FORECAST, 'hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn&forecast_days=3&timezone=GMT', wgr.pts) };
+    } catch (err) { if (onlyWind) throw err; console.warn(`Chart wind: ${err.message}`); }
     const data = frames(results, region, g, wind);
     // The seabed depth at each point (for the fishing chart's shelf): it doesn't change, so
     // the last chart's is kept if the depth service doesn't answer.
@@ -197,7 +210,7 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
     // The chart now: the last one (refreshing it in the background if it's old). With wait,
     // a fresh one is waited for (the tests).
     async get({ wait = false } = {}) {
-      if (!cached || cached.otherGrid || Date.now() - cached.at >= ttlMs) {
+      if (stale()) {
         const p = refresh();
         if (wait) await p;
       }
@@ -206,10 +219,10 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
       throw Object.assign(new Error('The chart is being prepared. It will be ready in a few minutes.'), { preparing: true, lastError, fetching: !!pending });
     },
     // Start fetching (at start-up, so the chart is ready before anyone asks).
-    warm: () => { if (!cached || cached.otherGrid || Date.now() - cached.at >= ttlMs) refresh(); },
+    warm: () => { if (stale()) refresh(); },
     // For the admin: when the chart was last fetched, whether a fetch is on, the last refusal;
     // and a fetch now, whatever the wait after a refusal (the admin's own try).
-    status: () => ({ fetchedAt: cached?.at ?? null, fetching: !!pending, refusal: lastError, nextTry: retryAt || null }),
+    status: () => ({ fetchedAt: cached?.at ?? null, fetching: !!pending, refusal: lastError, nextTry: retryAt || null, seaFrom: cached?.data?.seaFrom ?? null }),
     tryNow: () => { retryAt = 0; failedAt = 0; return refresh(); },
   };
 }

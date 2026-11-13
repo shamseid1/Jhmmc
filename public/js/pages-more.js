@@ -615,6 +615,7 @@ PAGE_GROUPS.push((view) => ({
     const fineVals = new Map(); // hour's time -> { u, v } in knots
     const fineAsked = new Set();
     let fineArrived = null; // redraws the hour (set once the map's drawn)
+    let realign = null; // puts the time strip back on an hour (set once it's made)
     const fineBounds = () => raster(fine, 1).bounds;
     const timeOf = (h) => new Date(t0 + h * 3600e3).toISOString().slice(0, 16);
     const fineFor = (time) => {
@@ -622,7 +623,14 @@ PAGE_GROUPS.push((view) => ({
       fineAsked.add(time);
       const kn = (a) => a.map((c) => (c == null ? null : c / 51.444));
       api(`/currents/fine/${encodeURIComponent(time)}`).then((x) => {
-        fineVals.set(time, { u: kn(x.u), v: kn(x.v) });
+        const fv = { u: kn(x.u), v: kn(x.v) };
+        // The waves (height in cm, the way they come from): metres, and the way they go as a vector.
+        if (x.wh) {
+          fv.wh = x.wh.map((c) => (c == null ? null : c / 100));
+          fv.xu = x.wd.map((d, k) => (d == null || x.wh[k] == null ? null : Math.sin(((d + 180) * Math.PI) / 180)));
+          fv.xv = x.wd.map((d, k) => (d == null || x.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
+        }
+        fineVals.set(time, fv);
         if (fineVals.size > 80) fineVals.delete(fineVals.keys().next().value);
         if (view.isConnected && timeOf(hour) === time) fineArrived?.();
       }).catch(() => {});
@@ -723,6 +731,14 @@ PAGE_GROUPS.push((view) => ({
       cur = f;
       const L1 = LAYER[layer];
       at = sampler(data, f);
+      // None: nothing changes with the hour, so no time bar (and no playing).
+      if (bar.hidden !== (layer === 'none')) {
+        if (layer === 'none' && isPlaying) stopPlay();
+        bar.hidden = layer === 'none';
+        lift();
+        // Shown again: the strip back on the hour (a hidden strip can't keep its place).
+        if (!bar.hidden) { const keep = hour; requestAnimationFrame(() => realign?.(keep)); }
+      }
       // The current at full detail for this hour, if it's in (asked for if not).
       const ft = timeOf(hour);
       fineFor(ft); fineFor(timeOf(hour + 1));
@@ -731,9 +747,12 @@ PAGE_GROUPS.push((view) => ({
       fineNow = fineAt;
       if (L1.lines) {
         const [ku, kv, k] = L1.lines;
-        lines = fineAt && ku === 'u'
-          ? (lat, lng, key) => fineAt(lat, lng, key) ?? at(lat, lng, key)
-          : (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
+        const fk = fv && fv[ku] ? fineAt : null; // this layer's field at full detail, if it's in
+        lines = (lat, lng, key) => {
+          const name = key === 'u' ? ku : kv;
+          const x = (fk && fk(lat, lng, name)) ?? at(lat, lng, name);
+          return x == null ? null : x * k;
+        };
       } else lines = null;
       labels?.remove(); labels = null;
       outline?.remove(); outline = null;
@@ -747,8 +766,9 @@ PAGE_GROUPS.push((view) => ({
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
-      } else if (layer === 'currents' && fv) {
-        putPic(`fine|${ft}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(fine, fv, 'speed', SPEED_SCALE, coast, 4), 0.85, 'field-image', fineBounds());
+      } else if ((layer === 'currents' && fv) || (layer === 'wave' && fv?.wh)) {
+        // At full detail (Copernicus, about 9 km).
+        putPic(`fine|${layer}|${ft}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(fine, fv, L1.colour, L1.stops, coast, 4), 0.85, 'field-image', fineBounds());
       } else if (layer === 'sst' && satGrid) {
         // Measured by satellite: one picture and its lines (it doesn't change with the hour).
         putPic(`satsst|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(satGrid, { sst: satGrid.values }, 'sst', SST_SCALE, coast, 2), 0.85, 'field-image', satBounds);
@@ -835,12 +855,15 @@ PAGE_GROUPS.push((view) => ({
     const pads = () => { for (const p of tl.querySelectorAll('.tl-pad')) p.style.width = `${Math.max(0, tl.clientWidth / 2 - PX / 2)}px`; };
     pads();
     tl.scrollLeft = hour * PX;
+    realign = (h) => { pads(); hour = h; tl.scrollLeft = h * PX; show(); };
     let ticking = false;
     tl.addEventListener('scroll', () => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
         ticking = false;
+        // Hiding the strip (None) puts it back to the start: not a change of hour.
+        if (bar.hidden) return;
         const h = Math.min(HOURS - 1, Math.max(0, Math.round(tl.scrollLeft / PX)));
         if (h !== hour) { hour = h; show(); }
       });
@@ -886,7 +909,7 @@ PAGE_GROUPS.push((view) => ({
       if (!at) return navOnly();
       const u = fineNow?.(lat, lng, 'u') ?? at(lat, lng, 'u'); const v = fineNow?.(lat, lng, 'v') ?? at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
-      const t = satAt?.(lat, lng, 'sst') ?? at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
+      const t = satAt?.(lat, lng, 'sst') ?? at(lat, lng, 'sst'); const wh = fineNow?.(lat, lng, 'wh') ?? at(lat, lng, 'wh');
       const f = cur;
       if (u == null && wu == null) return navOnly();
       // Directions and reasons: the nearest grid point's (they don't blend).
@@ -896,8 +919,10 @@ PAGE_GROUPS.push((view) => ({
       const why = f.why?.[j0 * data.nx + i0] || 0;
       const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 16 && 'colour edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
       const d = data.depth?.[j0 * data.nx + i0];
-      const wd = f.wd?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
+      // The waves at full detail if they're in (the way they come from: back from where they go).
+      const fxu = fineNow?.(lat, lng, 'xu'); const fxv = fineNow?.(lat, lng, 'xv');
+      const wd = fxu != null && fxv != null ? (deg(fxu, fxv) + 180 + 360) % 360 : f.wd?.[j0 * data.nx + i0];
       // Short, as a plotter shows it: the name, then the value (compass points as N, SE…).
       const pt = (deg0) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
       const rows = [

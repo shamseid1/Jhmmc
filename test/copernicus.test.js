@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { decompress } = require('../src/blosc');
-const { createCopernicus, mergeInto } = require('../src/copernicus');
+const { createCopernicus, mergeInto, hourOf } = require('../src/copernicus');
 
 test('Blosc with LZ4 and the byte shuffle, as the official library packs it', () => {
   // round(sin(n / 20) * 4) / 8 for n = 0..299, as 32-bit floats, packed by numcodecs.Blosc(lz4, shuffle).
@@ -12,20 +12,22 @@ test('Blosc with LZ4 and the byte shuffle, as the official library packs it', ()
   for (let n = 0; n < 300; n++) assert.equal(f[n], Math.round(Math.sin(n / 20) * 4) / 8);
 });
 
-// A made-up store: a 4 x 4 world of 1° squares in blocks of 2 x 2 points and 48 hours, the
-// east current n/100 m/s at hour n, north 0.1 m/s; one block all land (not there: 403).
+// A made-up store: a 4 x 4 world of 1° squares in blocks of 2 x 2 points and 48 steps. The
+// current hourly: east n/100 m/s at hour n, north 0.1 m/s. The waves every 3 hours: n/10 m
+// high at step n, from 200°. One block all land (not there: 403).
 function store() {
   const H = 48;
   const t0 = Date.UTC(2026, 10, 12);
-  const dims = {
-    latitude: { coords: { min: 0, step: 1, len: 4 }, chunkLen: { utotal: 2 } },
-    longitude: { coords: { min: -12, step: 1, len: 4 }, chunkLen: { utotal: 2 } },
-    time: { coords: { min: t0, step: 3600e3, len: 200 }, chunkLen: { utotal: H } },
-  };
-  const blosc = (floats) => {
-    const raw = Buffer.from(new Float32Array(floats).buffer);
+  const dims = (step, v) => ({
+    latitude: { coords: { min: 0, step: 1, len: 4 }, chunkLen: { [v]: 2 } },
+    longitude: { coords: { min: -12, step: 1, len: 4 }, chunkLen: { [v]: 2 } },
+    time: { coords: { min: t0, step, len: 200 }, chunkLen: { [v]: H } },
+    ...(v === 'utotal' ? { elevation: { coords: { values: [-0.5] }, chunkLen: { [v]: 1 } } } : {}),
+  });
+  const blosc = (vals, ints) => {
+    const raw = Buffer.from((ints ? new Int16Array(vals) : new Float32Array(vals)).buffer);
     const head = Buffer.alloc(16);
-    head[0] = 2; head[1] = 1; head[2] = 0x02 | 0x20; head[3] = 4; // stored as is
+    head[0] = 2; head[1] = 1; head[2] = 0x02 | 0x20; head[3] = ints ? 2 : 4; // stored as is
     head.writeUInt32LE(raw.length, 4); head.writeUInt32LE(raw.length, 8); head.writeUInt32LE(raw.length + 16, 12);
     return Buffer.concat([head, raw]);
   };
@@ -34,13 +36,23 @@ function store() {
     asked,
     fetchImpl: async (url) => {
       asked.push(url);
-      if (url.endsWith('product.stac.json')) return Response.json({ links: [{ rel: 'item', href: 'cmems_mod_glo_phy_anfc_merged-uv_PT1H-i_202211/dataset.stac.json' }, { rel: 'item', href: 'other/dataset.stac.json' }] });
-      if (url.endsWith('dataset.stac.json')) return Response.json({ assets: { geoChunked: { href: 'https://s3.example/geo.zarr', viewDims: dims } } });
-      const [, name, tc, , jc, ic] = url.match(/geo\.zarr\/(\w+)\/(\d+)\.(\d+)\.(\d+)\.(\d+)$/).map((x, k) => (k > 1 ? Number(x) : x));
+      const wav = /WAV|wav\.zarr/.test(url);
+      if (url.endsWith('product.stac.json')) return Response.json({ links: [{ rel: 'item', href: wav ? 'cmems_mod_glo_wav_anfc_0.083deg_PT3H-i_202411/dataset.stac.json' : 'cmems_mod_glo_phy_anfc_merged-uv_PT1H-i_202211/dataset.stac.json' }, { rel: 'item', href: 'other/dataset.stac.json' }] });
+      // The waves as the real store keeps them: whole numbers, 0.01 a step, the direction from 180.
+      if (url.endsWith('.zmetadata')) {
+        return Response.json({ metadata: wav
+          ? { 'VHM0/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VHM0/.zattrs': { scale_factor: 0.01, add_offset: 0 }, 'VMDR/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VMDR/.zattrs': { scale_factor: 0.01, add_offset: 180 } }
+          : { 'utotal/.zarray': { dtype: '<f4' }, 'vtotal/.zarray': { dtype: '<f4' } } });
+      }
+      if (url.endsWith('dataset.stac.json')) return Response.json({ assets: { geoChunked: { href: `https://s3.example/${wav ? 'wav' : 'cur'}.zarr`, viewDims: wav ? dims(3 * 3600e3, 'VHM0') : dims(3600e3, 'utotal') } } });
+      const m = wav ? url.match(/\.zarr\/(\w+)\/(\d+)\.(\d+)\.(\d+)$/) : url.match(/\.zarr\/(\w+)\/(\d+)\.0\.(\d+)\.(\d+)$/);
+      if (!m) return new Response('no such key', { status: 403 });
+      const [, name, tc, jc, ic] = m.map((x, k) => (k > 1 ? Number(x) : x));
       if (jc === 1 && ic === 1) return new Response('denied', { status: 403 });
       const vals = [];
-      for (let t = 0; t < H; t++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) vals.push(name === 'utotal' ? (tc * H + t) / 100 : 0.1);
-      return new Response(blosc(vals));
+      const val = { utotal: (n) => n / 100, vtotal: () => 0.1, VHM0: (n) => n * 10, VMDR: () => 2000 }[name];
+      for (let t = 0; t < H; t++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) vals.push(val(tc * H + t));
+      return new Response(blosc(vals, wav));
     },
   };
 }
@@ -51,17 +63,26 @@ test('Copernicus: the hourly current over the area, from today midnight, land le
   Date.now = () => Date.UTC(2026, 10, 13, 9, 30);
   try {
     const cop = createCopernicus({ fetchImpl: s.fetchImpl, area: { south: 0, north: 3, west: -12, east: -9 }, hours: 72, parallel: 2 });
-    const d = await cop.get({ wait: true });
-    assert.ok(d, JSON.stringify(cop.status()));
-    assert.deepEqual([d.south, d.west, d.nx, d.ny, d.t0, d.hours], [0, -12, 4, 4, '2026-11-13T00:00', 72]);
+    const all = await cop.get({ wait: true });
+    assert.ok(all?.currents && all?.waves, JSON.stringify(cop.status()));
+    assert.equal(cop.ready(), true);
+    const d = all.currents;
+    assert.deepEqual([d.south, d.west, d.nx, d.ny, d.t0, d.stepH, d.steps], [0, -12, 4, 4, '2026-11-13T00:00', 1, 72]);
+    const w = all.waves;
+    assert.deepEqual([w.t0, w.stepH, w.steps], ['2026-11-13T00:00', 3, 25]);
+    // Today 00:00 is the waves' step 8 (0.8 m); 04:00 is a third of the way from step 9 to 10.
+    assert.equal(hourOf(w, '2026-11-13T00:00', 'wh')[0], 80);
+    assert.equal(hourOf(w, '2026-11-13T04:00', 'wh')[0], 93);
+    assert.equal(hourOf(w, '2026-11-13T04:00', 'wd')[0], 200);
     // Hour 0 of today is the store's hour 24; hour 30 is in its second time block.
     assert.equal(d.u[0][0], 24); assert.equal(d.u[30][0], 54); assert.equal(d.v[5][5], 10);
     assert.equal(d.u[0][2 * 4 + 2], -32768, 'the land block');
     assert.ok(s.asked.some((u) => u.includes('/utotal/1.0.0.0')), 'the second time block');
     // Into the chart's grid: knots, where Copernicus has water; Open-Meteo's kept elsewhere.
     const grid = { south: 0, west: -12, step: 1, nx: 4, ny: 4, frames: [{ time: '2026-11-13T00:00', u: Array(16).fill(9), v: Array(16).fill(9) }, { time: '2026-11-20T00:00', u: [1], v: [1] }] };
-    const m = mergeInto(grid, d);
+    const m = mergeInto(grid, all);
     assert.equal(m.frames[0].u[0], Math.round((24 / 51.444) * 100) / 100);
+    assert.deepEqual([m.frames[0].wh[0], m.frames[0].wd[0]], [0.8, 200]);
     assert.equal(m.frames[0].u[2 * 4 + 2], 9, 'land in Copernicus: Open-Meteo\'s stays');
     assert.equal(m.frames[1].u[0], 1, 'an hour Copernicus doesn\'t have');
     assert.equal(grid.frames[0].u[0], 9, 'the grid itself unchanged');
@@ -70,7 +91,8 @@ test('Copernicus: the hourly current over the area, from today midnight, land le
 
 test('Copernicus: most of the store gone is a failure, not an empty sea', async () => {
   const s = store();
-  const cop = createCopernicus({ fetchImpl: async (url) => (url.includes('geo.zarr') ? new Response('', { status: 403 }) : s.fetchImpl(url)), area: { south: 0, north: 3, west: -12, east: -9 }, retryMs: 1 });
+  const cop = createCopernicus({ fetchImpl: async (url) => (url.includes('.zarr/') && !url.endsWith('.zmetadata') ? new Response('', { status: 403 }) : s.fetchImpl(url)), area: { south: 0, north: 3, west: -12, east: -9 }, retryMs: 1 });
   assert.equal(await cop.get({ wait: true }), null);
   assert.match(cop.status().error, /blocks not there/);
+  assert.equal(cop.ready(), false);
 });

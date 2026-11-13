@@ -131,3 +131,26 @@ test('a new area: the last chart is shown until the new one is ready', async () 
   await new Promise((r) => setTimeout(r, 20));
   assert.ok(asked > 0, 'and the new area asked for straight away');
 });
+
+test('with the sea from Copernicus and the satellites: only the wind, at every point', async () => {
+  const region = { south: 5, north: 5.6, west: -11, east: -10.4, step: 0.3 };
+  const urls = [];
+  const time = Array.from({ length: 72 }, (_, h) => `2026-11-12T${String(h % 24).padStart(2, '0')}:00`);
+  let elsewhere = true;
+  const currents = createCurrents({ region, gapMs: 0, seaElsewhere: () => elsewhere, fetchImpl: async (url) => {
+    urls.push(url);
+    const lats = new URL(url).searchParams.get('latitude').split(',');
+    if (url.includes('/v1/forecast')) return new Response(JSON.stringify(lats.map(() => ({ hourly: { time, wind_speed_10m: time.map(() => 10), wind_direction_10m: time.map(() => 0) } }))));
+    return new Response(JSON.stringify(lats.map(() => ({ hourly: { time, ocean_current_velocity: time.map(() => 1.852), ocean_current_direction: time.map(() => 90), sea_surface_temperature: time.map(() => 28), wave_height: time.map(() => 1), wave_direction: time.map(() => 200) } }))));
+  } });
+  const d = await currents.get({ wait: true });
+  assert.equal(urls.length, 1, 'no marine forecast');
+  assert.match(urls[0], /\/v1\/forecast/);
+  assert.equal(new URL(urls[0]).searchParams.get('latitude').split(',').length, 9, 'the wind at every point');
+  assert.deepEqual([d.frames.length, d.seaFrom, d.frames[0].u[4], d.frames[0].wv[4]], [72, null, null, -10]);
+  // Copernicus gone: the chart is fetched again, the sea from Open-Meteo.
+  elsewhere = false;
+  const d2 = await currents.get({ wait: true });
+  assert.equal(d2.seaFrom, 'Open-Meteo');
+  assert.ok(urls.some((u) => u.includes('marine')));
+});

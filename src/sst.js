@@ -70,7 +70,26 @@ function createSst({ fetchImpl = globalThis.fetch, file = null, ttlMs = 12 * 360
       throw Object.assign(new Error('The satellite water temperature is being prepared.'), { preparing: true });
     },
     warm: () => { if (!cached || Date.now() - cached.at >= ttlMs) refresh(); },
+    ready: () => !!fresh(),
   };
 }
 
-module.exports = { createSst, parse, SOURCES };
+// The chart's grid with the measured temperature put in at each of its points (the same at
+// every hour: a day's measurement), where the satellites have sea; the forecast's stays
+// elsewhere. A new object.
+function sstInto(grid, sat) {
+  if (!sat?.values || !grid?.frames) return grid;
+  const vals = [];
+  for (let j = 0; j < grid.ny; j++) {
+    for (let i = 0; i < grid.nx; i++) {
+      const x = (grid.west + i * grid.step - sat.west) / sat.step; const y = (grid.south + j * grid.step - sat.south) / sat.step;
+      const a = Math.round(x); const b = Math.round(y);
+      const v = a >= 0 && b >= 0 && a < sat.nx && b < sat.ny ? sat.values[b * sat.nx + a] : null;
+      vals.push(v == null ? null : Math.round(v * 10) / 10);
+    }
+  }
+  const frames = grid.frames.map((f) => ({ ...f, sst: f.sst ? f.sst.map((x, k) => vals[k] ?? x) : vals }));
+  return { ...grid, frames, sstFrom: sat.source };
+}
+
+module.exports = { createSst, parse, sstInto, SOURCES };
