@@ -344,7 +344,9 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         for (const lines of cells) {
           for (const [m, zmin, flat] of lines) {
-            if (zmin > z) continue;
+            // As a plotter: each finer set of lines one zoom later than it's made for (the main
+            // depths, from furthest out, as they are), so a screen never has too many.
+            if ((zmin <= 6 ? zmin : zmin + 1) > z) continue;
             // Only pieces that cross this tile: by their whole extent (a long straight stretch can
             // cross a tile without a point in it).
             let s0 = Infinity; let n0 = -Infinity; let w0 = Infinity; let e0 = -Infinity;
@@ -355,7 +357,7 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
             if (n0 < south || s0 > north || e0 < west || w0 > east) continue;
             // Bolder for the lines that show from further out (the main depths).
             const major = zmin <= z - 2;
-            ctx.strokeStyle = color; ctx.globalAlpha = major ? 0.85 : 0.55; ctx.lineWidth = major ? 1.3 : 0.8;
+            ctx.strokeStyle = color; ctx.globalAlpha = major ? 0.7 : 0.4; ctx.lineWidth = major ? 1 : 0.6;
             ctx.beginPath();
             const pts = [];
             for (let k = 0; k < flat.length; k += 2) {
@@ -366,14 +368,14 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
             ctx.stroke();
             // Labels along the line, about every 220 px of it (wherever it is, at any zoom),
             // where they're well inside this tile.
-            let walked = 0; let nextAt = 110;
+            let walked = 0; let nextAt = 160;
             for (let k = 1; k < pts.length; k++) {
               const [x0, y0] = pts[k - 1]; const [x1, y1] = pts[k];
               const seg = Math.hypot(x1 - x0, y1 - y0);
               while (seg > 0 && walked + seg >= nextAt) {
                 const t = (nextAt - walked) / seg; const x = x0 + (x1 - x0) * t; const y = y0 + (y1 - y0) * t;
                 if (x > 18 && y > 10 && x < size.x - 18 && y < size.y - 10) labels.push({ m, x, y, ang: Math.atan2(y1 - y0, x1 - x0) });
-                nextAt += 220;
+                nextAt += 340;
               }
               walked += seg;
             }
