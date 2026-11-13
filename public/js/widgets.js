@@ -431,6 +431,7 @@ function fieldCanvas(g, f, kind, stops, land, S = 12) {
 // (and depth) billfish have been landed in this season, every boat's fish together. Each is
 // 0 to 1; breaks and edges are ranked against the rest of the map that day, so the best of
 // the day always shows. f.fish is the score; f.why the reasons (1 break, 2 edge, 4 shelf, 8 water).
+const EDGE_MEMO = new WeakMap(); // a satellite grid -> its edges on each forecast grid
 function fishingField(g, prefs = {}, chl = null, sat = null) {
   const { nx, ny } = g;
   const depth = g.depth || null;
@@ -440,8 +441,18 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
   const fishable = (k) => !depth || (depth[k] != null && depth[k] >= 80);
   // The water colour's edges (green water meeting blue) at each forecast point: the change of
   // its logarithm to the next points (it doesn't change with the hour here: a week's views).
+  // (The colour's and the satellites' edges don't change with the hour: worked out once for
+  // each grid, then kept.)
+  const gridKey = `${g.south},${g.west},${g.step},${nx},${ny}`;
+  const memo = (src, name, make) => {
+    if (!src) return make();
+    if (!EDGE_MEMO.has(src)) EDGE_MEMO.set(src, new Map());
+    const m = EDGE_MEMO.get(src); const k = `${name}|${gridKey}|${depth ? 1 : 0}`;
+    if (!m.has(k)) m.set(k, make());
+    return m.get(k);
+  };
   let colourEdge = null;
-  if (chl?.values) {
+  if (chl?.values) colourEdge = memo(chl, 'colour', () => {
     const at = sampler(chl, { chl: chl.values });
     const lg = [];
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const v = fishable(j * nx + i) ? at(g.south + j * g.step, g.west + i * g.step, 'chl') : null; lg.push(v > 0 ? Math.log10(v) : null); }
@@ -452,14 +463,15 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
       const d = [get(i + 1, j), get(i - 1, j), get(i, j + 1), get(i, j - 1)].filter((x) => x != null).map((x) => Math.abs(x - v));
       return d.length ? Math.max(...d) : null;
     });
-    colourEdge = raw0;
-  }
+    return raw0;
+  });
   // The temperature breaks measured by satellite (about 3 km), when there are: at each
   // forecast point, the sharpest change over 2 satellite steps (about 6 km) within its square.
   // Much finer than the forecast's own temperature, which smooths a narrow break away.
   let satBreak = null;
   let satT = null; // and its temperature at each forecast point
-  if (sat?.values) {
+  if (sat?.values) ({ satBreak, satT } = memo(sat, 'sat', () => {
+    let satBreak = null; let satT = null;
     const sv = sat.values; const sx = sat.nx; const sy = sat.ny;
     const sg = new Float32Array(sx * sy).fill(NaN);
     for (let j = 0; j < sy; j++) {
@@ -490,7 +502,8 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
         satBreak.push(m);
       }
     }
-  }
+    return { satBreak, satT };
+  }));
   const rank = (vals) => {
     const xs = vals.filter((v) => v != null).sort((a, b) => a - b);
     return (v) => {
@@ -548,18 +561,19 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
       const edge = ge == null ? 0.55 * b + 0.45 * e : 0.4 * b + 0.3 * e + 0.3 * ge;
       const score = edge * (0.65 + 0.35 * sh) * (0.85 + 0.15 * w);
       f.fish.push(Math.round(score * 100) / 100);
-      f.why.push((b > 0.55 ? 1 : 0) | (e > 0.55 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0) | (ge != null && ge > 0.55 ? 16 : 0));
+      f.why.push((b > 0.8 ? 1 : 0) | (e > 0.8 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0) | (ge != null && ge > 0.8 ? 16 : 0));
     }
     // Peaks, not bands: a spot keeps its score only where it's among the strongest around it
-    // (within two grid points, about 60 km); a long even front along the shelf is otherwise
+    // (within about 60 km, whatever the grid); a long even front along the shelf is otherwise
     // one band, and what matters is where along it the edge is sharpest.
     const raw0 = f.fish.slice();
+    const R = Math.max(2, Math.round(0.6 / g.step)); // about 60 km, whatever the grid
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
         if (raw0[k] == null) continue;
         let top = 0;
-        for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+        for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
           const ii = i + di; const jj = j + dj;
           if (ii >= 0 && jj >= 0 && ii < nx && jj < ny && raw0[jj * nx + ii] != null) top = Math.max(top, raw0[jj * nx + ii]);
         }

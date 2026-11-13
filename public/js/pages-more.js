@@ -666,6 +666,26 @@ PAGE_GROUPS.push((view) => ({
       await Promise.all([one(), one()]);
     };
     api('/currents/fine').then((m) => { if (m?.ready && view.isConnected) { fine = m; redraw?.(); preload(); } }).catch(() => {});
+    // The hotspots at full detail (about 9 km): once an hour's current is in, with the seabed's
+    // depth at the same points, worked out for that hour (and kept). Until then, the chart's
+    // own grid's.
+    const fineHot = new Map(); // hour's time -> { g, f } (the grid and its frame with fish and why)
+    let satOnFine = null; // the satellites' temperature at the fine points (worked out once)
+    const hotFor = (time) => {
+      if (fineHot.has(time)) return fineHot.get(time);
+      const fv0 = fine?.depth && fineVals.get(time);
+      if (!fv0) return null;
+      const g = { south: fine.south, west: fine.west, step: fine.step, nx: fine.nx, ny: fine.ny, depth: fine.depth };
+      if (!satOnFine && satAt) {
+        satOnFine = [];
+        for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) satOnFine.push(satAt(g.south + j * g.step, g.west + i * g.step, 'sst'));
+      }
+      const f = { time, u: fv0.u, v: fv0.v, sst: satOnFine || new Array(g.nx * g.ny).fill(null) };
+      fishingField({ ...g, frames: [f] }, prefs, chlGrid, satGrid);
+      const out = { g, f };
+      fineHot.set(time, out);
+      return out;
+    };
     const satNote = () => satGrid && say(html`<b>Water temperature</b> measured by satellite (${satGrid.source}) on ${fmtDate(satGrid.newest)}, every 3 km or so. It's the latest there is: it doesn't change with the hour.`);
     const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
     // Every hour of the forecast. A chart saved before it came hourly has 3-hour steps: the
@@ -801,11 +821,14 @@ PAGE_GROUPS.push((view) => ({
       const coast = L1.overLand ? null : land;
       const key = `${layer}|${hour}|${coast ? 'cut' : 'whole'}`;
       if (L1.hot) {
-        putPic(key, () => hotspotCanvas(data, f, land), 1, 'hot-image');
-        const lk = `${hour}|${land ? 1 : 0}`;
-        if (!outlines.has(lk)) outlines.set(lk, hotspotLines(data, f, land));
+        // At full detail when this hour's in (about 9 km), else on the chart's own grid.
+        const fh = hotFor(ft);
+        const hg = fh ? fh.g : data; const hf = fh ? fh.f : f;
+        putPic(`${key}|${fh ? 'fine' : 'grid'}`, () => hotspotCanvas(hg, hf, land), 1, 'hot-image', fh ? fineBounds() : imgBounds);
+        const lk = `${hour}|${land ? 1 : 0}|${fh ? 'fine' : 'grid'}`;
+        if (!outlines.has(lk)) outlines.set(lk, hotspotLines(hg, hf, land));
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
-        labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
+        labels = L.layerGroup(hotspotLabels(hg, hf).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
       } else if ((layer === 'currents' && fv) || (layer === 'wave' && fv?.wh)) {
         // At full detail (Copernicus, about 9 km).
@@ -975,9 +998,12 @@ PAGE_GROUPS.push((view) => ({
       if (u == null && wu == null) return navOnly();
       // Directions and reasons: the nearest grid point's (they don't blend).
       const i0 = Math.round((lng - data.west) / data.step); const j0 = Math.round((lat - data.south) / data.step);
-      const fish = at(lat, lng, 'fish');
-      const hot = fish != null && fish >= hotspotLimit(f);
-      const why = f.why?.[j0 * data.nx + i0] || 0;
+      // The hotspot here: at full detail if this hour's is worked out, else the chart's grid's.
+      const fh = hotFor(timeOf(hour));
+      const hg = fh ? fh.g : data; const hf = fh ? fh.f : f;
+      const fish = sampler(hg, hf)(lat, lng, 'fish');
+      const hot = fish != null && fish >= hotspotLimit(hf);
+      const why = hf.why?.[Math.round((lat - hg.south) / hg.step) * hg.nx + Math.round((lng - hg.west) / hg.step)] || 0;
       const reasons = [why & 1 && 'temperature break', why & 2 && 'current edge', why & 16 && 'colour edge', why & 4 && 'shelf', why & 8 && 'the water billfish like'].filter(Boolean);
       const d = data.depth?.[j0 * data.nx + i0];
       const deg = (x, y) => (Math.atan2(x, y) * 180) / Math.PI;
@@ -994,7 +1020,8 @@ PAGE_GROUPS.push((view) => ({
       const big = {
         none: d != null && ['Depth', estTxt(depthTxt(d))],
         hotspots: ['Hotspot', hot && reasons.length ? reasons.join(', ') : 'Not a hotspot'],
-        currents: u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn ${arrow(deg(u, v))} ${pt(deg(u, v))}`],
+        // About: a model's current, off by 0.3 kn or so at a spot (checked against measured ones).
+        currents: u != null && ['Current', `${estTxt(`${Math.hypot(u, v).toFixed(1)} kn`)} ${arrow(deg(u, v))} ${pt(deg(u, v))}`],
         sst: t != null && ['Water temperature', estTxt(tempTxt(t))],
         chl: chl != null && ['Water colour', `${chlWords(chl)} · ${chl.toFixed(2)} mg/m³`],
         wind: wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn ${arrow(deg(wu, wv))} from ${pt(deg(wu, wv) + 180)} · ${windWord(Math.hypot(wu, wv))}`],
