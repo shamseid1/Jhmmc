@@ -5,16 +5,29 @@
 
 // The maps: satellite imagery (Esri World Imagery) with borders and place
 // names (country, city, town) on top.
-function addSatellite(L, map, { fullScreen = false } = {}) {
+function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
-  const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri', keepBuffer: 4 }).addTo(map);
   // The place names and borders above everything drawn on the sea (the colours at 400, their
   // outlines 420, the moving lines 450), as on Windy, so a town is never painted over; under
   // your fish and spots. Esri's names follow the zoom: countries far out, towns close in.
   const names = map.getPane('names') || map.createPane('names');
   names.style.zIndex = 460;
   names.style.pointerEvents = 'none';
-  L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18, pane: 'names' }).addTo(map);
+  // Two looks: the satellite photo, or a sea chart (Esri's Ocean map: light land, the sea
+  // shaded by its depth from GEBCO's seabed map), each with its own names.
+  const BASES = {
+    satellite: { map: 'World_Imagery', names: 'Reference/World_Boundaries_and_Places', credit: 'Imagery © Esri', maxNative: 18 },
+    chart: { map: 'Ocean/World_Ocean_Base', names: 'Ocean/World_Ocean_Reference', credit: 'Esri, Garmin, GEBCO, NOAA NGDC', maxNative: 13 },
+  };
+  let layers = [];
+  const setBase = (kind) => {
+    const b = BASES[kind] || BASES.satellite;
+    for (const l of layers) l.remove();
+    layers = [L.tileLayer(esri(b.map), { maxZoom: 18, maxNativeZoom: b.maxNative, attribution: b.credit, keepBuffer: 4 }).addTo(map),
+      L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names' }).addTo(map)];
+    map.getContainer().classList.toggle('base-chart', kind === 'chart');
+  };
+  setBase(base);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
   if (!fullScreen) twoFingers(map);
   // Places the club wants on every map.
@@ -23,7 +36,7 @@ function addSatellite(L, map, { fullScreen = false } = {}) {
       .bindTooltip(p.name, { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] })
       .addTo(map);
   }
-  return { imagery };
+  return { setBase };
 }
 // On a phone, one finger scrolls the page past the map; two fingers move and zoom it (a short
 // hint says so), as Google Maps does inside a page.

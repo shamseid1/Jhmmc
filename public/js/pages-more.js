@@ -194,6 +194,8 @@ PAGE_GROUPS.push((view) => ({
       <div class="chart-panel" id="chart-panel" hidden>
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
+        <div class="panel-head catches-head"><b>Map</b></div>
+        <div class="base-pick" role="group" aria-label="Map">${[['chart', 'Chart'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${(saved.base || 'chart') === k}">${label}</button>`))}</div>
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
@@ -220,6 +222,7 @@ PAGE_GROUPS.push((view) => ({
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
         localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
+          base: view.querySelector('[data-base][aria-pressed="true"]')?.dataset.base || 'chart',
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -266,7 +269,13 @@ PAGE_GROUPS.push((view) => ({
     const lift = () => chartEl.style.setProperty('--bar-h', `${bar.hidden ? 0 : bar.offsetHeight}px`);
     new ResizeObserver(lift).observe(bar);
     lift();
-    addSatellite(L, map, { fullScreen: true });
+    // The map underneath: a sea chart (the first time) or the satellite photo, as picked.
+    const baseMap = addSatellite(L, map, { fullScreen: true, base: saved.base || 'chart' });
+    view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => {
+      view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      baseMap.setBase(b.dataset.base);
+      setTimeout(remember);
+    }));
     const overlays = {};
     // The contours: the lines and depths only (white, without the charts' grey shading), so the
     // sea looks the same inside the charts and out.

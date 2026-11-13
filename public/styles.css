@@ -1526,3 +1526,11 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .board-card li b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .board-card li.mine .nm, .board-card li.mine b { color: var(--accent); font-weight: 800; }
 .board-card li.gap { color: var(--muted); padding-left: 6px; }
+
+/* The map's look, in the layers panel: a sea chart or the satellite photo. */
+.base-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); }
+.base-pick button { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 0; padding: 9px 0; border: 0; border-radius: 9px; background: none; color: rgba(255, 255, 255, 0.75); font: inherit; font-weight: 700; font-size: 14px; }
+.base-pick button[aria-pressed="true"] { background: #fff; color: #0a1a33; }
+/* On the sea chart: the club's depth lines and numbers dark navy (they're white for the photo). */
+.base-chart .depth-tiles { filter: brightness(0.22) sepia(1) hue-rotate(185deg) saturate(5); }
+.base-chart.leaflet-container { background: #a9c9e6; }
