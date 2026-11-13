@@ -232,6 +232,7 @@ PAGE_GROUPS.push((view) => ({
     view.querySelector('[data-back]').addEventListener('click', () => { if (cameFrom) history.back(); else location.hash = '#/sea'; });
     let data;
     let chlP = null; // the water colour, fetched alongside
+    let sstP = null; // the water temperature measured by satellite, too
     let L;
     let land = null;
     let redraw = null; // set once the map is up
@@ -549,6 +550,7 @@ PAGE_GROUPS.push((view) => ({
     // update), it keeps trying quietly every 20 seconds while the page is open.
     for (;;) {
       chlP ??= api('/chlorophyll').then((x) => (x?.values ? x : null)).catch(() => null);
+      sstP ??= api('/sst').then((x) => (x?.values ? x : null)).catch(() => null);
       try { data = await api('/currents'); break; } catch (err) {
         say(html`<b>Can't get the forecast just now.</b> ${err.message} Trying again by itself…`);
         await wait(20000);
@@ -582,8 +584,15 @@ PAGE_GROUPS.push((view) => ({
     }
     // The water colour (a week's clear views), if it comes in time: a layer of its own, and its
     // edges count for the hotspots.
-    let chlGrid = await Promise.race([chlP, wait(5000).then(() => null)]);
-    fishingField(data, prefs, chlGrid);
+    // The water temperature measured by satellite (about 3 km, a day or two behind), if it
+    // comes in time: the Temperature layer, its lines, and the hotspots' temperature breaks.
+    let [chlGrid, satGrid] = await Promise.all([chlP, sstP].map((p) => Promise.race([p, wait(6000).then(() => null)])));
+    fishingField(data, prefs, chlGrid, satGrid);
+    let satAt = null;
+    let satBounds = null;
+    const useSat = (g) => { satGrid = g; satAt = sampler(g, { sst: g.values }); satBounds = raster(g, 1).bounds; };
+    if (satGrid) useSat(satGrid);
+    else sstP?.then((g) => { if (g && view.isConnected) { useSat(g); if (layer === 'sst') redraw?.(); } });
     const hasWind = data.frames.some((f) => f.wu);
     if (!hasWind) view.querySelector('[data-layer=wind]').disabled = true;
     // The water colour: its own picture's area and its value at a spot; the tile on once it's in.
@@ -600,6 +609,7 @@ PAGE_GROUPS.push((view) => ({
     view.querySelector('[data-layer=chl]').disabled = true;
     if (chlGrid) useChl(chlGrid);
     else chlP?.then((g) => { if (g && view.isConnected) useChl(g, true); });
+    const satNote = () => satGrid && say(html`<b>Water temperature</b> measured by satellite (${satGrid.source}) on ${fmtDate(satGrid.newest)}, every 3 km or so. It's the latest there is: it doesn't change with the hour.`);
     const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
     // Every hour of the forecast. A chart saved before it came hourly has 3-hour steps: the
     // hours between two are blended from them.
@@ -674,12 +684,19 @@ PAGE_GROUPS.push((view) => ({
     const outlines = new Map(); // hour -> the hotspots' line pieces
     let isoLayer = null;
     const isoCache = new Map(); // hour -> the temperature lines
+    // The temperature lines on the map: the whole degrees bolder, with their numbers.
+    const isoGroup = (isos) => L.layerGroup(isos.flatMap(({ label, bold, segs }) => {
+      const line = L.polyline(segs, { pane: 'outlines', color: '#fff', weight: bold ? 2.2 : 1.2, opacity: bold ? 0.95 : 0.7, interactive: false, smoothFactor: 0 });
+      if (!bold || !segs.length) return [line];
+      const [p, q] = segs[Math.floor(segs.length / 2)];
+      return [line, L.tooltip({ permanent: true, direction: 'center', className: 'iso-label', interactive: false }).setLatLng([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]).setContent(label)];
+    }));
     let isPlaying = false;
     // While playing, the next hour's picture is drawn ahead, so each step is ready when it comes.
     const ahead = (h) => {
       const L1 = LAYER[layer]; const f = frameAt(h); const coast = L1.overLand ? null : land;
       if (L1.hot) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => hotspotCanvas(data, f, land));
-      else if (L1.colour) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(data, f, L1.colour, L1.stops, coast));
+      else if (L1.colour && !(layer === 'sst' && satGrid)) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(data, f, L1.colour, L1.stops, coast));
     };
     const show = () => {
       const f = frameAt(hour);
@@ -702,6 +719,12 @@ PAGE_GROUPS.push((view) => ({
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
+      } else if (layer === 'sst' && satGrid) {
+        // Measured by satellite: one picture and its lines (it doesn't change with the hour).
+        putPic(`satsst|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(satGrid, { sst: satGrid.values }, 'sst', SST_SCALE, coast, 2), 0.85, 'field-image', satBounds);
+        const ik = `sat|${land ? 1 : 0}|${unit('temp')}`;
+        if (!isoCache.has(ik)) isoCache.set(ik, isotherms(satGrid, { sst: satGrid.values }, land, 1));
+        isoLayer = isoGroup(isoCache.get(ik)).addTo(map);
       } else if (layer === 'chl' && chlGrid) {
         // The water colour doesn't change with the hour (a week's clear views): one picture.
         putPic(`chl|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(chlGrid, { chl: chlGrid.values }, 'chl', CHL_SCALE, coast, 4), 0.85, 'field-image', chlBounds);
@@ -713,12 +736,7 @@ PAGE_GROUPS.push((view) => ({
         if (layer === 'sst') {
           const ik = `${hour}|${land ? 1 : 0}|${unit('temp')}`;
           if (!isoCache.has(ik)) isoCache.set(ik, isotherms(data, f, land));
-          isoLayer = L.layerGroup(isoCache.get(ik).flatMap(({ label, bold, segs }) => {
-            const line = L.polyline(segs, { pane: 'outlines', color: '#fff', weight: bold ? 2.2 : 1.2, opacity: bold ? 0.95 : 0.7, interactive: false, smoothFactor: 0 });
-            if (!bold || !segs.length) return [line];
-            const [p, q] = segs[Math.floor(segs.length / 2)];
-            return [line, L.tooltip({ permanent: true, direction: 'center', className: 'iso-label', interactive: false }).setLatLng([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]).setContent(label)];
-          })).addTo(map);
+          isoLayer = isoGroup(isoCache.get(ik)).addTo(map);
         }
       } else putPic(null);
       if (isPlaying && hour + 1 < HOURS) setTimeout(() => ahead(hour + 1), 30);
@@ -823,7 +841,7 @@ PAGE_GROUPS.push((view) => ({
     view.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
       layer = b.dataset.layer;
       setTimeout(remember);
-      if (layer === 'chl') { chlNote(); setTimeout(() => { note.hidden = true; }, 7000); } else if (!note.hidden && note.textContent.startsWith('Water colour')) note.hidden = true;
+      if (layer === 'chl') { chlNote(); setTimeout(() => { note.hidden = true; }, 7000); } else if (layer === 'sst' && satGrid) { satNote(); setTimeout(() => { note.hidden = true; }, 7000); } else if (!note.hidden && /^Water (colour|temperature)/.test(note.textContent)) note.hidden = true;
       view.querySelectorAll('[data-layer]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       setTitle();
       show();
@@ -837,7 +855,7 @@ PAGE_GROUPS.push((view) => ({
       if (!at) return navOnly();
       const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
-      const t = at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
+      const t = satAt?.(lat, lng, 'sst') ?? at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
       const f = cur;
       if (u == null && wu == null) return navOnly();
       // Directions and reasons: the nearest grid point's (they don't blend).

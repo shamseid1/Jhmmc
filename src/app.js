@@ -15,6 +15,7 @@ const { createSea } = require('./sea');
 const { createDepth } = require('./depth');
 const { createCurrents } = require('./currents');
 const { createChlorophyll } = require('./chlorophyll');
+const { createSst } = require('./sst');
 const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -73,6 +74,7 @@ function createApp({
   depth,
   currents,
   chlorophyll,
+  satSst,
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
   // Tests that still post open it.
   openPosts = false,
@@ -105,6 +107,12 @@ function createApp({
     chlorophyll = process.env.NODE_TEST_CONTEXT ? null
       : createChlorophyll({ file: dbFile === ':memory:' ? null : path.join(path.dirname(path.resolve(dbFile)), 'chart-colour.json') });
     chlorophyll?.warm();
+  }
+  if (satSst === undefined) {
+    // The water temperature measured by satellite (NASA, NOAA), kept beside the database too.
+    satSst = process.env.NODE_TEST_CONTEXT ? null
+      : createSst({ file: dbFile === ':memory:' ? null : path.join(path.dirname(path.resolve(dbFile)), 'chart-sst.json') });
+    satSst?.warm();
   }
   pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
@@ -420,6 +428,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     depth,
     currents,
     chlorophyll,
+    satSst,
     removeUpload,
     requireApprove,
     requireMoney,

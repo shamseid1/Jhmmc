@@ -398,7 +398,7 @@ function fieldCanvas(g, f, kind, stops, land, S = 12) {
 // (and depth) billfish have been landed in this season, every boat's fish together. Each is
 // 0 to 1; breaks and edges are ranked against the rest of the map that day, so the best of
 // the day always shows. f.fish is the score; f.why the reasons (1 break, 2 edge, 4 shelf, 8 water).
-function fishingField(g, prefs = {}, chl = null) {
+function fishingField(g, prefs = {}, chl = null, sat = null) {
   const { nx, ny } = g;
   const depth = g.depth || null;
   // Fishable water: 80 m deep or more (with depths to go by). Edges are measured only between
@@ -420,6 +420,43 @@ function fishingField(g, prefs = {}, chl = null) {
       return d.length ? Math.max(...d) : null;
     });
     colourEdge = raw0;
+  }
+  // The temperature breaks measured by satellite (about 3 km), when there are: at each
+  // forecast point, the sharpest change over 2 satellite steps (about 6 km) within its square.
+  // Much finer than the forecast's own temperature, which smooths a narrow break away.
+  let satBreak = null;
+  let satT = null; // and its temperature at each forecast point
+  if (sat?.values) {
+    const sv = sat.values; const sx = sat.nx; const sy = sat.ny;
+    const sg = new Float32Array(sx * sy).fill(NaN);
+    for (let j = 0; j < sy; j++) {
+      for (let i = 0; i < sx; i++) {
+        const c = sv[j * sx + i]; if (c == null) continue;
+        let m = NaN;
+        for (const [a, b] of [[i + 2, j], [i, j + 2], [i - 2, j], [i, j - 2]]) {
+          if (a < 0 || b < 0 || a >= sx || b >= sy) continue;
+          const o = sv[b * sx + a];
+          if (o != null) m = Number.isNaN(m) ? Math.abs(o - c) : Math.max(m, Math.abs(o - c));
+        }
+        sg[j * sx + i] = m;
+      }
+    }
+    const half = g.step / 2;
+    const sAt = sampler(sat, { sst: sv });
+    satT = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) satT.push(sAt(g.south + j * g.step, g.west + i * g.step, 'sst'));
+    satBreak = [];
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        if (!fishable(j * nx + i)) { satBreak.push(null); continue; }
+        const lat = g.south + j * g.step; const lng = g.west + i * g.step;
+        const i0 = Math.max(0, Math.ceil((lng - half - sat.west) / sat.step)); const i1 = Math.min(sx - 1, Math.floor((lng + half - sat.west) / sat.step));
+        const j0 = Math.max(0, Math.ceil((lat - half - sat.south) / sat.step)); const j1 = Math.min(sy - 1, Math.floor((lat + half - sat.south) / sat.step));
+        let m = null;
+        for (let b = j0; b <= j1; b++) for (let a = i0; a <= i1; a++) { const x = sg[b * sx + a]; if (!Number.isNaN(x) && (m == null || x > m)) m = x; }
+        satBreak.push(m);
+      }
+    }
   }
   const rank = (vals) => {
     const xs = vals.filter((v) => v != null).sort((a, b) => a - b);
@@ -458,7 +495,7 @@ function fishingField(g, prefs = {}, chl = null) {
     const tb = []; const ce = [];
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
-        tb.push(grad((a, b) => at('sst', a, b), i, j));
+        tb.push(satBreak ? satBreak[j * nx + i] : grad((a, b) => at('sst', a, b), i, j));
         // The edge: the change in speed, plus the turning (an eddy's spin).
         const sp = grad(speed, i, j);
         const dv = (at('v', i + 1, j) ?? at('v', i, j)) - (at('v', i - 1, j) ?? at('v', i, j));
@@ -470,7 +507,7 @@ function fishingField(g, prefs = {}, chl = null) {
     f.fish = []; f.why = [];
     for (let k = 0; k < nx * ny; k++) {
       if ((f.sst[k] == null && f.u[k] == null) || !fishable(k)) { f.fish.push(null); f.why.push(0); continue; }
-      const b = rt(tb[k]) ** 2; const e = rc(ce[k]) ** 2; const sh = depth ? shelf(depth[k]) : 0.5; const w = warm(f.sst[k]);
+      const b = rt(tb[k]) ** 2; const e = rc(ce[k]) ** 2; const sh = depth ? shelf(depth[k]) : 0.5; const w = warm(satT?.[k] ?? f.sst[k]);
       // With the water colour, its edges count too (green water meeting blue: bait).
       const ge = rg && colourEdge[k] != null ? rg(colourEdge[k]) ** 2 : null;
       // An edge makes a spot: a temperature break, a current edge or a colour edge. The shelf
@@ -559,7 +596,7 @@ function levelLines(g, f, key, level, land, k = 4, onLand = landTest(land)) {
 const hotspotLines = (g, f, land) => levelLines(g, f, 'fish', hotspotLimit(f), land);
 // The water temperature's lines (isotherms): every half degree (or every degree Fahrenheit),
 // each with its temperature; the whole degrees bolder.
-function isotherms(g, f, land) {
+function isotherms(g, f, land, k = 3) {
   const xs = f.sst.filter((v) => v != null);
   if (!xs.length) return [];
   const F = unit('temp') !== '°C';
@@ -569,7 +606,7 @@ function isotherms(g, f, land) {
   const onLand = landTest(land);
   const out = [];
   for (let n = lo; n <= hi + 1e-9; n += F ? 1 : 0.5) {
-    const segs = levelLines(g, f, 'sst', toLevel(n), land, 3, onLand);
+    const segs = levelLines(g, f, 'sst', toLevel(n), land, k, onLand);
     if (segs.length) out.push({ label: F ? `${n}°` : `${n.toFixed(1)}°`, bold: F ? n % 2 === 0 : n % 1 === 0, segs });
   }
   return out;

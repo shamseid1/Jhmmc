@@ -3,7 +3,7 @@
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
-  const { api, auth, chlorophyll, currents, db, depth, sea } = ctx;
+  const { api, auth, chlorophyll, currents, db, depth, satSst, sea } = ctx;
 
   // For the admin: the chart's forecast (when fetched, refused and why), and a try now.
   const adminOnly = (req, res, next) => (ctx.isAdminUser(req.user) ? next() : res.status(403).json({ error: 'Only the club admin can do that.' }));
@@ -22,6 +22,18 @@ module.exports = (ctx) => {
     } catch (err) {
       if (err.preparing) return res.set('Cache-Control', 'no-store').json({ preparing: true });
       res.status(503).json({ error: 'The water colour is not available right now.' });
+    }
+  });
+
+  // The water temperature measured by satellite (a day or two behind, about 3 km), for the
+  // chart's temperature and its breaks.
+  api.get('/sst', async (_req, res) => {
+    if (!satSst) return res.status(503).json({ error: 'The satellite water temperature is not available right now.' });
+    try {
+      res.set('Cache-Control', 'public, max-age=3600').json(await satSst.get());
+    } catch (err) {
+      if (err.preparing) return res.set('Cache-Control', 'no-store').json({ preparing: true });
+      res.status(503).json({ error: 'The satellite water temperature is not available right now.' });
     }
   });
 
