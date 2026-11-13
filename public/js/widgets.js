@@ -34,8 +34,11 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   const drawLand = () => fetch('/land-fine.json').then((r) => r.json()).then((rings) => {
     if (!map.getContainer().classList.contains('base-plotter')) return;
     landLayer?.remove();
-    landLayer = L.polygon(rings, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), stroke: true, color: '#5fb3f0', weight: 1.2,
-      fillColor: '#6b5222', fillOpacity: 1, interactive: false }).addTo(map);
+    // Its colours from the page's style (--plotter-land, --plotter-coast), so they're set in one place.
+    const css = getComputedStyle(map.getContainer());
+    landLayer = L.polygon(rings, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), stroke: true,
+      color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2,
+      fillColor: css.getPropertyValue('--plotter-land').trim() || '#6b5222', fillOpacity: 1, interactive: false }).addTo(map);
   }).catch(() => {});
   let layers = [];
   const setBase = (kind) => {
