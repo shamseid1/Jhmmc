@@ -529,6 +529,29 @@ const divisionTabs = (base, division) => `<div class="seg" role="tablist">
 const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 // A tournament's days: "Sat, 14 Nov 2026" or "Sat, 14 Nov 2026 to Sun, 15 Nov 2026".
 const fmtDays = (ev) => (ev.endDate && ev.endDate !== ev.date ? `${fmtDay(ev.date)} to ${fmtDay(ev.endDate)}` : fmtDay(ev.date));
+// The calendar's entries: the day block (month and day, or ? while to be announced), and the
+// line under the name (short days, how far off, the place and the note).
+const calShort = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+const calBlock = (ev) => (ev.date
+  ? `<small>${new Date(`${ev.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short' })}</small><b>${Number(ev.date.slice(8))}</b>`
+  : `<small>${esc(ev.whenText ? ev.whenText.slice(0, 3) : '')}</small><b>${ev.whenText ? '?' : 'TBA'}</b>`);
+function calLine(ev, { away = false } = {}) {
+  const bits = [];
+  if (!ev.date) bits.push(ev.whenText ? `${ev.whenText} · date to be announced` : 'Date to be announced');
+  else {
+    const days = ev.endDate && ev.endDate !== ev.date ? Math.round((Date.parse(ev.endDate) - Date.parse(ev.date)) / 864e5) + 1 : 1;
+    bits.push(days > 1 ? `${calShort(ev.date)} – ${calShort(ev.endDate)} · ${days} days` : calShort(ev.date));
+    if (away) {
+      const n = Math.round((Date.parse(`${ev.date}T12:00:00`) - Date.parse(`${today()}T12:00:00`)) / 864e5);
+      if (n === 0) bits.push('today'); else if (n === 1) bits.push('tomorrow'); else if (n > 1 && n <= 60) bits.push(`in ${n} days`);
+    }
+  }
+  if (ev.place) bits.push(ev.place);
+  if (ev.note) bits.push(ev.note);
+  return bits.join(' · ');
+}
+const calRow = (ev, extra = '') => `<div class="cu-row" data-id="${ev.id}"><div class="cu-date ${ev.date ? ev.kind : 'tba'}">${calBlock(ev)}</div>
+  <div class="cu-main"><b>${esc(ev.name)}${ev.tbc ? '<span class="tbc">To be confirmed</span>' : ''}</b><span>${esc(calLine(ev, { away: true }))}</span></div>${extra}</div>`;
 
 // A corrected weight shows its points as it's typed: the same rules as the server.
 const rescoreAttrs = (c) => html`data-rescore data-species-id="${c.speciesId}" data-division="${c.division || 'ocean'}"`;

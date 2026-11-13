@@ -450,37 +450,36 @@ PAGE_GROUPS.push((view) => ({
     renderNotify(view.querySelector('#notify'));
   },
 
-  // Secretary: season dates and tournaments.
+  // The season calendar: tournaments, dinners and events by month (the ones to be announced last).
+  // Officers add and change them (dates move a lot); a change in the next two weeks is told to all.
   async calendar() {
     const { season, events } = await api('/events');
     const editable = !!state.me?.canReview;
+    const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
+    const groups = [];
+    for (const ev of events) {
+      const key = ev.date ? ev.date.slice(0, 7) : 'tba';
+      if (groups.at(-1)?.key !== key) groups.push({ key, items: [] });
+      groups.at(-1).items.push(ev);
+    }
+    const monthName = (k) => (k === 'tba' ? 'Date to be announced' : new Date(`${k}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
+    const editBtn = editable ? '<button type="button" class="cal-edit" data-edit>Edit</button>' : '';
     view.innerHTML = html`<p class="back"><a href="#/more">‹ More</a></p>
       <h1>Season calendar</h1>
-      ${editable ? raw(recordedNote('Changing the season dates is announced to everyone in the feed.')) : ''}
-      ${editable ? raw(html`<form class="card pad stack" id="season">
-        <div class="row">
-          <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
-          <label>Season ends <input name="end" type="date" required value="${season.end}"></label>
-        </div>
-        <p class="error"></p><div><button type="submit">Save season dates</button></div>
-      </form>`) : raw(html`<p>Season: ${fmtDay(season.start)} to ${fmtDay(season.end)}</p>`)}
-      <h2>Tournaments</h2>
-      <div class="card"><ul class="list">${events.length ? events.map((ev) => raw(html`<li class="member" data-id="${ev.id}">
-        <span><b>${ev.name}</b> <span class="badge">${ev.kind === 'tournament' ? 'Tournament' : 'Holiday'}</span><div class="muted small">${fmtDays(ev)}</div>
-          ${ev.kind === 'tournament' ? raw(html`<div class="small"><a href="#/tournament/${ev.id}">${plural(ev.entries.length, 'boat')} entered${editable ? ' · manage entries' : ''}</a></div>`) : ''}</span>
-        ${editable ? raw('<button data-act="delete-event" class="danger">Remove</button>') : ''}
-      </li>`)) : raw('<li class="muted">Nothing added yet.</li>')}</ul></div>
-      ${editable ? raw(html`<h2 id="add-tournament">Add a tournament</h2>
-      <form class="card pad stack" id="event">
-        <input type="hidden" name="kind" value="tournament">
-        <div class="row">
-          <label>First day <input name="date" type="date" required></label>
-          <label>Last day <input name="endDate" type="date"></label>
-        </div>
-        <p class="small muted">Leave the last day empty for a one-day tournament.</p>
-        <label>Name <input name="name" required maxlength="80" placeholder="e.g. November Cup"></label>
-        <p class="error"></p><div><button type="submit" class="primary">Add to calendar</button></div>
-      </form>`) : ''}`;
+      <p class="small muted">${label} season · dates can change: you'll get a notice when one in the next two weeks does.</p>
+      ${editable ? raw('<p><button type="button" class="primary" data-add>+ Add to the calendar</button></p>') : ''}
+      ${groups.length ? raw(groups.map((g) => html`<div class="cal-month">${monthName(g.key)}</div>
+        <div class="card pad">${raw(g.items.map((ev) => calRow(ev, editBtn)).join(''))}</div>`).join(''))
+        : raw('<div class="card pad empty">Nothing on the calendar yet.</div>')}
+      ${editable ? raw(html`<details class="card pad cal-season"><summary>Season dates</summary>
+        ${raw(recordedNote('Changing the season dates is announced to everyone in the feed.'))}
+        <form class="stack" id="season">
+          <div class="row">
+            <label>Season starts <input name="start" type="date" required value="${season.start}"></label>
+            <label>Season ends <input name="end" type="date" required value="${season.end}"></label>
+          </div>
+          <p class="error"></p><div><button type="submit">Save season dates</button></div>
+        </form></details>`) : ''}`;
     if (!editable) return;
     const seasonForm = view.querySelector('#season');
     bindForm(seasonForm, async () => {
@@ -488,26 +487,57 @@ PAGE_GROUPS.push((view) => ({
       toast('Season dates saved');
       route();
     });
-    const eventForm = view.querySelector('#event');
+    // Add or change one, in a sheet.
+    const open = (ev = null) => {
+      const k = ev?.kind === 'holiday' ? 'event' : ev?.kind || 'tournament';
+      const dlg = openSheet('cal-sheet', html`<form class="stack" method="dialog" id="cal-form">
+        <h2>${ev ? 'Change' : 'Add to the calendar'}</h2>
+        <label>What <select name="kind">${raw([['tournament', 'Tournament'], ['dinner', 'Dinner'], ['event', 'Other event']].map(([v, t]) => `<option value="${v}"${v === k ? ' selected' : ''}>${t}</option>`).join(''))}</select></label>
+        <label>Name <input name="name" required maxlength="80" value="${ev?.name || ''}" placeholder="e.g. Christmas Tournament"></label>
+        <label class="check"><input type="checkbox" name="tba"${ev && !ev.date ? ' checked' : ''}> Date to be announced</label>
+        <div class="row cal-dates">
+          <label>First day <input name="date" type="date" value="${ev?.date || ''}"></label>
+          <label>Last day <input name="endDate" type="date" value="${ev?.endDate && ev.endDate !== ev.date ? ev.endDate : ''}"></label>
+        </div>
+        <label class="check cal-dates"><input type="checkbox" name="tbc"${ev?.tbc ? ' checked' : ''}> To be confirmed</label>
+        <label class="cal-when">Roughly when <input name="whenText" maxlength="40" value="${ev?.whenText || ''}" placeholder="e.g. April or May (optional)"></label>
+        <label>Place <input name="place" maxlength="60" value="${ev?.place || ''}" placeholder="e.g. Marshall (optional)"></label>
+        <label>Note <input name="note" maxlength="120" value="${ev?.note || ''}" placeholder="e.g. Open Season & Memorial (optional)"></label>
+        <p class="small muted">Leave the last day empty for one day. Only tournaments count for points.${ev ? ' A change in the next two weeks is sent to everyone.' : ''}</p>
+        <p class="error"></p>
+        <div class="row"><button type="submit" class="primary">${ev ? 'Save' : 'Add'}</button><button type="button" data-close>Cancel</button>
+          ${ev ? raw('<button type="button" class="danger" data-remove>Remove</button>') : ''}</div>
+      </form>`);
+      const f = dlg.querySelector('form');
+      const sync = () => {
+        const tba = f.tba.checked;
+        f.querySelectorAll('.cal-dates').forEach((x) => { x.hidden = tba; });
+        f.querySelector('.cal-when').hidden = !tba;
+        f.date.required = !tba;
+      };
+      f.tba.addEventListener('change', sync); sync();
+      f.date.addEventListener('change', () => { f.endDate.min = f.date.value; });
+      dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+      dlg.querySelector('[data-remove]')?.addEventListener('click', async () => {
+        if (!confirm(`Remove "${ev.name}" from the calendar?${ev.kind === 'tournament' ? ' Its fish still count in the season.' : ''}`)) return;
+        await api(`/events/${ev.id}`, { method: 'DELETE' });
+        dlg.close(); route();
+      });
+      bindForm(f, async () => {
+        const body = { ...formData(f), tba: f.tba.checked, tbc: f.tbc.checked };
+        await api(ev ? `/events/${ev.id}` : '/events', { method: ev ? 'PATCH' : 'POST', body });
+        dlg.close();
+        toast(ev ? 'Saved' : 'Added');
+        route();
+      });
+    };
+    view.querySelector('[data-add]').addEventListener('click', () => open());
+    view.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-edit]');
+      if (btn) open(events.find((x) => String(x.id) === btn.closest('[data-id]').dataset.id));
+    });
     // From Tournament sheets → New tournament: straight to the form.
-    if (eventForm && new URLSearchParams(location.hash.split('?')[1] || '').get('new') === '1') {
-      setTimeout(() => {
-        view.querySelector('#add-tournament').scrollIntoView({ block: 'start' });
-        eventForm.querySelector('input[name=name], input[type=date]')?.focus();
-      }, 50);
-    }
-    eventForm.date.addEventListener('change', () => { eventForm.endDate.min = eventForm.date.value; });
-    bindForm(eventForm, async () => {
-      await api('/events', { method: 'POST', body: formData(eventForm) });
-      toast('Added');
-      route();
-    });
-    view.addEventListener('click', async (e) => {
-      const btn = e.target.closest('button[data-act=delete-event]');
-      if (!btn || !confirm('Remove this tournament from the calendar? Its fish still count in the season.')) return;
-      await api(`/events/${btn.closest('[data-id]').dataset.id}`, { method: 'DELETE' });
-      route();
-    });
+    if (new URLSearchParams(location.hash.split('?')[1] || '').get('new') === '1') open();
   },
 
   // The menu behind the last tab: your dashboard, rules, clubs, account.

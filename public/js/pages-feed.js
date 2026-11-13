@@ -24,12 +24,30 @@ function homeCards(view) {
       const today0 = today();
       api('/tournaments').then(({ tournaments }) => {
         const on = tournaments.find((t) => t.date <= today0 && t.endDate >= today0);
-        if (on) return api(`/tournaments/${on.id}?division=${division}`).then((t) => draw(`${on.name} · live`, t.results, `#/tournament/${on.id}`));
+        if (on) {
+          // Live while a tournament's on: the standings again every minute while Home is open.
+          const load = () => api(`/tournaments/${on.id}?division=${division}`).then((t) => draw(`${on.name} · live`, t.results, `#/tournament/${on.id}`)).catch(() => {});
+          const tick = setInterval(() => {
+            if (!box?.isConnected) return clearInterval(tick);
+            if (document.visibilityState === 'visible') load();
+          }, 60000);
+          return load();
+        }
         const board = state.me?.jhmmc ? 'jhmmc' : 'all';
         return api(`/points?division=${division}&scope=overall&board=${board}`).then(({ boats }) =>
           draw(board === 'jhmmc' ? `JHMMC Season · ${division === 'river' ? 'River' : 'Ocean'}` : 'Leaderboard · West Africa', boats, '#/leaderboard'));
       }).catch(() => {});
     }
+    // Coming up: the next three on the season calendar (tournaments, dinners, events), then the
+    // ones still to be announced; the full calendar a tap away.
+    api('/events').then(({ events }) => {
+      const box = view.querySelector('#coming-up');
+      const t0 = today();
+      const next = [...events.filter((e) => e.date && e.endDate >= t0), ...events.filter((e) => !e.date)].slice(0, 3);
+      if (!box || !next.length) return;
+      box.innerHTML = html`<div class="card pad coming-up"><div class="cu-head"><b>Coming up</b><a href="#/calendar">Full calendar ›</a></div>
+        ${raw(next.map((e) => calRow(e)).join(''))}</div>`;
+    }).catch(() => {});
     // What's biting: every boat's fish in the last 14 days against the 14 before, the top few.
     api('/outings/trends').then((tr) => {
       const box = view.querySelector('#biting');
@@ -112,6 +130,7 @@ PAGE_GROUPS.push((view) => ({
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
       <div id="sea-card"></div>
+      <div id="coming-up"></div>
       <div class="home-tiles">
         <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
         <div id="biting" class="home-wide-slot"></div>

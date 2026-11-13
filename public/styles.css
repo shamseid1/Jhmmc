@@ -1548,3 +1548,25 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .pn-point { color: #e9eef5; font-style: italic; font-weight: 600; }
 .pn-hazard { color: #ffb3b3; font-style: italic; font-weight: 600; }
 .pn-mark { color: #ffd98a; font-weight: 600; }
+
+/* The season calendar and Home's "Coming up": a day block (navy tournament, gold dinner, grey
+   to be announced), the name, and the line under it. */
+.cu-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.cu-head b { font-size: 16px; }
+.cu-head a { font-weight: 700; font-size: 14px; text-decoration: none; }
+.cu-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line, #e6e9ef); }
+.cu-row:first-of-type { border-top: 0; }
+.cu-date { flex: none; width: 48px; text-align: center; border-radius: 10px; background: #0a1a33; color: #fff; padding: 5px 0; line-height: 1.05; }
+.cu-date small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; opacity: 0.85; min-height: 11px; }
+.cu-date b { font-size: 19px; }
+.cu-date.dinner { background: #b5832a; }
+.cu-date.event { background: #2f6f5e; }
+.cu-date.tba { background: #8a93a3; }
+.cu-main { min-width: 0; }
+.cu-main b { display: block; font-size: 15px; }
+.cu-main span { font-size: 13px; color: var(--muted, #5b6577); }
+.tbc { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #fff1d6; color: #8a5a00; font-size: 11px; font-weight: 800; vertical-align: 1px; }
+.cal-month { margin: 18px 0 6px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted, #5b6577); }
+.cal-edit { margin-left: auto; flex: none; border: 0; background: #eef1f6; color: inherit; border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 13px; }
+.cal-season { margin-top: 18px; }
+.cal-season summary { font-weight: 700; cursor: pointer; }
