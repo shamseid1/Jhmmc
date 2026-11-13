@@ -49,9 +49,14 @@ for lev in levels:
     for seg in cs.allsegs[0]:
         if len(seg) < 4: continue
         s = simplify(np.asarray(seg), 0.0003)
-        # Pieces of at most 60 points, each filed under the 1° square of its first point.
-        for k in range(0, len(s) - 1, 59):
-            piece = s[k:k + 60]
+        # Pieces of at most 60 points and half a degree across (so a tile finds every piece
+        # that crosses it in the squares around it), each filed under its first point's 1° square.
+        starts = [0]
+        for k in range(1, len(s)):
+            a = s[starts[-1]]
+            if k - starts[-1] >= 59 or abs(s[k][0] - a[0]) > 0.5 or abs(s[k][1] - a[1]) > 0.5: starts.append(k - 1 if k - 1 > starts[-1] else k)
+        for n, k in enumerate(starts):
+            piece = s[k:(starts[n + 1] + 1) if n + 1 < len(starts) else len(s)]
             if len(piece) < 2: continue
             key = f"{int(np.floor(piece[0][1]))}_{int(np.floor(piece[0][0]))}"  # lat_lng
             flat = []

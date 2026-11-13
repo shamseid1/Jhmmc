@@ -100,7 +100,7 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '2';
+const CONTOURS_V = '3';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {
@@ -124,8 +124,9 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
       const pad = 0.05;
       const south = b.lat - pad; const north = a.lat + pad; const west = a.lng - pad; const east = b.lng + pad;
       const keys = [];
-      // A line is filed under the square of its first point, so the squares around too.
-      for (let la = Math.floor(south) - 1; la <= Math.floor(north); la++) for (let lo = Math.floor(west) - 1; lo <= Math.floor(east); lo++) keys.push(`${la}_${lo}`);
+      // A piece is filed under the square of its first point and reaches at most about half a
+      // degree from it: the squares all round too.
+      for (let la = Math.floor(south) - 1; la <= Math.floor(north) + 1; la++) for (let lo = Math.floor(west) - 1; lo <= Math.floor(east) + 1; lo++) keys.push(`${la}_${lo}`);
       Promise.all(keys.map(contourCell)).then((cells) => {
         const ctx = cv.getContext('2d');
         ctx.scale(dpr, dpr);
@@ -135,13 +136,14 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
         for (const lines of cells) {
           for (const [m, zmin, flat] of lines) {
             if (zmin > z) continue;
-            // Only pieces that reach this tile.
-            let inside = false;
-            for (let k = 0; k < flat.length && !inside; k += 2) {
+            // Only pieces that cross this tile: by their whole extent (a long straight stretch can
+            // cross a tile without a point in it).
+            let s0 = Infinity; let n0 = -Infinity; let w0 = Infinity; let e0 = -Infinity;
+            for (let k = 0; k < flat.length; k += 2) {
               const la = flat[k] / 1e4; const lo = flat[k + 1] / 1e4;
-              inside = la >= south && la <= north && lo >= west && lo <= east;
+              if (la < s0) s0 = la; if (la > n0) n0 = la; if (lo < w0) w0 = lo; if (lo > e0) e0 = lo;
             }
-            if (!inside) continue;
+            if (n0 < south || s0 > north || e0 < west || w0 > east) continue;
             // Bolder for the lines that show from further out (the main depths).
             const major = zmin <= z - 2;
             ctx.strokeStyle = color; ctx.globalAlpha = major ? 0.85 : 0.55; ctx.lineWidth = major ? 1.3 : 0.8;
