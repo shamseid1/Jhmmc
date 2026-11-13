@@ -19,13 +19,10 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     // (The photo's names from Esri's layer for dark maps: quiet grey borders instead of thick
     // white lines between the countries; the names brightened to read on the photo.)
     satellite: { map: 'World_Imagery', names: 'Canvas/World_Dark_Gray_Reference', credit: 'Imagery © Esri', maxNative: 16 },
-    // (Its map and names go to zoom 10 here; closer in, Esri sends "Map data not yet
-    // available": zoom 10's are enlarged instead.)
-    chart: { map: 'Ocean/World_Ocean_Base', names: 'Ocean/World_Ocean_Reference', credit: 'Esri, Garmin, GEBCO, NOAA NGDC', maxNative: 10 },
+    // A plotter's (as Garmin's), drawn from data, not pictures: a plain blue sea, the land in
+    // charcoal from our coastline (so the sea's colours stand out), and white names.
+    plotter: { names: 'Canvas/World_Dark_Gray_Reference', credit: 'Esri (names)', maxNative: 16 },
   };
-  // A third, a plotter's (as Garmin's): drawn from data, not pictures: a plain blue sea, the
-  // land in brown from our coastline, and white names.
-  BASES.plotter = { names: 'Canvas/World_Dark_Gray_Reference', credit: 'Esri (names)', maxNative: 16 };
   const landPane = map.getPane('land') || map.createPane('land');
   landPane.style.zIndex = 250;
   landPane.style.pointerEvents = 'none';
@@ -47,7 +44,6 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     landLayer?.remove(); landLayer = null;
     layers = [...(b.map ? [L.tileLayer(esri(b.map), { maxZoom: 18, maxNativeZoom: b.maxNative, attribution: b.credit, keepBuffer: 4 }).addTo(map)] : []),
       L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names', ...(b.map ? {} : { attribution: b.credit }) }).addTo(map)];
-    map.getContainer().classList.toggle('base-chart', kind === 'chart');
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     if (kind === 'plotter') drawLand();
   };

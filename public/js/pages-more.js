@@ -144,6 +144,8 @@ PAGE_GROUPS.push((view) => ({
     // How you left the chart, on this phone: the switches, the filters and the layer.
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('chart-prefs') || '{}') || {}; } catch { saved = {}; }
+    // The map underneath: the plotter's, or the satellite photo (the old sea chart is gone).
+    if (saved.base !== 'satellite') saved.base = 'plotter';
     const regionalOn = hq.get('view') === 'regional' || !!saved.regional;
     const fromLink = hq.has('season') || hq.has('species') || hq.has('month');
     const cf = fromLink ? { season: hq.get('season') || '', species: hq.get('species') || '', month: hq.get('month') || '' }
@@ -195,7 +197,7 @@ PAGE_GROUPS.push((view) => ({
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         <div class="panel-head catches-head"><b>Map</b></div>
-        <div class="base-pick" role="group" aria-label="Map">${[['plotter', 'Plotter'], ['chart', 'Chart'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${(saved.base || 'chart') === k}">${label}</button>`))}</div>
+        <div class="base-pick" role="group" aria-label="Map">${[['plotter', 'Plotter'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${saved.base === k}">${label}</button>`))}</div>
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
@@ -222,7 +224,7 @@ PAGE_GROUPS.push((view) => ({
       const on = (k) => view.querySelector(`[data-show=${k}]`)?.checked;
       try {
         localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
-          base: view.querySelector('[data-base][aria-pressed="true"]')?.dataset.base || 'chart',
+          base: view.querySelector('[data-base][aria-pressed="true"]')?.dataset.base || 'plotter',
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -271,7 +273,7 @@ PAGE_GROUPS.push((view) => ({
     new ResizeObserver(lift).observe(bar);
     lift();
     // The map underneath: a sea chart (the first time) or the satellite photo, as picked.
-    const baseMap = addSatellite(L, map, { fullScreen: true, base: saved.base || 'chart' });
+    const baseMap = addSatellite(L, map, { fullScreen: true, base: saved.base });
     view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => {
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       baseMap.setBase(b.dataset.base);
@@ -284,10 +286,9 @@ PAGE_GROUPS.push((view) => ({
     let contours = null;
     const drawContours = (kind) => {
       contours?.remove();
-      contours = contourLayer(L, kind === 'satellite' ? { color: '#ffffff', halo: 'rgba(0,0,0,0.55)' }
-        : kind === 'plotter' ? { color: '#6fc6ff', halo: 'rgba(6,26,56,0.9)' } : {}).addTo(map);
+      contours = contourLayer(L, kind === 'satellite' ? { color: '#ffffff', halo: 'rgba(0,0,0,0.55)' } : { color: '#6fc6ff', halo: 'rgba(6,26,56,0.9)' }).addTo(map);
     };
-    drawContours(saved.base || 'chart');
+    drawContours(saved.base);
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
       if (c.dataset.show === 'regional') return; // drawn for the filters (below)
       const o = overlays[c.dataset.show];
