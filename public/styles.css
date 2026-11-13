@@ -1535,7 +1535,7 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .leaflet-container .leaflet-names-pane { filter: brightness(2.2) contrast(1.2); }
 /* The plotter's look: a plain deep-blue sea (the map's own background), as on Garmin. */
 .base-plotter.leaflet-container { background: #0c2f5c; --plotter-sea: #0c2f5c; --plotter-land: #2b2f36; --plotter-coast: #5fb3f0;
-  --plotter-border: #c8d6c0; --plotter-state: #4b5462; --plotter-river: #3a78b8; }
+  --plotter-border: #c8d6c0; --plotter-state: #4b5462; --plotter-inland: #1f5d99; }
 .leaflet-tooltip.country-label { background: none; border: 0; box-shadow: none; padding: 0; color: #fff; font-weight: 800; font-size: 14px; letter-spacing: 0.3px;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6); }
 .leaflet-tooltip.country-label::before { display: none; }

@@ -2,7 +2,7 @@
 # (© OpenStreetMap contributors, ODbL), via the Humanitarian OpenStreetMap Team's country exports on HDX:
 #   https://production-raw-data-api.s3.amazonaws.com/ISO3/<ISO3>/waterways/hotosm_<iso3>_waterways_osm_shp.zip
 # for MRT SEN GMB GNB GIN SLE LBR CIV GHA TGO BEN NGA CMR, unzipped into x/<ISO3>/. The coast's water
-# (40 km in) in full detail, rivers inland lighter, big lakes; per 1° square in three files by zoom (a: to 8; b: 9-10;
+# (40 km in) in full detail, big lakes; per 1° square in three files by zoom (a: to 8; b: 9-10;
 # c: 11-12) in public/water/, with index.json. Needs pyshp, shapely, scipy and westafrica.nc (gebco_contours.py).
 import json, math, os, shutil, glob, warnings, numpy as np, shapefile
 warnings.filterwarnings('ignore')
@@ -49,32 +49,7 @@ for d in sorted(glob.glob('x/*')):
                     for lo in range(math.floor(b[0]), math.floor(b[2]) + 1):
                         cells.setdefault(f'{la}_{lo}', []).append(['a', z0, rings])
             n[0] += 1; pts += len(s.exterior.coords)
-    r = shapefile.Reader(f'{d}/waterways_lines', encoding='utf-8', encodingErrors='replace'); names = [x[0] for x in r.fields[1:]]
-    for sr in r.iterShapeRecords():
-        rec = dict(zip(names, sr.record)); w = rec.get('waterway')
-        if w not in ('river', 'stream', 'canal') or not sr.shape.points: continue
-        cs = sr.shape.points; mid = cs[len(cs) // 2]
-        near = inland(mid[1], mid[0])
-        if w != 'river' and near > 12: continue
-        # The only source for rivers (no others drawn): near the coast in full detail from zoom 9 with
-        # a coarse copy further out; inland a lighter line (about 100 m) at every zoom.
-        try: g0 = shape(sr.shape.__geo_interface__)
-        except Exception: continue
-        if near > 40: versions = [(7, g0.simplify(0.001))]
-        elif w == 'river': versions = [(9, g0.simplify(0.00012)), (7, g0.simplify(0.001))]
-        else: versions = [(11, g0.simplify(0.00012))]
-        for zmin, s in versions:
-            for l in ([s] if s.geom_type == 'LineString' else [x for x in getattr(s, 'geoms', []) if x.geom_type == 'LineString']):
-                co = list(l.coords)
-                if len(co) < 2: continue
-                # In pieces at most ~0.5° across, filed under their first point's square.
-                k = 0
-                while k < len(co) - 1:
-                    e = k + 1
-                    while e < len(co) - 1 and abs(co[e + 1][0] - co[k][0]) < 0.5 and abs(co[e + 1][1] - co[k][1]) < 0.5: e += 1
-                    put(co[k][1], co[k][0], ['l', zmin, flat(co[k:e + 1])] + (['inland'] if near > 40 else [])); k = e
-                pts += len(co)
-        n[1] += 1
+    # (Rivers mapped only as a line are left out: only water with its real banks is drawn.)
 # Each square in three files by the zoom its water shows from (a: to 8, b: 9-10, c: 11-12), so a
 # phone loads the fine creeks only when zoomed in close (one or two squares on screen).
 shutil.rmtree('out', ignore_errors=True); os.makedirs('out')
@@ -83,7 +58,6 @@ for key, xs in cells.items():
     for tier, (lo, hi) in {'a': (0, 8), 'b': (9, 10), 'c': (11, 99)}.items():
         part = [x for x in xs if lo <= x[1] <= hi]
         # Inland rivers have only their light line: it's in the close-in file too.
-        if tier == 'b': part += [x for x in xs if x[0] == 'l' and x[1] == 7 and x[3:] == ['inland']]
         if part:
             json.dump(part, open(f'out/{key}.{tier}.json', 'w'), separators=(',', ':'))
             index.setdefault(key, '')

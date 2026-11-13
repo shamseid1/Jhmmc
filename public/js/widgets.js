@@ -124,7 +124,9 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     if (kind === 'plotter') {
       drawLand();
       const css = getComputedStyle(map.getContainer());
-      waterOn = waterLayer(L, { sea: css.getPropertyValue('--plotter-sea').trim() || '#0c2f5c', shore: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0' }).addTo(map);
+      // All water on the land in one blue (areas and lines alike), as Garmin's rivers; the sea apart.
+      const inland = css.getPropertyValue('--plotter-inland').trim() || '#1f5d99';
+      waterOn = waterLayer(L, { sea: inland, shore: inland }).addTo(map);
     }
   };
   setBase(base);
@@ -226,9 +228,9 @@ function placeNames(L, map) {
   return { set: (v) => { on = v; draw(); } };
 }
 // The Plotter map's water on the land, as on Garmin (charts/tools/osm_water.py, OpenStreetMap):
-// rivers with their real banks, lagoons, lakes and creeks, in the sea's blue; zoomed out a coarse
-// copy, from zoom 9 the full detail, the small creeks from 11. Tile by tile from 1° squares.
-const WATER_V = '2';
+// rivers with their real banks, lagoons and lakes (no line-only rivers), in one blue; zoomed out a
+// coarse copy, from zoom 9 the full detail. Tile by tile from 1° squares.
+const WATER_V = '3';
 const waterFiles = new Map();
 let waterIndex = null;
 const waterFile = async (key, tier) => {
@@ -268,17 +270,6 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
           if (close) ctx.closePath();
         };
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-        // Rivers and creeks as lines, wider closer in (first: where a river has its banks drawn,
-        // the area covers its line).
-        for (const items of files) {
-          for (const [kind, zmin, geo] of items) {
-            if (kind !== 'l' || zmin > z || z < 9 || !crosses(geo)) continue; // rivers and creeks from zoom 9: further out the land stays quiet, as on Garmin
-            ctx.beginPath(); trace(geo, false);
-            ctx.strokeStyle = shore; ctx.globalAlpha = 0.75;
-            ctx.lineWidth = zmin <= 9 ? Math.max(1, (z - 6) * 0.5) : Math.max(0.7, (z - 9) * 0.4);
-            ctx.stroke(); ctx.globalAlpha = 1;
-          }
-        }
         // The water areas (holes are islands), with no outline, as on Garmin: an area's edge isn't
         // always a shore (a river's area is closed straight across its mouth, and a river comes in
         // pieces), and the water against the land shows the banks.
