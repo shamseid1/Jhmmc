@@ -482,7 +482,8 @@ PAGE_GROUPS.push((view) => ({
       let keys = [];
       try { keys = await (await fetch(`/contours/index.json?v=${CONTOURS_V}`)).json(); } catch { return; }
       keys = keys.filter((k) => { const [la, lo] = k.split('_').map(Number); return la >= 0 && la <= 12 && lo >= -19 && lo <= -7; });
-      const urls = keys.map((k) => `/contours/${k}.json?v=${CONTOURS_V}`);
+      // With the land and its details (the Plotter map's), so the map is whole with no signal.
+      const urls = [...keys.map((k) => `/contours/${k}.json?v=${CONTOURS_V}`), `/land-fine.json?v=${LAND_V}`, `/land-details.json?v=${LAND_V}`];
       let failed = 0;
       // Two at a time, so the map you're looking at isn't slowed down; stops if you leave.
       const next = async () => { while (urls.length && view.isConnected) { const ok = await fetch(urls.shift()).then((r) => r.ok).catch(() => false); if (!ok) failed += 1; } };

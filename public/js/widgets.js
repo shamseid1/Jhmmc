@@ -58,8 +58,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     }
   };
   map.on('zoomend', drawDetails);
-  const drawLand = () => Promise.all([fetch('/land-fine.json?v=5').then((r) => r.json()),
-    fetch('/land-details.json?v=1').then((r) => r.json()).catch(() => null)]).then(([{ fill, wide = [], coast }, more]) => {
+  const drawLand = () => Promise.all([fetch(`/land-fine.json?v=${LAND_V}`).then((r) => r.json()),
+    fetch(`/land-details.json?v=${LAND_V}`).then((r) => r.json()).catch(() => null)]).then(([{ fill, wide = [], coast }, more]) => {
     detailData = more;
     drawDetails();
     if (!map.getContainer().classList.contains('base-plotter')) return;
@@ -133,7 +133,8 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '6';
+const CONTOURS_V = '7'; // (bumped: the land now saved with the lines)
+const LAND_V = '6';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {
