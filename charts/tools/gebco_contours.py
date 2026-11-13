@@ -8,7 +8,7 @@
 # to public/contours/ and list them in public/contours/index.json.
 import json, os, sys, numpy as np
 from scipy.io import netcdf_file
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, distance_transform_edt
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 f = netcdf_file(sys.argv[1] if len(sys.argv) > 1 else 'region.nc', 'r', mmap=False)
@@ -22,6 +22,16 @@ d = gaussian_filter(np.where(land, 0, depth), 0.8); d[land] = -1
 dd = gaussian_filter(np.where(land, 0, depth), 4.0)
 t = np.clip((depth - 1500) / 1000, 0, 1)
 d = np.where(land, -1, d * (1 - t) + dd * t)
+# How far each point is from land (km; a grid step is about 0.46 km): only lines that come
+# within 250 km of the coast are kept, the fishing grounds' (not the far ocean's features, cut
+# off by the data's edge).
+step_km = abs(lats[1] - lats[0]) * 111.2
+coast_km = distance_transform_edt(~land) * step_km
+REACH_KM = 250
+def near_coast(seg):
+    j = np.clip(np.round((seg[:, 1] - lats[0]) / (lats[1] - lats[0])).astype(int), 0, len(lats) - 1)
+    i = np.clip(np.round((seg[:, 0] - lngs[0]) / (lngs[1] - lngs[0])).astype(int), 0, len(lngs) - 1)
+    return coast_km[j, i].min() <= REACH_KM
 def zmin(m):
     # From furthest out, the shallow ones too (20, 50, 100 m), so the lines always run to the coast.
     if m in (20, 50, 100, 200, 500, 1000, 2000, 3000, 4000): return 6
@@ -49,7 +59,7 @@ total = 0
 for lev in levels:
     cs = ax.contour(lngs, lats, d, levels=[lev])
     for seg in cs.allsegs[0]:
-        if len(seg) < 4: continue
+        if len(seg) < 4 or not near_coast(np.asarray(seg)): continue
         s = simplify(np.asarray(seg), 0.0003)
         # Pieces of at most 60 points and half a degree across (so a tile finds every piece
         # that crosses it in the squares around it), each filed under its first point's 1° square.
