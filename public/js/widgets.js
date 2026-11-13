@@ -27,15 +27,24 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   landPane.style.zIndex = 250;
   landPane.style.pointerEvents = 'none';
   let landLayer = null;
-  // (GSHHG's full-resolution coastline, about 45 m: charts/tools/gshhg_coast.py.)
-  const drawLand = () => fetch('/land-fine.json').then((r) => r.json()).then((rings) => {
+  // (GSHHG's coastline: full resolution, about 45 m, on the chart's coast, coarser beyond:
+  // charts/tools/gshhg_coast.py.)
+  const drawLand = () => fetch('/land-fine.json?v=4').then((r) => r.json()).then(({ fill, wide = [], coast }) => {
     if (!map.getContainer().classList.contains('base-plotter')) return;
     landLayer?.remove();
     // Its colours from the page's style (--plotter-land, --plotter-coast), so they're set in one place.
     const css = getComputedStyle(map.getContainer());
-    landLayer = L.polygon(rings, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), stroke: true,
-      color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2,
-      fillColor: css.getPropertyValue('--plotter-land').trim() || '#6b5222', fillOpacity: 1, interactive: false }).addTo(map);
+    const renderer = L.canvas({ pane: 'land', padding: 0.3 });
+    // The land filled (no edge drawn: its pieces are cut where the detail changes), then the
+    // coastline on its own, only where there really is a coast.
+    const landStyle = { pane: 'land', renderer, stroke: false, fillColor: css.getPropertyValue('--plotter-land').trim() || '#2b2f36', fillOpacity: 1, interactive: false };
+    // The coarse land and the detailed apart: they overlap a little, and as one shape the
+    // overlap would read as a hole (a hairline of sea).
+    landLayer = L.layerGroup([
+      L.polygon(wide, landStyle),
+      L.polygon(fill, landStyle),
+      L.polyline(coast, { pane: 'land', renderer, color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2, interactive: false }),
+    ]).addTo(map);
   }).catch(() => {});
   let layers = [];
   const setBase = (kind) => {
@@ -91,7 +100,7 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '1';
+const CONTOURS_V = '2';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {

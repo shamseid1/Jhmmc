@@ -16,6 +16,11 @@ z = f.variables['elevation'].data.astype(float)
 if lats[0] > lats[-1]: lats = lats[::-1]; z = z[::-1]
 depth = -z; land = depth <= 0
 d = gaussian_filter(np.where(land, 0, depth), 0.8); d[land] = -1
+# Deep water smoothed more (the flat deep floor is noise at a few metres): blended in from
+# 1,500 m to 2,500 m, so the deep lines run clean, as a chart draws them.
+dd = gaussian_filter(np.where(land, 0, depth), 4.0)
+t = np.clip((depth - 1500) / 1000, 0, 1)
+d = np.where(land, -1, d * (1 - t) + dd * t)
 def zmin(m):
     if m in (200, 1000, 2000, 3000, 4000, 5000): return 6
     if m == 100 or m % 500 == 0: return 8
@@ -23,7 +28,7 @@ def zmin(m):
     if (m <= 100 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or m % 100 == 0: return 10
     if (m <= 200 and m % 10 == 0) or (m <= 500 and m % 25 == 0) or (m <= 2000 and m % 50 == 0): return 11
     return 12
-levels = sorted(set(list(range(5, 51, 5)) + list(range(60, 301, 10)) + list(range(325, 1001, 25)) + list(range(1050, 2001, 50)) + list(range(2100, 5501, 100))))
+levels = sorted(set(list(range(5, 51, 5)) + list(range(60, 301, 10)) + list(range(325, 1001, 25)) + list(range(1050, 2001, 50)) + list(range(2100, 4001, 100))))  # to 4,000 m: further out is the flat deep floor
 def simplify(pts, tol):
     keep = np.zeros(len(pts), bool); keep[0] = keep[-1] = True
     stack = [(0, len(pts) - 1)]
