@@ -52,7 +52,27 @@ for d in sorted(glob.glob('x/*')):
                     for lo in range(math.floor(b[0]), math.floor(b[2]) + 1):
                         cells.setdefault(f'{la}_{lo}', []).append(['a', z0, rings])
             n[0] += 1; pts += len(s.exterior.coords)
-    # (Rivers mapped only as a line are left out: only water with its real banks is drawn.)
+    # Rivers mapped only as a line: only around Marshall (the club's fishing rivers: the Farmington,
+    # Junk, Du and their branches), drawn in the same blue as the water, so a river is whole where
+    # its banks aren't mapped; elsewhere only water with its real banks is drawn.
+    MARSHALL = (5.85, 6.75, -10.75, -9.95)  # south, north, west, east
+    r = shapefile.Reader(f'{d}/waterways_lines', encoding='utf-8', encodingErrors='replace'); names = [x[0] for x in r.fields[1:]]
+    for sr in r.iterShapeRecords():
+        rec = dict(zip(names, sr.record))
+        if rec.get('waterway') != 'river' or not sr.shape.points: continue
+        b = sr.shape.bbox
+        if b[2] < MARSHALL[2] or b[0] > MARSHALL[3] or b[3] < MARSHALL[0] or b[1] > MARSHALL[1]: continue
+        try: g0 = shape(sr.shape.__geo_interface__).simplify(0.00005)
+        except Exception: continue
+        for l in ([g0] if g0.geom_type == 'LineString' else [x for x in getattr(g0, 'geoms', []) if x.geom_type == 'LineString']):
+            co = list(l.coords)
+            k = 0
+            while k < len(co) - 1:
+                e = k + 1
+                while e < len(co) - 1 and abs(co[e + 1][0] - co[k][0]) < 0.5 and abs(co[e + 1][1] - co[k][1]) < 0.5: e += 1
+                put(co[k][1], co[k][0], ['l', 9, flat(co[k:e + 1])]); k = e
+            pts += len(co)
+        n[1] += 1
 # Each square in three files by the zoom its water shows from (a: to 8, b: 9-10, c: 11-12), so a
 # phone loads the fine creeks only when zoomed in close (one or two squares on screen).
 shutil.rmtree('out', ignore_errors=True); os.makedirs('out')

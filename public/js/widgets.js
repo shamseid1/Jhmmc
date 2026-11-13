@@ -230,7 +230,7 @@ function placeNames(L, map) {
 // The Plotter map's water on the land, as on Garmin (charts/tools/osm_water.py, OpenStreetMap):
 // rivers with their real banks, lagoons and lakes (no line-only rivers), in one blue; zoomed out a
 // coarse copy, from zoom 9 the full detail. Tile by tile from 1° squares.
-const WATER_V = '4';
+const WATER_V = '5';
 const waterFiles = new Map();
 let waterIndex = null;
 const waterFile = async (key, tier) => {
@@ -270,6 +270,17 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
           if (close) ctx.closePath();
         };
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        // The fishing rivers mapped only as a line (around Marshall), in the water's own blue, wider
+        // closer in; drawn first, so where a river's banks are mapped its area covers the line.
+        ctx.strokeStyle = sea;
+        for (const items of files) {
+          for (const [kind, zmin, geo] of items) {
+            if (kind !== 'l' || zmin > z || !crosses(geo)) continue;
+            ctx.beginPath(); trace(geo, false);
+            ctx.lineWidth = Math.max(1.5, (z - 7) * 1.1);
+            ctx.stroke();
+          }
+        }
         // The water areas (holes are islands), with no outline, as on Garmin: an area's edge isn't
         // always a shore (a river's area is closed straight across its mouth, and a river comes in
         // pieces), and the water against the land shows the banks.
