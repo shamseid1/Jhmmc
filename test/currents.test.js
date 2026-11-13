@@ -25,7 +25,7 @@ test('the chart grid: the sea in parts and the wind, frames every 3 hours, u/v i
   const d = await currents.get({ wait: true });
   assert.equal(urls.length, 2, 'the sea (9 points, one part), and the wind');
   assert.equal(new URL(urls[1]).searchParams.get('latitude').split(',').length, 4, 'the wind on every other point');
-  assert.equal(d.frames.length, 24, 'every 3 hours for 3 days');
+  assert.equal(d.frames.length, 72, 'every hour for 3 days');
   const f = d.frames[0];
   assert.deepEqual([f.u[0], f.v[0], f.sst[0]], [null, null, null], 'land');
   assert.deepEqual([f.u[1], f.v[1], f.sst[1]], [1, 0, 28.4], '1 knot to the east');
@@ -41,11 +41,11 @@ test('the chart grid: the sea in parts and the wind, frames every 3 hours, u/v i
   await new Promise((r) => setTimeout(r, 50)); // the file is written in the background
   let asked = 0;
   const again = createCurrents({ region, gapMs: 0, file, fetchImpl: async () => { asked += 1; throw new Error('offline'); } });
-  assert.equal((await again.get()).frames.length, 24, 'the saved chart, at once');
+  assert.equal((await again.get()).frames.length, 72, 'the saved chart, at once');
   assert.equal(asked, 0);
 });
 
-test('the tide is averaged out: a steady current stays, the to-and-fro goes', () => {
+test('the real current each hour: the tide swings it', () => {
   const { frames } = require('../src/currents');
   const region = { south: 5, north: 5, west: -11, east: -11, step: 0.3 };
   const time = Array.from({ length: 72 }, (_, h) => `2026-11-12T${String(h % 24).padStart(2, '0')}:00`);
@@ -56,9 +56,9 @@ test('the tide is averaged out: a steady current stays, the to-and-fro goes', ()
     ocean_current_velocity: u.map((x, h) => Math.hypot(x, v[h]) * 1.852),
     ocean_current_direction: u.map((x, h) => (Math.atan2(x, v[h]) * 180) / Math.PI) };
   const d = frames([{ hourly }], region, { nx: 1, ny: 1 });
-  const mid = d.frames[12];
-  assert.ok(Math.abs(mid.u[0] - 0.5) < 0.05, `east stays: ${mid.u[0]}`);
-  assert.ok(Math.abs(mid.v[0]) < 0.12, `tide gone: ${mid.v[0]}`);
+  assert.equal(d.hours, 1);
+  assert.ok(Math.abs(d.frames[0].u[0] - 0.5) < 0.02 && Math.abs(d.frames[0].v[0] - 1) < 0.02, 'flood: north');
+  assert.ok(Math.abs(d.frames[6].v[0] + 1) < 0.05, `six hours on, ebb: south (${d.frames[6].v[0]})`);
 });
 
 test('the fishing chart: no preferences until there are billfish to go by', async () => {

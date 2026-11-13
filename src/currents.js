@@ -24,12 +24,9 @@ function grid(r = REGION) {
   return { nx, ny, pts };
 }
 
-// The model's hourly lists at each point, made into frames every 3 hours: u and v (knots,
-// east and north), and water temperature; null on land. The model's current includes the
-// tide, which near the coast swings the water on and off shore every few hours; averaged over
-// a day (two tides, 25 hours around each frame) it leaves the current itself: the Guinea
-// Current, its eddies and edges, as a fishing chart shows it.
-const TIDE_WINDOW = 12;
+// The model's hourly lists at each point, made into a frame for every hour: u and v (knots,
+// east and north: the real current at that hour, the tide in it), water temperature, waves and
+// wind; null on land.
 // The wind grid: every other row and column (and the last), as indexes into the full grid.
 const coarse = (n) => { const xs = []; for (let i = 0; i < n; i += 2) xs.push(i); if (xs.at(-1) !== n - 1) xs.push(n - 1); return xs; };
 function windGrid(r = REGION) {
@@ -66,11 +63,7 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
     }
     return [hu, hv];
   });
-  const mean = (xs, h) => {
-    let s = 0; let n = 0;
-    for (let k = Math.max(0, h - TIDE_WINDOW); k <= Math.min(xs.length - 1, h + TIDE_WINDOW); k++) if (xs[k] != null) { s += xs[k]; n += 1; }
-    return n ? Math.round((s / n) * 100) / 100 : null;
-  };
+  const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
   // The wind (knots, where it blows to) on the coarse grid, by the same hour.
   const wg = wind && windGrid(r);
   const windAt = (h, key) => {
@@ -89,11 +82,11 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
   };
   const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
   const out = [];
-  for (let h = 0; h < times.length; h += 3) {
+  for (let h = 0; h < times.length; h++) {
     const u = []; const v = []; const sst = []; const wh = []; const wd = [];
     results.forEach((x, k) => {
-      u.push(mean(uv[k][0], h));
-      v.push(mean(uv[k][1], h));
+      u.push(r2(uv[k][0][h]));
+      v.push(r2(uv[k][1][h]));
       sst.push(r1(x?.hourly?.sea_surface_temperature?.[h]));
       wh.push(r1(x?.hourly?.wave_height?.[h]));
       const d = x?.hourly?.wave_direction?.[h]; // where the waves come from
@@ -101,7 +94,7 @@ function frames(results, r = REGION, { nx, ny } = grid(r), wind = null) {
     });
     out.push({ time: times[h], u, v, sst, wh, wd, wu: windAt(h, 'u'), wv: windAt(h, 'v') });
   }
-  return { south: r.south, west: r.west, step: r.step, nx, ny, frames: out };
+  return { south: r.south, west: r.west, step: r.step, nx, ny, hours: 1, frames: out };
 }
 
 // Open-Meteo's free limit is 600 points a minute (and 5,000 an hour, 10,000 a day): the grid is

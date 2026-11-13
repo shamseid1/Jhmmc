@@ -601,14 +601,15 @@ PAGE_GROUPS.push((view) => ({
     if (chlGrid) useChl(chlGrid);
     else chlP?.then((g) => { if (g && view.isConnected) useChl(g, true); });
     const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
-    // Every hour, from the first of the forecast's 3-hour steps to the last; the hours between
-    // two steps are blended from them (as Windy does between its model's steps).
+    // Every hour of the forecast. A chart saved before it came hourly has 3-hour steps: the
+    // hours between two are blended from them.
     const t0 = Date.parse(`${data.frames[0].time}:00Z`);
-    const HOURS = (data.frames.length - 1) * 3 + 1;
+    const STEP = data.hours || 3;
+    const HOURS = (data.frames.length - 1) * STEP + 1;
     const BLEND = ['u', 'v', 'sst', 'wh', 'wu', 'wv', 'xu', 'xv', 'fish'];
     const hourCache = new Map();
     const frameAt = (h) => {
-      const i = Math.floor(h / 3); const t = (h % 3) / 3;
+      const i = Math.floor(h / STEP); const t = (h % STEP) / STEP;
       if (!t || i >= data.frames.length - 1) return data.frames[Math.min(i, data.frames.length - 1)];
       if (hourCache.has(h)) return hourCache.get(h);
       const a = data.frames[i]; const b = data.frames[i + 1];

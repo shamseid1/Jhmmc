@@ -41,7 +41,7 @@ module.exports = (ctx) => {
     res.set('Cache-Control', 'private, max-age=3600').json({ water: band(rows.map((r) => r.w)), depth: band(rows.map((r) => r.d)) });
   });
 
-  // The chart's data: the grid's currents, water temperature, waves and wind every 3 hours
+  // The chart's data: the grid's currents, water temperature, waves and wind for every hour
   // (Render compresses it on the way).
   api.get('/currents', async (_req, res) => {
     if (!currents) return res.status(503).json({ error: 'The currents map is not available right now.' });
