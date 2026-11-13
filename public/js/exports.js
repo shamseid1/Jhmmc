@@ -203,7 +203,7 @@ async function officersWorkbook(onlyTournament = null) {
   const [club, { events, season }] = await Promise.all([api('/club-members'), api('/events')]);
   const label = `${season.start.slice(0, 4)}–${season.end.slice(2, 4)}`;
   const made = new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-  const tournaments = events.filter((e) => e.kind === 'tournament' && (!onlyTournament || String(e.id) === String(onlyTournament)));
+  const tournaments = events.filter((e) => e.kind === 'tournament' && e.date && (!onlyTournament || String(e.id) === String(onlyTournament)));
   const sheetsData = await Promise.all(tournaments.map((t) => api(`/tournaments/${t.id}/sheet`)));
   const red = (v) => ({ v, s: 5 });
   const members = [...club.people.map((p) => [p.name, p.teamName || '', p.email || '', 'Yes', p.paid ? 'Paid' : red('Not paid')]),

@@ -56,7 +56,7 @@ const LINE_CLASSES = ['2 lb', '4 lb', '6 lb', '8 lb', '12 lb', '16 lb', '20 lb',
 // The founding club: always present, and listed first after IGFA on the Records page.
 const HOME_CLUB = { name: 'JHMMC', country: 'Liberia' };
 
-const SCHEMA_VERSION = 50;
+const SCHEMA_VERSION = 51;
 
 // A catch is credited to a member (user_id) or, for anglers without an
 // account, to a typed name (angler_name). logged_by is whoever entered it.
@@ -195,12 +195,19 @@ CREATE TABLE IF NOT EXISTS species (
 
 -- Calendar: tournaments, from date to end_date (NULL for one day), and
 -- holidays from earlier versions, no longer used for scoring.
+-- The season calendar: tournaments (they score), dinners and other club events (they don't).
+-- date is null while it's to be announced (when_text says roughly when, e.g. "April or May");
+-- tbc: the date is set but to be confirmed.
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
-  date TEXT NOT NULL,
+  date TEXT,
   end_date TEXT,
-  kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament')),
-  name TEXT NOT NULL
+  kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament', 'dinner', 'event')),
+  name TEXT NOT NULL,
+  place TEXT,
+  note TEXT,
+  tbc INTEGER NOT NULL DEFAULT 0,
+  when_text TEXT
 );
 
 -- Boats entered in a tournament: only their fish count for its results.
@@ -704,6 +711,23 @@ function openDb(file) {
       db.exec('ALTER TABLE users ADD COLUMN rules_accepted_at TEXT');
     }
   }
+  if (hasTables && version < 51) {
+    // The calendar takes dinners and events too, dates to be announced, a place, a note and
+    // "to be confirmed": SQLite needs a rebuild for the kinds and the optional date.
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`BEGIN;
+      CREATE TABLE events_v51 (id INTEGER PRIMARY KEY, date TEXT, end_date TEXT,
+        kind TEXT NOT NULL CHECK (kind IN ('holiday', 'tournament', 'dinner', 'event')), name TEXT NOT NULL,
+        place TEXT, note TEXT, tbc INTEGER NOT NULL DEFAULT 0, when_text TEXT);
+      INSERT INTO events_v51 (id, date, end_date, kind, name) SELECT id, date, end_date, kind, name FROM events;
+      DROP TABLE events;
+      ALTER TABLE events_v51 RENAME TO events;
+      COMMIT;`);
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+  // The club's 2026-27 schedule (the secretary's letter, Nov 2026), once, on the live database:
+  // anything already on the calendar by that name is left as it is.
+  const seedSchedule = hasTables && version < 51;
   if (hasTables && version < 47) {
     // Likes and comments were taken out of the app (Nov 2026): their tables go, with what's in them.
     db.exec(`DROP TABLE IF EXISTS likes; DROP TABLE IF EXISTS comments;
@@ -711,6 +735,24 @@ function openDb(file) {
   }
   db.exec(SCHEMA);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  if (seedSchedule) {
+    const SCHEDULE = [
+      ['tournament', 'JHMMC Open Season Tournament', '2026-11-29', '2026-11-30', null, null, 0, null],
+      ['tournament', 'Memorial Tournament', '2026-12-06', null, null, null, 0, null],
+      ['dinner', 'Dinner for the 2 tournaments', '2026-12-11', null, null, 'Open Season & Memorial', 0, null],
+      ['tournament', 'Christmas Tournament', '2026-12-20', null, null, null, 0, null],
+      ['tournament', 'Biggest Fish Tournament', '2027-01-10', null, null, null, 0, null],
+      ['dinner', 'Dinner for the 2 tournaments', '2027-01-15', null, null, 'Christmas & Biggest Fish', 0, null],
+      ['tournament', 'Jackpot Tournament', '2027-02-07', null, null, null, 0, null],
+      ['tournament', 'Corporate Tournament & Beer Drinking Competition', '2027-03-14', '2027-03-15', 'Marshall', null, 1, null],
+      ['dinner', 'Dinner for the Jackpot Tournament', '2027-03-14', null, 'Marshall', null, 0, null],
+      ['tournament', 'End of Season Tournament', null, null, null, null, 0, 'April or May'],
+      ['dinner', 'Dinner for Corporate & End of Season Tournaments', null, null, null, null, 0, null],
+    ];
+    const has = db.prepare('SELECT 1 FROM events WHERE lower(name) = lower(?) AND (date IS ? OR date = ?)');
+    const add = db.prepare('INSERT INTO events (kind, name, date, end_date, place, note, tbc, when_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const e of SCHEDULE) if (!has.get(e[1], e[2], e[2])) add.run(...e);
+  }
   // Species renamed since earlier versions; catches keep pointing at the same row.
   db.prepare("UPDATE species SET name = 'Barracuda' WHERE name = 'Guinean barracuda'").run();
   // Short names, the way anglers say them (Grouper, not Dusky grouper).

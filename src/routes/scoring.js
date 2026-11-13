@@ -263,42 +263,80 @@ module.exports = (ctx) => {
 
   // Season calendar: tournaments, each with its own results. (Holidays from
   // earlier versions are kept but no longer affect scoring.)
+  // The season calendar: tournaments (they score, with their entries) and the club's dinners and
+  // events (they don't), dated or to be announced (those last, in the order added).
+  const EVENT_COLS = `id, date, COALESCE(end_date, date) AS endDate, kind, name, place, note, tbc, when_text AS whenText,
+    (SELECT json_group_array(team_id) FROM tournament_entries WHERE event_id = events.id) AS entries`;
+  const eventOut = (e) => ({ ...e, tbc: !!e.tbc, entries: JSON.parse(e.entries) });
   api.get('/events', (_req, res) => {
     const start = setting('season_start');
     const end = setting('season_end');
     res.json({
       season: { start, end },
-      events: db.prepare(`SELECT id, date, COALESCE(end_date, date) AS endDate, kind, name,
-          (SELECT json_group_array(team_id) FROM tournament_entries WHERE event_id = events.id) AS entries
-        FROM events WHERE COALESCE(end_date, date) >= ? AND date <= ? ORDER BY date`).all(start, end)
-        .map((e) => ({ ...e, entries: JSON.parse(e.entries) })),
+      events: db.prepare(`SELECT ${EVENT_COLS} FROM events
+        WHERE (date IS NULL AND kind <> 'holiday') OR (COALESCE(end_date, date) >= ? AND date <= ?)
+        ORDER BY date IS NULL, date, id`).all(start, end).map(eventOut),
     });
   });
 
-  api.post('/events', requireReview, (req, res) => {
-    const date = str(req.body.date, 10);
-    const kind = req.body.kind === 'tournament' ? 'tournament' : 'holiday';
-    const name = str(req.body.name, 80);
-    const endDate = str(req.body.endDate, 10) || date;
-    const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? '');
-    if (!isDay(date)) return res.status(400).json({ error: 'Choose the date.' });
-    if (!isDay(endDate) || endDate < date) return res.status(400).json({ error: 'The last day must be on or after the first day.' });
-    if ((Date.parse(endDate) - Date.parse(date)) / 86400000 >= MAX_EVENT_DAYS) {
-      return res.status(400).json({ error: `A tournament can last up to ${MAX_EVENT_DAYS} days.` });
+  // What's sent in to add or change one: checked the same way for both.
+  const KINDS = ['tournament', 'dinner', 'event'];
+  const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? '');
+  function eventFields(body) {
+    const kind = KINDS.includes(body.kind) ? body.kind : 'tournament';
+    const name = str(body.name, 80);
+    const tba = body.tba === true || body.tba === 'on' || body.tba === '1' || !str(body.date, 10);
+    const date = tba ? null : str(body.date, 10);
+    const endDate = tba ? null : (str(body.endDate, 10) || date);
+    if (!name) return { error: kind === 'tournament' ? 'Name the tournament.' : 'Give it a name.' };
+    if (!tba) {
+      if (!isDay(date)) return { error: 'Choose the date, or tick "Date to be announced".' };
+      if (!isDay(endDate) || endDate < date) return { error: 'The last day must be on or after the first day.' };
+      if ((Date.parse(endDate) - Date.parse(date)) / 86400000 >= MAX_EVENT_DAYS) return { error: `It can last up to ${MAX_EVENT_DAYS} days.` };
     }
-    if (!name) return res.status(400).json({ error: kind === 'tournament' ? 'Name the tournament.' : 'Name the holiday.' });
-    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name) VALUES (?, ?, ?, ?)')
-      .run(date, endDate === date ? null : endDate, kind, name);
+    return { kind, name, date, endDate: endDate === date ? null : endDate, place: str(body.place, 60) || null, note: str(body.note, 120) || null,
+      tbc: !tba && (body.tbc === true || body.tbc === 'on' || body.tbc === '1') ? 1 : 0, whenText: tba ? (str(body.whenText, 40) || null) : null };
+  }
+  const fmtDay = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const whenOf = (e) => (!e.date ? (e.whenText ? `${e.whenText} (date to be announced)` : 'date to be announced')
+    : `${(e.endDate || e.end_date) && (e.endDate || e.end_date) !== e.date ? `${fmtDay(e.date)} to ${fmtDay(e.endDate || e.end_date)}` : fmtDay(e.date)}${e.tbc ? ' (to be confirmed)' : ''}`);
+
+  api.post('/events', requireReview, (req, res) => {
+    const f = eventFields(req.body);
+    if (f.error) return res.status(400).json({ error: f.error });
+    const { lastInsertRowid } = db.prepare('INSERT INTO events (date, end_date, kind, name, place, note, tbc, when_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(f.date, f.endDate, f.kind, f.name, f.place, f.note, f.tbc, f.whenText);
     // A new tournament is news for everyone: an announcement in the feed, and on phones.
-    if (kind === 'tournament') {
-      const fmt = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-      const when = endDate !== date ? `${fmt(date)} to ${fmt(endDate)}` : fmt(date);
-      const title = `New tournament: ${name}`;
+    if (f.kind === 'tournament') {
+      const when = whenOf(f);
+      const title = `New tournament: ${f.name}`;
       const body = `${when}. JHMMC captains: enter your boat and list your anglers in the app (Leaderboard → Tournaments).`;
       db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, title, body);
-      pushToEveryone({ title: `JHMMC: ${title}`, body: when, url: '/#/tournaments' }, req.user);
+      pushToEveryone({ title: `JHMMC: ${title}`, body: when, url: '/#/calendar' }, req.user);
     }
-    res.status(201).json({ event: { id: Number(lastInsertRowid), date, endDate, kind, name } });
+    res.status(201).json({ event: { id: Number(lastInsertRowid), ...f } });
+  });
+
+  // Change one (the dates move a lot). A change of date or place to something in the next two
+  // weeks (before or after) is told to everyone: in the feed and on phones.
+  api.patch('/events/:id', requireReview, (req, res) => {
+    const id = intId(req.params.id);
+    const was = db.prepare('SELECT * FROM events WHERE id = ?').get(id ?? 0);
+    if (!was) return res.status(404).json({ error: 'Not on the calendar.' });
+    const f = eventFields({ kind: was.kind === 'holiday' ? 'event' : was.kind, ...req.body });
+    if (f.error) return res.status(400).json({ error: f.error });
+    db.prepare('UPDATE events SET date = ?, end_date = ?, kind = ?, name = ?, place = ?, note = ?, tbc = ?, when_text = ? WHERE id = ?')
+      .run(f.date, f.endDate, f.kind, f.name, f.place, f.note, f.tbc, f.whenText, id);
+    const moved = was.date !== f.date || (was.end_date || null) !== f.endDate || (was.place || null) !== f.place || !!was.tbc !== !!f.tbc;
+    const soon = (d) => d && Date.parse(`${d}T23:59:59Z`) >= Date.now() - 864e5 && Date.parse(`${d}T00:00:00Z`) <= Date.now() + 14 * 864e5;
+    if (moved && (soon(was.date) || soon(f.date))) {
+      const where = f.place ? ` · ${f.place}` : '';
+      const title = `${f.name}: ${f.date ? 'new date' : 'date to be announced'}`;
+      const body = `Now ${whenOf(f)}${where}${was.date ? ` (was ${whenOf(was)})` : ''}.`;
+      db.prepare('INSERT INTO announcements (user_id, title, body) VALUES (?, ?, ?)').run(req.user.id, title, body);
+      pushToEveryone({ title: `JHMMC: ${title}`, body, url: '/#/calendar' }, req.user);
+    }
+    res.json({ event: eventOut(db.prepare(`SELECT ${EVENT_COLS} FROM events WHERE id = ?`).get(id)) });
   });
 
   api.delete('/events/:id', requireReview, (req, res) => {
