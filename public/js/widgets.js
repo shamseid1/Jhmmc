@@ -81,6 +81,11 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   }).catch(() => {});
   let layers = [];
   const ourNames = placeNames(L, map);
+  // The water on the land (rivers, lagoons, creeks), over the land and its details, under the depth lines.
+  const waterPane = map.getPane('water') || map.createPane('water');
+  waterPane.style.zIndex = 260;
+  waterPane.style.pointerEvents = 'none';
+  let waterOn = null;
   let credit = null;
   const setBase = (kind) => {
     const b = BASES[kind] || BASES.satellite;
@@ -94,7 +99,12 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     if (credit) map.attributionControl?.addAttribution(credit);
     ourNames.set(kind === 'plotter');
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
-    if (kind === 'plotter') drawLand();
+    waterOn?.remove(); waterOn = null;
+    if (kind === 'plotter') {
+      drawLand();
+      const css = getComputedStyle(map.getContainer());
+      waterOn = waterLayer(L, { sea: css.getPropertyValue('--plotter-sea').trim() || '#0c2f5c', shore: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0' }).addTo(map);
+    }
   };
   setBase(base);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
@@ -173,8 +183,11 @@ function placeNames(L, map) {
     // The club's own markers' spots (the dot and its name to the right) are kept clear.
     const boxes = MAP_PLACES.map((m) => { const q = map.latLngToContainerPoint([m.lat, m.lng]); return [q.x - 8, q.y - 11, q.x + 16 + m.name.length * 8.5, q.y + 11]; });
     const layers = [];
+    const seen = new Map(); // a name -> where it's already shown (the same place is often in twice)
     for (const [zmin, rank, kind, lat, lng, name] of xs) {
       if (layers.length >= 220) break;
+      const was = seen.get(name);
+      if (was && was.some(([a0, b0]) => Math.abs(a0 - lat) < 0.05 && Math.abs(b0 - lng) < 0.05)) continue;
       const big = kind === 'town' && rank <= 1;
       const w = Math.round(name.length * (big ? 8.2 : 6.8)) + 6; const h = big ? 18 : 15;
       const p = map.latLngToContainerPoint([lat, lng]);
@@ -182,6 +195,7 @@ function placeNames(L, map) {
       if (box[2] < 0 || box[3] < 0 || box[0] > size.x || box[1] > size.y) continue;
       if (boxes.some((o) => box[0] < o[2] + 4 && box[2] > o[0] - 4 && box[1] < o[3] + 2 && box[3] > o[1] - 2)) continue;
       boxes.push(box);
+      seen.set(name, [...(seen.get(name) || []), [lat, lng]]);
       layers.push(L.marker([lat, lng], { pane: 'placenames', interactive: false, keyboard: false,
         icon: L.divIcon({ className: `pn pn-${kind}${big ? ' pn-big' : ''}`, html: esc(name), iconSize: [w, h], iconAnchor: [w / 2, h / 2] }) }));
     }
@@ -190,6 +204,78 @@ function placeNames(L, map) {
   };
   map.on('moveend zoomend', draw);
   return { set: (v) => { on = v; draw(); } };
+}
+// The Plotter map's water on the land, as on Garmin (charts/tools/osm_water.py, OpenStreetMap):
+// rivers with their real banks, lagoons, lakes and creeks, in the sea's blue; zoomed out a coarse
+// copy, from zoom 9 the full detail, the small creeks from 11. Tile by tile from 1° squares.
+const WATER_V = '1';
+const waterFiles = new Map();
+let waterIndex = null;
+const waterFile = async (key, tier) => {
+  waterIndex ??= fetch(`/water/index.json?v=${WATER_V}`).then((r) => r.json()).catch(() => null);
+  const have = await waterIndex;
+  if (have && !(have[key] || '').includes(tier)) return [];
+  const k = `${key}.${tier}`;
+  if (!waterFiles.has(k)) waterFiles.set(k, fetch(`/water/${k}.json?v=${WATER_V}`).then((r) => (r.ok ? r.json() : [])).catch(() => []));
+  return waterFiles.get(k);
+};
+function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
+  const Layer = L.GridLayer.extend({
+    createTile(coords, done) {
+      const size = this.getTileSize();
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      const cv = document.createElement('canvas');
+      cv.width = size.x * dpr; cv.height = size.y * dpr;
+      const map = this._map; const z = coords.z;
+      const nw = coords.scaleBy(size);
+      const a = map.unproject(nw, z); const b = map.unproject(nw.add(size), z);
+      const south = b.lat; const north = a.lat; const west = a.lng; const east = b.lng;
+      const tiers = z <= 8 ? ['a'] : z <= 10 ? ['b'] : ['b', 'c'];
+      const jobs = [];
+      // Areas are filed under every square they cover; line pieces (≤ half a degree) under their first point's.
+      for (let la = Math.floor(south) - 1; la <= Math.floor(north); la++) for (let lo = Math.floor(west) - 1; lo <= Math.floor(east); lo++) for (const t of tiers) jobs.push(waterFile(`${la}_${lo}`, t));
+      Promise.all(jobs).then((files) => {
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const px = (lat, lng) => { const p = map.project([lat, lng], z); return [p.x - nw.x, p.y - nw.y]; };
+        const crosses = (flat) => {
+          let s0 = Infinity; let n0 = -Infinity; let w0 = Infinity; let e0 = -Infinity;
+          for (let k = 0; k < flat.length; k += 2) { const la = flat[k] / 1e5; const lo = flat[k + 1] / 1e5; if (la < s0) s0 = la; if (la > n0) n0 = la; if (lo < w0) w0 = lo; if (lo > e0) e0 = lo; }
+          return !(n0 < south || s0 > north || e0 < west || w0 > east);
+        };
+        const trace = (flat, close) => {
+          for (let k = 0; k < flat.length; k += 2) { const [x, y] = px(flat[k] / 1e5, flat[k + 1] / 1e5); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+          if (close) ctx.closePath();
+        };
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        // Rivers and creeks as lines, wider closer in (first: where a river has its banks drawn,
+        // the area covers its line).
+        for (const items of files) {
+          for (const [kind, zmin, geo] of items) {
+            if (kind !== 'l' || zmin > z || !crosses(geo)) continue;
+            ctx.beginPath(); trace(geo, false);
+            ctx.strokeStyle = shore; ctx.globalAlpha = 0.75;
+            ctx.lineWidth = zmin <= 9 ? Math.max(1, (z - 7) * 0.6) : Math.max(0.7, (z - 9) * 0.4);
+            ctx.stroke(); ctx.globalAlpha = 1;
+          }
+        }
+        // The water areas: filled (holes are islands), with a thin shore close in.
+        ctx.fillStyle = sea; ctx.strokeStyle = shore; ctx.lineWidth = 0.7;
+        for (const items of files) {
+          for (const [kind, zmin, geo] of items) {
+            if (kind !== 'a' || zmin > z || !crosses(geo[0])) continue;
+            ctx.beginPath();
+            for (const ring of geo) trace(ring, true);
+            ctx.fill('evenodd');
+            if (z >= 10) { ctx.globalAlpha = 0.6; ctx.stroke(); ctx.globalAlpha = 1; }
+          }
+        }
+        done(null, cv);
+      });
+      return cv;
+    },
+  });
+  return new Layer({ pane: 'water', minZoom: 5, maxZoom: 14, updateWhenZooming: false, keepBuffer: 2, attribution: 'Water: © OpenStreetMap contributors' });
 }
 // The depth lines drawn from GEBCO's seabed map (made once: charts/tools/gebco_contours.py):
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
