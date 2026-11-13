@@ -23,13 +23,29 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     // available": zoom 10's are enlarged instead.)
     chart: { map: 'Ocean/World_Ocean_Base', names: 'Ocean/World_Ocean_Reference', credit: 'Esri, Garmin, GEBCO, NOAA NGDC', maxNative: 10 },
   };
+  // A third, a plotter's (as Garmin's): drawn from data, not pictures: a plain blue sea, the
+  // land in brown from our coastline, and white names.
+  BASES.plotter = { names: 'Canvas/World_Dark_Gray_Reference', credit: 'Esri (names)', maxNative: 16 };
+  const landPane = map.getPane('land') || map.createPane('land');
+  landPane.style.zIndex = 250;
+  landPane.style.pointerEvents = 'none';
+  let landLayer = null;
+  const drawLand = () => fetch('/land.json').then((r) => r.json()).then((rings) => {
+    if (!map.getContainer().classList.contains('base-plotter')) return;
+    landLayer?.remove();
+    landLayer = L.polygon(rings, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), stroke: true, color: '#5fb3f0', weight: 1.2,
+      fillColor: '#6b5222', fillOpacity: 1, interactive: false }).addTo(map);
+  }).catch(() => {});
   let layers = [];
   const setBase = (kind) => {
     const b = BASES[kind] || BASES.satellite;
     for (const l of layers) l.remove();
-    layers = [L.tileLayer(esri(b.map), { maxZoom: 18, maxNativeZoom: b.maxNative, attribution: b.credit, keepBuffer: 4 }).addTo(map),
-      L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names' }).addTo(map)];
+    landLayer?.remove(); landLayer = null;
+    layers = [...(b.map ? [L.tileLayer(esri(b.map), { maxZoom: 18, maxNativeZoom: b.maxNative, attribution: b.credit, keepBuffer: 4 }).addTo(map)] : []),
+      L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names', ...(b.map ? {} : { attribution: b.credit }) }).addTo(map)];
     map.getContainer().classList.toggle('base-chart', kind === 'chart');
+    map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
+    if (kind === 'plotter') drawLand();
   };
   setBase(base);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small

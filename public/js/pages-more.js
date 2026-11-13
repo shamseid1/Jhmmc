@@ -195,7 +195,7 @@ PAGE_GROUPS.push((view) => ({
         <div class="panel-head"><b>Layers</b><button type="button" class="chart-x" data-close-layers aria-label="Close">${raw(icon('close'))}</button></div>
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         <div class="panel-head catches-head"><b>Map</b></div>
-        <div class="base-pick" role="group" aria-label="Map">${[['chart', 'Chart'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${(saved.base || 'chart') === k}">${label}</button>`))}</div>
+        <div class="base-pick" role="group" aria-label="Map">${[['plotter', 'Plotter'], ['chart', 'Chart'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${(saved.base || 'chart') === k}">${label}</button>`))}</div>
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
@@ -284,7 +284,8 @@ PAGE_GROUPS.push((view) => ({
     let contours = null;
     const drawContours = (kind) => {
       contours?.remove();
-      contours = contourLayer(L, kind === 'satellite' ? { color: '#ffffff', halo: 'rgba(0,0,0,0.55)' } : {}).addTo(map);
+      contours = contourLayer(L, kind === 'satellite' ? { color: '#ffffff', halo: 'rgba(0,0,0,0.55)' }
+        : kind === 'plotter' ? { color: '#6fc6ff', halo: 'rgba(6,26,56,0.9)' } : {}).addTo(map);
     };
     drawContours(saved.base || 'chart');
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
