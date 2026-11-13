@@ -88,9 +88,15 @@ test('place search: towns and ports by name, kept a day', async () => {
 test('no sea forecast: the weather still shows', async () => {
   const { w } = fixture();
   const sea = createSea({ fetchImpl: async (url) => (url.includes('marine') ? new Response('{"error":true}', { status: 429 }) : new Response(JSON.stringify(w))) });
-  const s = await sea.summary(6.2, -11);
-  assert.equal(s.now.windKn, 9);
-  assert.equal(s.now.waveM, null);
-  assert.deepEqual(s.tide.turns, []);
-  assert.equal(s.days.length, 7);
+  const RealDate = Date;
+  global.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [RealDate.UTC(2026, 10, 12, 10, 40)])); } static now() { return RealDate.UTC(2026, 10, 12, 10, 40); } };
+  try {
+    const s = await sea.summary(6.2, -11);
+    assert.equal(s.now.windKn, 9);
+    assert.equal(s.now.waveM, null);
+    assert.deepEqual(s.tide.turns, []);
+    assert.equal(s.days.length, 7);
+  } finally {
+    global.Date = RealDate;
+  }
 });
