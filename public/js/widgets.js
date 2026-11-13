@@ -37,9 +37,16 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   // counties, rivers (the big ones from far out, the smaller closer in) and lakes.
   const details = L.layerGroup();
   let detailData = null;
+  let detailBase = 'plotter';
   const drawDetails = () => {
     details.clearLayers();
-    if (!detailData || !map.getContainer().classList.contains('base-plotter')) return;
+    if (!detailData) return;
+    // On the photo: only the country borders, faint (its own colours show the rest).
+    if (detailBase === 'satellite') {
+      details.addLayer(L.polyline(detailData.borders, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), interactive: false, color: '#ffffff', weight: 1, opacity: 0.45 }));
+      return;
+    }
+    if (!map.getContainer().classList.contains('base-plotter')) return;
     const css = getComputedStyle(map.getContainer());
     const c = (k, d) => css.getPropertyValue(k).trim() || d;
     const z = map.getZoom();
@@ -101,6 +108,12 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     ourNames.set(true);
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     waterOn?.remove(); waterOn = null;
+    detailBase = kind;
+    if (kind === 'satellite') {
+      landLayer?.remove(); landLayer = details.addTo(map);
+      if (detailData) drawDetails();
+      else fetch(`/land-details.json?v=${LAND_V}`).then((r) => r.json()).then((d) => { detailData = d; drawDetails(); }).catch(() => {});
+    }
     if (kind === 'plotter') {
       drawLand();
       const css = getComputedStyle(map.getContainer());
@@ -151,7 +164,7 @@ const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fill
 // towns by size, and near the coast villages, rivers, creeks, lagoons, points, capes, islands,
 // rocks and reefs, each from its own zoom; the most important first, none over another. Drawn
 // by the app from data (kept for no signal like the depth lines).
-const NAMES_V = '2';
+const NAMES_V = '3';
 const nameCells = new Map();
 let nameIndex = null;
 const nameCell = async (key) => {
@@ -186,7 +199,7 @@ function placeNames(L, map) {
     const layers = [];
     const seen = new Map(); // a name -> where it's already shown (the same place is often in twice)
     for (const [zmin, rank, kind, lat, lng, name] of xs) {
-      if (layers.length >= 220) break;
+      if (layers.length >= 45) break; // a plotter's few, not a road map's many
       const was = seen.get(name);
       if (was && was.some(([a0, b0]) => Math.abs(a0 - lat) < 0.05 && Math.abs(b0 - lng) < 0.05)) continue;
       const big = kind === 'town' && rank <= 1;
@@ -194,7 +207,7 @@ function placeNames(L, map) {
       const p = map.latLngToContainerPoint([lat, lng]);
       const box = [p.x - w / 2, p.y - h / 2, p.x + w / 2, p.y + h / 2];
       if (box[2] < 0 || box[3] < 0 || box[0] > size.x || box[1] > size.y) continue;
-      if (boxes.some((o) => box[0] < o[2] + 4 && box[2] > o[0] - 4 && box[1] < o[3] + 2 && box[3] > o[1] - 2)) continue;
+      if (boxes.some((o) => box[0] < o[2] + 24 && box[2] > o[0] - 24 && box[1] < o[3] + 14 && box[3] > o[1] - 14)) continue; // room round each
       boxes.push(box);
       seen.set(name, [...(seen.get(name) || []), [lat, lng]]);
       layers.push(L.marker([lat, lng], { pane: 'placenames', interactive: false, keyboard: false,

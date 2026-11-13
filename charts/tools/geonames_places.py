@@ -35,15 +35,13 @@ for path in glob.glob('*.txt'):
             if code == 'PPLC': zmin, rank = 5, 0
             elif pop >= 100000: zmin, rank = 6, 1
             elif code == 'PPLA' or pop >= 20000: zmin, rank = 8, 2
-            elif pop >= 5000: zmin, rank = 9, 3
-            elif d <= COAST: zmin, rank = 11, 4
-            elif pop >= 1000: zmin, rank = 10, 4
+            elif pop >= 5000: zmin, rank = 10, 3
+            elif d <= 3: zmin, rank = 12, 4  # small places only right on the coast, close in
             else: continue
-        elif fc == 'H' and code in WATER and d <= COAST:
-            kind = 'water'; zmin, rank = (10 if code in ('STM', 'STMM', 'LK', 'LKS', 'SWMP', 'MGV') else 9), 3
-            # Creeks and rivers further inland only close in: the coast's own names first.
-            if code in ('STM', 'STMM', 'LK', 'LKS', 'SWMP', 'MGV') and d > 15: zmin = 12
-        elif fc == 'T' and code in POINTS and d <= COAST:
+        elif fc == 'H' and code in WATER and d <= 8:
+            # Near the sea only (river mouths, lagoons, bays, reefs), not every creek upstream.
+            kind = 'water'; zmin, rank = (11 if code in ('STM', 'STMM', 'LK', 'LKS', 'SWMP', 'MGV') else 9), 3
+        elif fc == 'T' and code in POINTS and d <= 5:
             kind = 'hazard' if code in ('RK', 'RKS') else 'point'; zmin, rank = 10 if code in ('BCH', 'BCHS', 'DUNE') else 9, 3
         elif fc == 'S' and code in MARKS and d <= COAST:
             kind = 'mark'; zmin, rank = 10, 3
