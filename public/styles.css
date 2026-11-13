@@ -1539,3 +1539,12 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .leaflet-tooltip.country-label { background: none; border: 0; box-shadow: none; padding: 0; color: #fff; font-weight: 800; font-size: 14px; letter-spacing: 0.3px;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6); }
 .leaflet-tooltip.country-label::before { display: none; }
+/* The Plotter map's own place names, as on Garmin: towns bold white, water in italic blue,
+   points and capes in italic, rocks and reefs in a warning pink, lighthouses and ports gold. */
+.pn { color: #fff; font: 700 11.5px/15px system-ui, sans-serif; text-align: center; white-space: nowrap;
+  text-shadow: 0 0 2px #0a1220, 0 0 3px #0a1220, 0 0 5px rgba(10, 18, 32, 0.8); }
+.pn-big { font-size: 14px; line-height: 18px; font-weight: 800; }
+.pn-water { color: #8fcbff; font-style: italic; font-weight: 600; }
+.pn-point { color: #e9eef5; font-style: italic; font-weight: 600; }
+.pn-hazard { color: #ffb3b3; font-style: italic; font-weight: 600; }
+.pn-mark { color: #ffd98a; font-weight: 600; }

@@ -21,7 +21,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     satellite: { map: 'World_Imagery', names: 'Canvas/World_Dark_Gray_Reference', credit: 'Imagery © Esri', maxNative: 16 },
     // A plotter's (as Garmin's), drawn from data, not pictures: a plain blue sea, the land in
     // charcoal from our coastline (so the sea's colours stand out), and white names.
-    plotter: { names: 'Canvas/World_Dark_Gray_Reference', credit: 'Esri (names)', maxNative: 16 },
+    plotter: { credit: 'Names: GeoNames', maxNative: 16 },
   };
   const landPane = map.getPane('land') || map.createPane('land');
   landPane.style.zIndex = 250;
@@ -80,12 +80,19 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     ]).addTo(map);
   }).catch(() => {});
   let layers = [];
+  const ourNames = placeNames(L, map);
+  let credit = null;
   const setBase = (kind) => {
     const b = BASES[kind] || BASES.satellite;
     for (const l of layers) l.remove();
     landLayer?.remove(); landLayer = null;
     layers = [...(b.map ? [L.tileLayer(esri(b.map), { maxZoom: 18, maxNativeZoom: b.maxNative, attribution: b.credit, keepBuffer: 4 }).addTo(map)] : []),
-      L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names', ...(b.map ? {} : { attribution: b.credit }) }).addTo(map)];
+      ...(b.names ? [L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names' }).addTo(map)] : [])];
+    // The credit (the photo's comes with its tiles; the plotter's is its names').
+    if (credit) map.attributionControl?.removeAttribution(credit);
+    credit = b.map ? null : b.credit;
+    if (credit) map.attributionControl?.addAttribution(credit);
+    ourNames.set(kind === 'plotter');
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     if (kind === 'plotter') drawLand();
   };
@@ -129,6 +136,61 @@ const MAP_PLACES = [
 ];
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
+// The Plotter map's place names, as on Garmin (charts/tools/geonames_places.py, from GeoNames):
+// towns by size, and near the coast villages, rivers, creeks, lagoons, points, capes, islands,
+// rocks and reefs, each from its own zoom; the most important first, none over another. Drawn
+// by the app from data (kept for no signal like the depth lines).
+const NAMES_V = '2';
+const nameCells = new Map();
+let nameIndex = null;
+const nameCell = async (key) => {
+  nameIndex ??= fetch(`/names/index.json?v=${NAMES_V}`).then((r) => r.json()).then((xs) => new Set(xs)).catch(() => null);
+  const have = await nameIndex;
+  if (have && !have.has(key)) return [];
+  if (!nameCells.has(key)) nameCells.set(key, fetch(`/names/${key}.json?v=${NAMES_V}`).then((r) => (r.ok ? r.json() : [])).catch(() => []));
+  return nameCells.get(key);
+};
+function placeNames(L, map) {
+  const pane = map.getPane('placenames') || map.createPane('placenames');
+  pane.style.zIndex = 465;
+  pane.style.pointerEvents = 'none';
+  const group = L.layerGroup().addTo(map);
+  // The club's own places have their own marker and name: not twice.
+  const own = new Set(MAP_PLACES.map((p) => p.name.toLowerCase()));
+  let on = false; let ticket = 0;
+  const draw = async () => {
+    const t = ++ticket;
+    if (!on) { group.clearLayers(); return; }
+    const b = map.getBounds(); const z = map.getZoom();
+    const keys = [];
+    for (let la = Math.floor(b.getSouth()); la <= Math.floor(b.getNorth()); la++) for (let lo = Math.floor(b.getWest()); lo <= Math.floor(b.getEast()); lo++) keys.push(`${la}_${lo}`);
+    if (keys.length > 120) { group.clearLayers(); return; }
+    const cells = await Promise.all(keys.map(nameCell));
+    if (t !== ticket) return;
+    const size = map.getSize();
+    const xs = cells.flat().filter((x) => x[0] <= z && b.contains([x[3], x[4]]) && !own.has(x[5].toLowerCase()))
+      .sort((a, c) => a[0] - c[0] || a[1] - c[1]);
+    // The club's own markers' spots (the dot and its name to the right) are kept clear.
+    const boxes = MAP_PLACES.map((m) => { const q = map.latLngToContainerPoint([m.lat, m.lng]); return [q.x - 8, q.y - 11, q.x + 16 + m.name.length * 8.5, q.y + 11]; });
+    const layers = [];
+    for (const [zmin, rank, kind, lat, lng, name] of xs) {
+      if (layers.length >= 220) break;
+      const big = kind === 'town' && rank <= 1;
+      const w = Math.round(name.length * (big ? 8.2 : 6.8)) + 6; const h = big ? 18 : 15;
+      const p = map.latLngToContainerPoint([lat, lng]);
+      const box = [p.x - w / 2, p.y - h / 2, p.x + w / 2, p.y + h / 2];
+      if (box[2] < 0 || box[3] < 0 || box[0] > size.x || box[1] > size.y) continue;
+      if (boxes.some((o) => box[0] < o[2] + 4 && box[2] > o[0] - 4 && box[1] < o[3] + 2 && box[3] > o[1] - 2)) continue;
+      boxes.push(box);
+      layers.push(L.marker([lat, lng], { pane: 'placenames', interactive: false, keyboard: false,
+        icon: L.divIcon({ className: `pn pn-${kind}${big ? ' pn-big' : ''}`, html: esc(name), iconSize: [w, h], iconAnchor: [w / 2, h / 2] }) }));
+    }
+    group.clearLayers();
+    for (const l of layers) group.addLayer(l);
+  };
+  map.on('moveend zoomend', draw);
+  return { set: (v) => { on = v; draw(); } };
+}
 // The depth lines drawn from GEBCO's seabed map (made once: charts/tools/gebco_contours.py):
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
