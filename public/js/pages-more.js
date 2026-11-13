@@ -274,21 +274,14 @@ PAGE_GROUPS.push((view) => ({
     view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => {
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       baseMap.setBase(b.dataset.base);
-      baseKind = b.dataset.base;
-      syncContours();
       setTimeout(remember);
     }));
     const overlays = {};
     // The contours: the lines and depths only (white, without the charts' grey shading), so the
     // sea looks the same inside the charts and out.
     let contours = null;
-    // On the sea chart, always (they're the chart); the satellite photo is left clear.
-    let baseKind = saved.base || 'chart';
-    function syncContours() {
-      if (!contours) return;
-      if (baseKind === 'chart' && !map.hasLayer(contours)) contours.addTo(map);
-      if (baseKind !== 'chart' && map.hasLayer(contours)) contours.remove();
-    }
+    // Always on: they're the chart (navy on the sea chart, white on the photo).
+    function syncContours() { if (contours && !map.hasLayer(contours)) contours.addTo(map); }
     if (state.me) {
       api('/charts').then(({ charts }) => {
         if (!charts.length) return;
