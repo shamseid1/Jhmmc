@@ -30,7 +30,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   landPane.style.zIndex = 250;
   landPane.style.pointerEvents = 'none';
   let landLayer = null;
-  const drawLand = () => fetch('/land.json').then((r) => r.json()).then((rings) => {
+  // (GSHHG's full-resolution coastline, about 45 m: charts/tools/gshhg_coast.py.)
+  const drawLand = () => fetch('/land-fine.json').then((r) => r.json()).then((rings) => {
     if (!map.getContainer().classList.contains('base-plotter')) return;
     landLayer?.remove();
     landLayer = L.polygon(rings, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), stroke: true, color: '#5fb3f0', weight: 1.2,
