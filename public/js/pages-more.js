@@ -250,10 +250,11 @@ PAGE_GROUPS.push((view) => ({
       return;
     }
     box.innerHTML = '';
-    // Opens close enough in for the depth contours (they show from zoom 8), off Marshall.
+    // Opens off Marshall, close enough in for the shelf's depth lines.
     // Pinching stops at the furthest zoom (no shrinking past it and bouncing back, which showed
     // empty grey around the map), and the map stays around West Africa.
-    const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, bounceAtZoomLimits: false,
+    // In as far as a scale of about half a kilometre (zoom 14): the depth lines' detail ends there.
+    const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 14, bounceAtZoomLimits: false,
       maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 8);
     // The map's layers, bottom to top over the sea's colours (400): the hotspot outlines and
     // temperature lines (420), the moving lines (450), your fish, spots and position (610). Made at once, so nothing is put on a layer that isn't there yet.
@@ -274,21 +275,18 @@ PAGE_GROUPS.push((view) => ({
     view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => {
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       baseMap.setBase(b.dataset.base);
+      drawContours?.(b.dataset.base);
       setTimeout(remember);
     }));
     const overlays = {};
-    // The contours: the lines and depths only (white, without the charts' grey shading), so the
-    // sea looks the same inside the charts and out.
+    // The depth lines, always on: GEBCO's, drawn like a plotter's (more the closer in), navy
+    // on the sea chart and white on the photo. For everyone, signed in or not.
     let contours = null;
-    // Always on: they're the chart (navy on the sea chart, white on the photo).
-    function syncContours() { if (contours && !map.hasLayer(contours)) contours.addTo(map); }
-    if (state.me) {
-      api('/charts').then(({ charts }) => {
-        if (!charts.length) return;
-        contours = depthLayer(L, charts, { clean: true });
-        syncContours();
-      }).catch(() => {});
-    }
+    const drawContours = (kind) => {
+      contours?.remove();
+      contours = contourLayer(L, kind === 'satellite' ? { color: '#ffffff', halo: 'rgba(0,0,0,0.55)' } : {}).addTo(map);
+    };
+    drawContours(saved.base || 'chart');
     view.querySelectorAll('[data-show]').forEach((c) => c.addEventListener('change', () => {
       if (c.dataset.show === 'regional') return; // drawn for the filters (below)
       const o = overlays[c.dataset.show];
@@ -476,24 +474,16 @@ PAGE_GROUPS.push((view) => ({
     // changes; the app keeps it (with the forecast, your fish and spots, kept as they load) ----
     const saveForSea = async () => {
       if (!navigator.onLine || !('serviceWorker' in navigator) || navigator.connection?.saveData) return;
-      let charts;
-      try { ({ charts } = await api('/charts')); } catch { return; }
-      const list = charts.filter((x) => x.cleanTiles);
-      const version = list.map((x) => x.cleanTiles.split('v=')[1]).join(',');
-      try { if (localStorage.getItem('chart-saved') === version) return; } catch { /* no memory: fetch (the app keeps tiles once) */ }
-      const urls = [];
-      const tileXY = (lat, lng, z) => { const n = 2 ** z; const r = (lat * Math.PI) / 180; return [Math.floor(((lng + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)]; };
-      for (const c of list) {
-        for (let z = 8; z <= Math.min(10, c.maxZoom ?? 10); z++) {
-          const [x0, y0] = tileXY(c.bounds.north, c.bounds.west, z); const [x1, y1] = tileXY(c.bounds.south, c.bounds.east, z);
-          for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.push(c.cleanTiles.replace('{z}', z).replace('{x}', x).replace('{y}', y));
-        }
-      }
+      // The depth lines for the whole coast (about 1.5 MB), once (again only when they change).
+      try { if (localStorage.getItem('contours-saved') === CONTOURS_V) return; } catch { /* no memory: fetch (the app keeps them once) */ }
+      let keys = [];
+      try { keys = await (await fetch(`/contours/index.json?v=${CONTOURS_V}`)).json(); } catch { return; }
+      const urls = keys.map((k) => `/contours/${k}.json?v=${CONTOURS_V}`);
       let failed = 0;
       // Two at a time, so the map you're looking at isn't slowed down; stops if you leave.
-      const next = async () => { while (urls.length && view.isConnected) { const ok = await fetch(urls.shift(), { credentials: 'same-origin' }).then((r) => r.ok).catch(() => false); if (!ok) failed += 1; } };
+      const next = async () => { while (urls.length && view.isConnected) { const ok = await fetch(urls.shift()).then((r) => r.ok).catch(() => false); if (!ok) failed += 1; } };
       await Promise.all([next(), next()]);
-      if (!urls.length && failed < 5) { try { localStorage.setItem('chart-saved', version); } catch { /* fine */ } }
+      if (!urls.length && !failed) { try { localStorage.setItem('contours-saved', CONTOURS_V); } catch { /* fine */ } }
     };
     setTimeout(saveForSea, 4000);
     // ---- saved spots: press and hold the map to save one; your crew's are shown ----
@@ -546,7 +536,6 @@ PAGE_GROUPS.push((view) => ({
         } catch (err) { toast(err.message); }
       });
     }
-    syncContours();
     // Until the forecast is here: the chart alone (with its contours), a note on top, and the
     // forecast's layers and time strip waiting.
     const note = view.querySelector('#chart-note');

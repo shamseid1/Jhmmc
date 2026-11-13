@@ -71,6 +71,98 @@ const MAP_PLACES = [
 ];
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
+// The depth lines drawn from GEBCO's seabed map (made once: charts/tools/gebco_contours.py):
+// like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
+// zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
+// from the 1° squares in view (loaded as needed, kept for no signal by the app).
+const CONTOURS_V = '1';
+const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
+let contourIndex = null; // the squares there are (the rest is land, or off the chart)
+const contourCell = async (key) => {
+  contourIndex ??= fetch(`/contours/index.json?v=${CONTOURS_V}`).then((r) => r.json()).then((xs) => new Set(xs)).catch(() => null);
+  const have = await contourIndex;
+  if (have && !have.has(key)) return [];
+  if (!contourCells.has(key)) contourCells.set(key, fetch(`/contours/${key}.json?v=${CONTOURS_V}`).then((r) => (r.ok ? r.json() : [])).catch(() => []));
+  return contourCells.get(key);
+};
+function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } = {}) {
+  const Layer = L.GridLayer.extend({
+    createTile(coords, done) {
+      const size = this.getTileSize();
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      const cv = document.createElement('canvas');
+      cv.width = size.x * dpr; cv.height = size.y * dpr;
+      const map = this._map;
+      const z = coords.z;
+      const nw = coords.scaleBy(size);
+      const a = map.unproject(nw, z); const b = map.unproject(nw.add(size), z);
+      const pad = 0.05;
+      const south = b.lat - pad; const north = a.lat + pad; const west = a.lng - pad; const east = b.lng + pad;
+      const keys = [];
+      // A line is filed under the square of its first point, so the squares around too.
+      for (let la = Math.floor(south) - 1; la <= Math.floor(north); la++) for (let lo = Math.floor(west) - 1; lo <= Math.floor(east); lo++) keys.push(`${la}_${lo}`);
+      Promise.all(keys.map(contourCell)).then((cells) => {
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const px = (lat, lng) => { const p = map.project([lat, lng], z); return [p.x - nw.x, p.y - nw.y]; };
+        const labels = [];
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        for (const lines of cells) {
+          for (const [m, zmin, flat] of lines) {
+            if (zmin > z) continue;
+            // Only pieces that reach this tile.
+            let inside = false;
+            for (let k = 0; k < flat.length && !inside; k += 2) {
+              const la = flat[k] / 1e4; const lo = flat[k + 1] / 1e4;
+              inside = la >= south && la <= north && lo >= west && lo <= east;
+            }
+            if (!inside) continue;
+            // Bolder for the lines that show from further out (the main depths).
+            const major = zmin <= z - 2;
+            ctx.strokeStyle = color; ctx.globalAlpha = major ? 0.85 : 0.55; ctx.lineWidth = major ? 1.3 : 0.8;
+            ctx.beginPath();
+            const pts = [];
+            for (let k = 0; k < flat.length; k += 2) {
+              const [x, y] = px(flat[k] / 1e4, flat[k + 1] / 1e4);
+              if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+              pts.push([x, y]);
+            }
+            ctx.stroke();
+            // Labels along the line, about every 220 px of it (wherever it is, at any zoom),
+            // where they're well inside this tile.
+            let walked = 0; let nextAt = 110;
+            for (let k = 1; k < pts.length; k++) {
+              const [x0, y0] = pts[k - 1]; const [x1, y1] = pts[k];
+              const seg = Math.hypot(x1 - x0, y1 - y0);
+              while (seg > 0 && walked + seg >= nextAt) {
+                const t = (nextAt - walked) / seg; const x = x0 + (x1 - x0) * t; const y = y0 + (y1 - y0) * t;
+                if (x > 18 && y > 10 && x < size.x - 18 && y < size.y - 10) labels.push({ m, x, y, ang: Math.atan2(y1 - y0, x1 - x0) });
+                nextAt += 220;
+              }
+              walked += seg;
+            }
+          }
+        }
+        ctx.globalAlpha = 1;
+        ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const placed = [];
+        for (const l of labels) {
+          if (placed.some((p) => Math.hypot(p.x - l.x, p.y - l.y) < 46)) continue; // not crowded
+          placed.push(l);
+          let ang = l.ang; if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI; // never upside down
+          const text = String(Math.round(toUnit('depth', l.m)));
+          ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(ang);
+          ctx.lineWidth = 3; ctx.strokeStyle = halo; ctx.strokeText(text, 0, 0);
+          ctx.fillStyle = color; ctx.fillText(text, 0, 0);
+          ctx.restore();
+        }
+        done(null, cv);
+      });
+      return cv;
+    },
+  });
+  return new Layer({ minZoom: 6, maxZoom: 14, updateWhenZooming: false, keepBuffer: 3, className: 'gebco-lines', attribution: 'Depths: GEBCO' });
+}
 // The depth charts as one map layer: map tiles (sharp at every zoom, only the
 // part in view is loaded) or, for an older chart, one picture.
 // With { clean }: the charts' dark see-through shading over the water taken out, the contour

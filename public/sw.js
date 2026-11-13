@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v264';
+const CACHE = 'app-v265';
 const APP_FILES = [
   '/', '/index.html', '/styles.css',
   '/js/core.js', '/js/exports.js', '/js/widgets.js', '/js/cards.js', '/js/pages-feed.js', '/js/pages-board.js', '/js/pages-weigh.js', '/js/pages-log.js', '/js/pages-more.js', '/js/pages-officers.js', '/js/pages-account.js', '/js/main.js',
@@ -42,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (/^\/api\/charts\/[^/]+\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
+  if (/^\/api\/charts\/[^/]+\/\d+\/\d+\/\d+\.png$/.test(url.pathname) || url.pathname.startsWith('/contours/')) {
     event.respondWith((async () => {
       const cache = await caches.open(CHART_TILES);
       const copy = await cache.match(req, { ignoreSearch: false });
