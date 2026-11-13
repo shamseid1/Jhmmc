@@ -29,7 +29,39 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   let landLayer = null;
   // (GSHHG's coastline: full resolution, about 45 m, along all of West Africa, coarser beyond:
   // charts/tools/gshhg_coast.py.)
-  const drawLand = () => fetch('/land-fine.json?v=5').then((r) => r.json()).then(({ fill, wide = [], coast }) => {
+  const COUNTRY_NAMES = [['Mauritania', 19.5, -11.5], ['Senegal', 14.6, -14.6], ['The Gambia', 13.45, -15.5, 7], ['Guinea-Bissau', 12.05, -14.9, 6],
+    ['Guinea', 10.6, -11.2], ['Sierra Leone', 8.6, -11.8], ['Liberia', 6.6, -9.4], ["Côte d'Ivoire", 7.6, -5.6], ['Mali', 15.5, -6.5],
+    ['Burkina Faso', 12.4, -1.6], ['Ghana', 7.9, -1.1], ['Togo', 8.5, 1.0], ['Benin', 9.6, 2.3], ['Nigeria', 9.0, 7.8], ['Cameroon', 5.5, 12.0]];
+  // On the land, as on Garmin (charts/tools/land_details.py): country borders, provinces and
+  // counties, rivers (the big ones from far out, the smaller closer in) and lakes.
+  const details = L.layerGroup();
+  let detailData = null;
+  const drawDetails = () => {
+    details.clearLayers();
+    if (!detailData || !map.getContainer().classList.contains('base-plotter')) return;
+    const css = getComputedStyle(map.getContainer());
+    const c = (k, d) => css.getPropertyValue(k).trim() || d;
+    const z = map.getZoom();
+    const renderer = L.canvas({ pane: 'land', padding: 0.3 });
+    const o = { pane: 'land', renderer, interactive: false };
+    const { borders, states, rivers, lakes } = detailData;
+    details.addLayer(L.polygon(lakes, { ...o, stroke: true, weight: 0.8, color: c('--plotter-coast', '#5fb3f0'), fillColor: c('--plotter-sea', '#0c2f5c'), fillOpacity: 1 }));
+    rivers.forEach((lvl, k) => { if (z >= [5, 6, 7, 8][k]) details.addLayer(L.polyline(lvl, { ...o, color: c('--plotter-river', '#3a78b8'), weight: k < 2 ? 1.2 : 0.8, opacity: 0.9 })); });
+    if (z >= 6) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
+    details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
+    // The countries' names, as on Garmin, while the map's far enough out to show them.
+    if (z >= 5 && z <= 8) {
+      for (const [name, lat, lng, from = 5] of COUNTRY_NAMES) {
+        if (z < from) continue;
+        details.addLayer(L.tooltip({ permanent: true, direction: 'center', className: 'country-label', interactive: false, pane: 'names' }).setLatLng([lat, lng]).setContent(name));
+      }
+    }
+  };
+  map.on('zoomend', drawDetails);
+  const drawLand = () => Promise.all([fetch('/land-fine.json?v=5').then((r) => r.json()),
+    fetch('/land-details.json?v=1').then((r) => r.json()).catch(() => null)]).then(([{ fill, wide = [], coast }, more]) => {
+    detailData = more;
+    drawDetails();
     if (!map.getContainer().classList.contains('base-plotter')) return;
     landLayer?.remove();
     // Its colours from the page's style (--plotter-land, --plotter-coast), so they're set in one place.
@@ -43,6 +75,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     landLayer = L.layerGroup([
       L.polygon(wide, landStyle),
       L.polygon(fill, landStyle),
+      details,
       L.polyline(coast, { pane: 'land', renderer, color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2, interactive: false }),
     ]).addTo(map);
   }).catch(() => {});
