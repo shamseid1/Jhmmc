@@ -1,8 +1,8 @@
-# The Plotter map's land details, as on Garmin: country borders and rivers (GSHHG's WDBII set, in
-# gshhg-shp-2.3.7.zip: WDBII_shp/f/WDBII_border_f_L1, WDBII_river_f_L01..L04, by importance), lakes
-# (GSHHS_f_L2) and provinces/counties (Natural Earth 10m admin-1 lines, public domain:
-# https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces_lines.zip),
-# for West Africa, simplified; into public/land-details.json. Needs pyshp and shapely.
+# The Plotter map's land details: country borders (GSHHG's WDBII set, gshhg-shp-2.3.7.zip:
+# WDBII_shp/f/WDBII_border_f_L1) and provinces/counties (Natural Earth 10m admin-1 lines, public domain:
+# https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces_lines.zip), for West
+# Africa, simplified, into public/land-details.json. Rivers and lakes come from OpenStreetMap alone
+# (osm_water.py). Needs pyshp and shapely.
 import json, shapefile
 from shapely.geometry import shape, box
 AREA = box(-20.0, -1.0, 10.0, 22.0)  # West Africa
@@ -34,11 +34,6 @@ def polys(path, tol):
 res = {}
 res['borders'], a = lines('WDBII_shp/f/WDBII_border_f_L1', 0.002)
 res['states'], b = lines('../ne/ne_10m_admin_1_states_provinces_lines', 0.002)  # Natural Earth: provinces, regions, counties
-res['rivers'] = []
-c = 0
-for lvl in (1, 2, 3, 4):
-    ls, n = lines(f'WDBII_shp/f/WDBII_river_f_L0{lvl}', 0.002)
-    res['rivers'].append(ls); c += n
-res['lakes'], d = polys('GSHHS_shp/f/GSHHS_f_L2', 0.001)
+# (Rivers and lakes: OpenStreetMap's alone, charts/tools/osm_water.py, so no water is drawn twice.)
 json.dump(res, open('land-details.json', 'w'), separators=(',', ':'))
-print('borders', len(res['borders']), a, '| states', len(res['states']), b, '| rivers by level', [len(x) for x in res['rivers']], c, '| lakes', len(res['lakes']), d)
+print('borders', len(res['borders']), a, '| states', len(res['states']), b)

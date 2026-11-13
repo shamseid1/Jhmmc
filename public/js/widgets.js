@@ -34,7 +34,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     ['Guinea', 10.6, -11.2], ['Sierra Leone', 8.6, -11.8], ['Liberia', 6.6, -9.4], ["Côte d'Ivoire", 7.6, -5.6], ['Mali', 15.5, -6.5],
     ['Burkina Faso', 12.4, -1.6], ['Ghana', 7.9, -1.1], ['Togo', 8.5, 1.0], ['Benin', 9.6, 2.3], ['Nigeria', 9.0, 7.8], ['Cameroon', 5.5, 12.0]];
   // On the land, as on Garmin (charts/tools/land_details.py): country borders, provinces and
-  // counties, rivers (the big ones from far out, the smaller closer in) and lakes.
+  // counties (the water is the water layer's, OpenStreetMap's, alone).
   const details = L.layerGroup();
   let detailData = null;
   let detailBase = 'plotter';
@@ -52,9 +52,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     const z = map.getZoom();
     const renderer = L.canvas({ pane: 'land', padding: 0.3 });
     const o = { pane: 'land', renderer, interactive: false };
-    const { borders, states, rivers, lakes } = detailData;
-    details.addLayer(L.polygon(lakes, { ...o, stroke: true, weight: 0.8, color: c('--plotter-coast', '#5fb3f0'), fillColor: c('--plotter-sea', '#0c2f5c'), fillOpacity: 1 }));
-    rivers.forEach((lvl, k) => { if (z >= [5, 6, 7, 8][k]) details.addLayer(L.polyline(lvl, { ...o, color: c('--plotter-river', '#3a78b8'), weight: k < 2 ? 1.2 : 0.8, opacity: 0.9 })); });
+    // (Rivers and lakes: the water layer's, OpenStreetMap's, alone.)
+    const { borders, states } = detailData;
     if (z >= 6) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
     details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
     // The countries' names, as on Garmin, while the map's far enough out to show them.
@@ -221,7 +220,7 @@ function placeNames(L, map) {
 // The Plotter map's water on the land, as on Garmin (charts/tools/osm_water.py, OpenStreetMap):
 // rivers with their real banks, lagoons, lakes and creeks, in the sea's blue; zoomed out a coarse
 // copy, from zoom 9 the full detail, the small creeks from 11. Tile by tile from 1° squares.
-const WATER_V = '1';
+const WATER_V = '2';
 const waterFiles = new Map();
 let waterIndex = null;
 const waterFile = async (key, tier) => {
@@ -268,7 +267,7 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
             if (kind !== 'l' || zmin > z || !crosses(geo)) continue;
             ctx.beginPath(); trace(geo, false);
             ctx.strokeStyle = shore; ctx.globalAlpha = 0.75;
-            ctx.lineWidth = zmin <= 9 ? Math.max(1, (z - 7) * 0.6) : Math.max(0.7, (z - 9) * 0.4);
+            ctx.lineWidth = zmin <= 9 ? Math.max(1, (z - 6) * 0.5) : Math.max(0.7, (z - 9) * 0.4);
             ctx.stroke(); ctx.globalAlpha = 1;
           }
         }
@@ -295,7 +294,7 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
 const CONTOURS_V = '7'; // (bumped: the land now saved with the lines)
-const LAND_V = '6';
+const LAND_V = '7';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {
