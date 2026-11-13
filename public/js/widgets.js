@@ -155,16 +155,15 @@ function twoFingers(map) {
   box.addEventListener('touchend', (e) => { if (!e.touches.length) map.dragging.disable(); }, { passive: true });
 }
 // Each with its name and position.
-const MAP_PLACES = [
-  { name: 'Marshall', lat: 6.15, lng: -10.3833 },
-];
+// Places the club wants marked on every map (none now: Marshall is in the chart's own names).
+const MAP_PLACES = [];
 const spotPin = (L, released) => ({ radius: 9, weight: 3, color: '#ffffff', fillColor: released ? '#3fcf8e' : '#2f7cf6', fillOpacity: 1 });
 // The small map on a catch's page, on satellite imagery.
 // The Plotter map's place names, as on Garmin (charts/tools/geonames_places.py, from GeoNames):
 // towns by size, and near the coast villages, rivers, creeks, lagoons, points, capes, islands,
 // rocks and reefs, each from its own zoom; the most important first, none over another. Drawn
 // by the app from data (kept for no signal like the depth lines).
-const NAMES_V = '3';
+const NAMES_V = '5';
 const nameCells = new Map();
 let nameIndex = null;
 const nameCell = async (key) => {
@@ -207,7 +206,7 @@ function placeNames(L, map) {
       const p = map.latLngToContainerPoint([lat, lng]);
       const box = [p.x - w / 2, p.y - h / 2, p.x + w / 2, p.y + h / 2];
       if (box[2] < 0 || box[3] < 0 || box[0] > size.x || box[1] > size.y) continue;
-      if (boxes.some((o) => box[0] < o[2] + 24 && box[2] > o[0] - 24 && box[1] < o[3] + 14 && box[3] > o[1] - 14)) continue; // room round each
+      if (boxes.some((o) => box[0] < o[2] + 8 && box[2] > o[0] - 8 && box[1] < o[3] + 10 && box[3] > o[1] - 10)) continue; // room round each
       boxes.push(box);
       seen.set(name, [...(seen.get(name) || []), [lat, lng]]);
       layers.push(L.marker([lat, lng], { pane: 'placenames', interactive: false, keyboard: false,

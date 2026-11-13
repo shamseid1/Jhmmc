@@ -16,6 +16,8 @@ def inland(lat, lng):
     j = int(round((lat - lats[0]) / (lats[1] - lats[0]))); i = int(round((lng - lngs[0]) / (lngs[1] - lngs[0])))
     if j < 0 or i < 0 or j >= len(lats) or i >= len(lngs): return 1e9
     return float(inland_km[j, i])
+# The club's own home, shown from further out than its size alone would (lat, lng to tell it apart).
+PROMOTE = {('Marshall', 6.1486, -10.3836): (8, 0)}
 COAST = 40  # km: villages, rivers and coastal features only this near the sea
 WATER = {'STM', 'STMM', 'LGN', 'BAY', 'BAYS', 'CRKT', 'INLT', 'ESTY', 'COVE', 'ANCH', 'HBR', 'CHN', 'LK', 'LKS', 'SWMP', 'MGV', 'SD', 'GULF', 'RF', 'SHOL', 'BNK', 'BAR'}
 POINTS = {'PT', 'CAPE', 'PEN', 'ISL', 'ISLS', 'ISLET', 'RK', 'RKS', 'BCH', 'BCHS', 'SPIT', 'DUNE', 'HDLD'}
@@ -47,6 +49,7 @@ for path in glob.glob('*.txt'):
             kind = 'mark'; zmin, rank = 10, 3
         else:
             continue
+        zmin, rank = PROMOTE.get((name, round(lat, 4), round(lng, 4)), (zmin, rank))
         key = f"{math.floor(lat)}_{math.floor(lng)}"
         out.setdefault(key, []).append([zmin, rank, kind, round(lat, 4), round(lng, 4), name, pop])
         n += 1
