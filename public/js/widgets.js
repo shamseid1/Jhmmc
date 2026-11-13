@@ -8,7 +8,13 @@
 function addSatellite(L, map, { fullScreen = false } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
   const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 18, attribution: 'Imagery © Esri', keepBuffer: 4 }).addTo(map);
-  L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18 }).addTo(map);
+  // The place names and borders above everything drawn on the sea (the colours at 400, their
+  // outlines 420, the moving lines 450), as on Windy, so a town is never painted over; under
+  // your fish and spots. Esri's names follow the zoom: countries far out, towns close in.
+  const names = map.getPane('names') || map.createPane('names');
+  names.style.zIndex = 460;
+  names.style.pointerEvents = 'none';
+  L.tileLayer(esri('Reference/World_Boundaries_and_Places'), { maxZoom: 18, pane: 'names' }).addTo(map);
   map.attributionControl?.setPrefix(false); // no Leaflet logo; Esri's credit stays (their terms), small
   if (!fullScreen) twoFingers(map);
   // Places the club wants on every map.
