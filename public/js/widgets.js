@@ -44,7 +44,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     if (!detailData) return;
     // On the photo: only the country borders, faint (its own colours show the rest).
     if (detailBase === 'satellite') {
-      if (map.getZoom() <= 9) details.addLayer(L.polyline(detailData.borders, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), interactive: false, color: '#ffffff', weight: 1, opacity: 0.45 }));
+      details.addLayer(L.polyline(detailData.borders, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), interactive: false, color: '#ffffff', weight: 1, opacity: 0.45 }));
       return;
     }
     if (!map.getContainer().classList.contains('base-plotter')) return;
@@ -58,9 +58,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     // Provinces and counties far out only: their lines are coarse, and close in they'd run beside
     // the rivers and coasts they really follow.
     if (z >= 6 && z <= 9) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
-    // Country borders to zoom 9: they're coarse, and closer in they'd run beside the rivers that
-    // really are the border (the Mano), which show it themselves.
-    if (z <= 9) details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
+    // Country borders at every zoom.
+    details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
     // The countries' names, as on Garmin, while the map's far enough out to show them.
     if (z >= 5 && z <= 8) {
       for (const [name, lat, lng, from = 5] of COUNTRY_NAMES) {
