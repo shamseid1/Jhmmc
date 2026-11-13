@@ -1450,6 +1450,11 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .chart-pop .pop-top { display: flex; align-items: center; gap: 8px; }
 .chart-pop .pop-pos { font-weight: 800; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chart-pop .pop-top + dl { margin-top: 6px; }
+.chart-pop .pop-big { margin-top: 6px; }
+.chart-pop .pop-big small { display: block; color: rgba(255, 255, 255, 0.6); font-size: 11px; font-weight: 600; }
+.chart-pop .pop-big b { display: block; font-size: 22px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chart-pop .pop-big b.long { font-size: 15px; white-space: normal; max-width: 240px; }
+.chart-pop .pop-big + dl { margin-top: 6px; }
 .chart-pop .pop-mark { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px 4px 6px; border: 0; border-radius: 999px; background: #fff; color: #0a1a33; font: inherit; font-weight: 800; font-size: 12px; }
 .chart-pop .pop-mark svg { width: 14px; height: 14px; }
 /* Saved spots by zoom: hidden out at the whole coast, small without names in between. */

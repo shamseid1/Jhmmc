@@ -325,13 +325,14 @@ PAGE_GROUPS.push((view) => ({
     const ringIcon = L.divIcon({ className: 'tap-ring', iconSize: [32, 32], iconAnchor: [16, 16] });
     let ring = null;
     let markSpot = null; // set once saving spots is ready (signed in)
-    const tapBox = (latlng, rows) => {
+    const tapBox = (latlng, rows, big = null) => {
       const where0 = [latlng.lat, latlng.lng];
       ring?.remove();
       ring = L.marker(latlng, { pane: 'pins', icon: ringIcon, interactive: false, keyboard: false }).addTo(map);
       const div = document.createElement('div');
       // The position and Mark on one line; what's known about the spot under it, if anything.
       div.innerHTML = `<div class="pop-top"><span class="pop-pos">${esc(fmtCoords(where0[0], where0[1]))}</span>${markSpot ? `<button type="button" class="pop-mark" aria-label="Mark this spot">${icon('pin')}Mark</button>` : ''}</div>
+        ${big ? `<div class="pop-big"><small>${esc(big[0])}</small><b${big[1].length > 22 ? ' class="long"' : ''}>${esc(big[1])}</b></div>` : ''}
         ${rows.length ? `<dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>` : ''}`;
       div.querySelector('.pop-mark')?.addEventListener('click', () => { map.closePopup(); markSpot(where0); });
       const pop = L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90], offset: [0, -10] }).setLatLng(latlng).setContent(div).openOn(map);
@@ -969,17 +970,20 @@ PAGE_GROUPS.push((view) => ({
       const wd = fxu != null && fxv != null ? (deg(fxu, fxv) + 180 + 360) % 360 : f.wd?.[j0 * data.nx + i0];
       // Short, as a plotter shows it: the name, then the value (compass points as N, SE…).
       const pt = (deg0) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
-      const rows = [
-        hot && reasons.length && ['Hotspot', reasons.join(', ')],
-        d != null && ['Depth', estTxt(depthTxt(d))],
-        u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn → ${pt(deg(u, v))}`],
-        t != null && ['Water', estTxt(tempTxt(t))],
-        wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn from ${pt(deg(wu, wv) + 180)}`],
-        wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` from ${pt(wd)}` : ''}`],
-        chlAt && chlAt(lat, lng, 'chl') != null && ['Water colour', `${chlWords(chlAt(lat, lng, 'chl'))} · ${chlAt(lat, lng, 'chl').toFixed(2)} mg/m³`],
-        ...navRows([lat, lng]),
-      ].filter(Boolean);
-      tapBox(e.latlng, rows);
+      // As on Windy: just the layer you're looking at, big (an arrow the way it goes), then
+      // how far it is from you.
+      const arrow = (deg0) => ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
+      const chl = chlAt?.(lat, lng, 'chl');
+      const big = {
+        none: d != null && ['Depth', estTxt(depthTxt(d))],
+        hotspots: ['Hotspot', hot && reasons.length ? reasons.join(', ') : 'Not a hotspot'],
+        currents: u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn ${arrow(deg(u, v))} ${pt(deg(u, v))}`],
+        sst: t != null && ['Water temperature', estTxt(tempTxt(t))],
+        chl: chl != null && ['Water colour', `${chlWords(chl)} · ${chl.toFixed(2)} mg/m³`],
+        wind: wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn ${arrow(deg(wu, wv))} from ${pt(deg(wu, wv) + 180)}`],
+        wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''}`],
+      }[layer] || null;
+      tapBox(e.latlng, navRows([lat, lng]), big);
     });
     // The layer you had on last time (if it's here now).
     const again = saved.layer && view.querySelector(`[data-layer="${saved.layer}"]`);
