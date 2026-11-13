@@ -633,6 +633,7 @@ PAGE_GROUPS.push((view) => ({
         // The waves (height in cm, the way they come from): metres, and the way they go as a vector.
         if (x.wh) {
           fv.wh = x.wh.map((c) => (c == null ? null : c / 100));
+          if (x.tp) fv.tp = x.tp.map((c) => (c == null ? null : c / 10)); // seconds
           fv.xu = x.wd.map((d, k) => (d == null || x.wh[k] == null ? null : Math.sin(((d + 180) * Math.PI) / 180)));
           fv.xv = x.wd.map((d, k) => (d == null || x.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
         }
@@ -980,6 +981,7 @@ PAGE_GROUPS.push((view) => ({
       // how far it is from you.
       const arrow = (deg0) => ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round((((deg0 % 360) + 360) % 360) / 45) % 8];
       const chl = chlAt?.(lat, lng, 'chl');
+      const tp = fineNow?.(lat, lng, 'tp'); // the swell's period (seconds), from Copernicus
       const big = {
         none: d != null && ['Depth', estTxt(depthTxt(d))],
         hotspots: ['Hotspot', hot && reasons.length ? reasons.join(', ') : 'Not a hotspot'],
@@ -987,7 +989,7 @@ PAGE_GROUPS.push((view) => ({
         sst: t != null && ['Water temperature', estTxt(tempTxt(t))],
         chl: chl != null && ['Water colour', `${chlWords(chl)} · ${chl.toFixed(2)} mg/m³`],
         wind: wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn ${arrow(deg(wu, wv))} from ${pt(deg(wu, wv) + 180)} · ${windWord(Math.hypot(wu, wv))}`],
-        wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''} · ${waveWord(wh)}`],
+        wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''}${tp != null ? ` · ${Math.round(tp)} s` : ''} · ${waveWord(wh)}`],
       }[layer] || null;
       tapBox(e.latlng, navRows([lat, lng]), big);
     };

@@ -41,7 +41,7 @@ function store() {
       // The waves as the real store keeps them: whole numbers, 0.01 a step, the direction from 180.
       if (url.endsWith('.zmetadata')) {
         return Response.json({ metadata: wav
-          ? { 'VHM0/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VHM0/.zattrs': { scale_factor: 0.01, add_offset: 0 }, 'VMDR/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VMDR/.zattrs': { scale_factor: 0.01, add_offset: 180 } }
+          ? { 'VHM0/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VHM0/.zattrs': { scale_factor: 0.01, add_offset: 0 }, 'VMDR/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VMDR/.zattrs': { scale_factor: 0.01, add_offset: 180 }, 'VTPK/.zarray': { dtype: '<i2', fill_value: -32767 }, 'VTPK/.zattrs': { scale_factor: 0.01, add_offset: 0 } }
           : { 'utotal/.zarray': { dtype: '<f4' }, 'vtotal/.zarray': { dtype: '<f4' } } });
       }
       if (url.endsWith('dataset.stac.json')) return Response.json({ assets: { geoChunked: { href: `https://s3.example/${wav ? 'wav' : 'cur'}.zarr`, viewDims: wav ? dims(3 * 3600e3, 'VHM0') : dims(3600e3, 'utotal') } } });
@@ -50,7 +50,7 @@ function store() {
       const [, name, tc, jc, ic] = m.map((x, k) => (k > 1 ? Number(x) : x));
       if (jc === 1 && ic === 1) return new Response('denied', { status: 403 });
       const vals = [];
-      const val = { utotal: (n) => n / 100, vtotal: () => 0.1, VHM0: (n) => n * 10, VMDR: () => 2000 }[name];
+      const val = { utotal: (n) => n / 100, vtotal: () => 0.1, VHM0: (n) => n * 10, VMDR: () => 2000, VTPK: () => 1240 }[name];
       for (let t = 0; t < H; t++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) vals.push(val(tc * H + t));
       return new Response(blosc(vals, wav));
     },
@@ -74,6 +74,7 @@ test('Copernicus: the hourly current over the area, from today midnight, land le
     assert.equal(hourOf(w, '2026-11-13T00:00', 'wh')[0], 80);
     assert.equal(hourOf(w, '2026-11-13T04:00', 'wh')[0], 93);
     assert.equal(hourOf(w, '2026-11-13T04:00', 'wd')[0], 200);
+    assert.equal(hourOf(w, '2026-11-13T04:00', 'tp')[0], 124, 'the period: 12.4 s');
     // Hour 0 of today is the store's hour 24; hour 30 is in its second time block.
     assert.equal(d.u[0][0], 24); assert.equal(d.u[30][0], 54); assert.equal(d.v[5][5], 10);
     assert.equal(d.u[0][2 * 4 + 2], -32768, 'the land block');

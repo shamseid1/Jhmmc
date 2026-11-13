@@ -7,7 +7,8 @@ const { decompress } = require('./blosc');
 // global models Open-Meteo also passes on), every 1/12° (about 9 km), from midnight GMT today
 // for 3 days:
 // - the current: hourly, at the surface, with the tide and the waves' drift in it ("merged");
-// - the waves (Météo-France's wave model): their height and the way they come from, every
+// - the waves (Météo-France's wave model): their height, the way they come from and their
+//   period (the seconds between the biggest, the swell's), every
 //   3 hours (the hours between are blended).
 // Read from its open cloud store (zarr, packed with Blosc/LZ4), only the blocks that cover our
 // area. Fetched twice a day in the background (the models run once or twice a day), kept on
@@ -16,7 +17,7 @@ const { decompress } = require('./blosc');
 const STAC = 'https://stac.marine.copernicus.eu/metadata';
 const SETS = {
   currents: { product: 'GLOBAL_ANALYSISFORECAST_PHY_001_024', dataset: 'cmems_mod_glo_phy_anfc_merged-uv_PT1H-i', vars: { u: ['utotal', 100], v: ['vtotal', 100] } }, // cm/s
-  waves: { product: 'GLOBAL_ANALYSISFORECAST_WAV_001_027', dataset: 'cmems_mod_glo_wav_anfc_0.083deg_PT3H-i', vars: { wh: ['VHM0', 100], wd: ['VMDR', 1] } }, // cm, degrees
+  waves: { product: 'GLOBAL_ANALYSISFORECAST_WAV_001_027', dataset: 'cmems_mod_glo_wav_anfc_0.083deg_PT3H-i', vars: { wh: ['VHM0', 100], wd: ['VMDR', 1], tp: ['VTPK', 10] } }, // cm, degrees, tenths of a second
 };
 const AREA = { south: 1.5, north: 12.0, west: -17.8, east: -7.0 };
 const NONE = -32768; // land, in the packed values

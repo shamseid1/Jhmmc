@@ -49,9 +49,24 @@ module.exports = (ctx) => {
 
   // The sea at Copernicus's full detail (1/12°, about 9 km), one hour at a time, for the chart's
   // lines and colours: what it covers, then each hour's current east and north (whole cm/s)
-  // and waves (height in cm, the way they come from), null on land. The waves only when they
-  // come on the same grid as the current.
-  const sameGrid = (a, b) => a && b && a.south === b.south && a.west === b.west && a.nx === b.nx && a.ny === b.ny;
+  // and waves (height in cm, the way they come from, period in tenths of a second), null on
+  // land. The waves come on their own 1/12° grid (its edge can fall a point apart): each of the
+  // current's points takes the wave grid's nearest.
+  const waveIndex = new WeakMap(); // waves -> for each current point, its wave point (or -1)
+  const toCurrentGrid = (C, W) => {
+    if (!waveIndex.has(W)) {
+      const idx = new Int32Array(C.nx * C.ny);
+      for (let j = 0; j < C.ny; j++) {
+        for (let i = 0; i < C.nx; i++) {
+          const a = Math.round((C.west + i * C.step - W.west) / W.step); const b = Math.round((C.south + j * C.step - W.south) / W.step);
+          idx[j * C.nx + i] = a >= 0 && b >= 0 && a < W.nx && b < W.ny ? b * W.nx + a : -1;
+        }
+      }
+      waveIndex.set(W, idx);
+    }
+    const idx = waveIndex.get(W);
+    return (arr) => (arr ? Array.from(idx, (k) => (k < 0 ? NONE : arr[k])) : null);
+  };
   api.get('/currents/fine', async (_req, res) => {
     const C = (await copernicus?.get().catch(() => null))?.currents;
     if (!C) return res.set('Cache-Control', 'no-store').json({ ready: false });
@@ -60,12 +75,12 @@ module.exports = (ctx) => {
   });
   api.get('/currents/fine/:t', async (req, res) => {
     const cop = await copernicus?.get().catch(() => null);
-    const C = cop?.currents; const W = sameGrid(C, cop?.waves) ? cop.waves : null;
+    const C = cop?.currents; const W = C && cop?.waves;
     const u = C && hourOf(C, req.params.t, 'u');
     if (!u) return res.status(404).json({ error: 'No current for that hour.' });
     const out = (a) => (a ? a.map((x) => (x === NONE ? null : x)) : null);
     res.set('Cache-Control', 'public, max-age=3600').json({ u: out(u), v: out(hourOf(C, req.params.t, 'v')),
-      wh: out(W && hourOf(W, req.params.t, 'wh')), wd: out(W && hourOf(W, req.params.t, 'wd')) });
+      ...(W ? (() => { const on = toCurrentGrid(C, W); return { wh: out(on(hourOf(W, req.params.t, 'wh'))), wd: out(on(hourOf(W, req.params.t, 'wd'))), tp: out(W.tp && on(hourOf(W, req.params.t, 'tp'))) }; })() : {}) });
   });
 
   // The fishing chart's preferences: the water temperature and depth billfish have been
