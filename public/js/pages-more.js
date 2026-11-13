@@ -833,7 +833,7 @@ PAGE_GROUPS.push((view) => ({
       }
       if (!L1.stops) return;
       const n = L1.stops.length;
-      const every = n > 9 ? 2 : 1;
+      const every = n > 10 ? 2 : 1;
       legend.innerHTML = html`<span class="lg-unit">${L1.unit()}</span><span class="lg-bar" style="background:linear-gradient(90deg,${L1.stops.map(([, c]) => `rgb(${c})`).join(',')})">${
         L1.stops.map(([v], k) => (k !== n - 1 && (k % every || n - 1 - k < every) ? '' : raw(html`<b style="left:${(k / (n - 1)) * 100}%" class="${k === 0 ? 'first' : k === n - 1 ? 'last' : ''}">${L1.label(v)}</b>`)))}</span>`;
     };

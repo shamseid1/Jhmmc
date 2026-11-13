@@ -330,10 +330,12 @@ const FIELD_VALUE = {
   wave: (at, lat, lng) => at(lat, lng, 'wh'),
   chl: (at, lat, lng) => at(lat, lng, 'chl'),
 };
-// The current, in Windy's colours (taken from its scale): blue slack water, green at 0.4 kn,
-// olive-yellow 0.6 to 0.8, red 1.2, purple 1.6, then blue-grey to grey for the strongest.
-const SPEED_SCALE = [[0, [70, 80, 165]], [0.2, [66, 135, 118]], [0.4, [64, 160, 62]], [0.6, [160, 158, 58]], [0.8, [168, 132, 56]],
-  [1.2, [148, 70, 84]], [1.6, [122, 80, 150]], [2, [88, 138, 156]], [3.2, [170, 170, 170]]];
+// The current, scaled to the water here (Copernicus off West Africa: half the sea under
+// 0.4 kn, 90% under 0.8, hardly any over 1.3): a step every 0.1 kn where most of it is, so
+// slack and moving water stand apart, each step about as much of the sea. Darker is slower:
+// deep blue slack water, through cyan and green to yellow, orange and red for the strongest.
+const SPEED_SCALE = [[0, [45, 40, 120]], [0.1, [50, 70, 170]], [0.2, [45, 120, 200]], [0.3, [40, 165, 195]], [0.4, [55, 185, 140]],
+  [0.6, [125, 200, 75]], [0.8, [230, 210, 60]], [1, [245, 150, 45]], [1.3, [225, 70, 50]], [1.6, [165, 35, 105]]];
 function colourAt(stops, v) {
   if (v <= stops[0][0]) return stops[0][1];
   for (let k = 1; k < stops.length; k++) {
