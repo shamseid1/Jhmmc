@@ -168,6 +168,7 @@ PAGE_GROUPS.push((view) => ({
     view.innerHTML = html`<div class="chart">
       <div id="chart-map" class="chart-map"><div class="chart-wait">Getting the chart…</div></div>
       <div class="chart-note" id="chart-note" role="status" hidden></div>
+      <div class="chart-tap" id="chart-tap" role="status" hidden></div>
       <div class="chart-top">
         <button type="button" class="chart-btn" data-back aria-label="Back">${raw(icon('back'))}</button>
         <button type="button" class="chart-title" id="chart-title" data-open-layers>Fishing chart</button>
@@ -325,23 +326,26 @@ PAGE_GROUPS.push((view) => ({
     const ringIcon = L.divIcon({ className: 'tap-ring', iconSize: [32, 32], iconAnchor: [16, 16] });
     let ring = null;
     let markSpot = null; // set once saving spots is ready (signed in)
+    // As on Windy: what's at the spot in a slim bar across the top, so the sea around it stays
+    // in view; a ring on the spot. The bar's cross (or a tap on land with nothing to say)
+    // takes them away.
+    const tapEl = view.querySelector('#chart-tap');
+    const closeTap = () => { tapEl.hidden = true; ring?.remove(); ring = null; lastTap = null; };
+    let lastTap = null; // the spot the bar is about
+    let retap = null; // says it again for the hour and layer shown (set once the chart's up)
     const tapBox = (latlng, rows, big = null) => {
       const where0 = [latlng.lat, latlng.lng];
       ring?.remove();
       ring = L.marker(latlng, { pane: 'pins', icon: ringIcon, interactive: false, keyboard: false }).addTo(map);
-      const div = document.createElement('div');
-      // The position and Mark on one line; what's known about the spot under it, if anything.
-      div.innerHTML = `<div class="pop-top"><span class="pop-pos">${esc(fmtCoords(where0[0], where0[1]))}</span>${markSpot ? `<button type="button" class="pop-mark" aria-label="Mark this spot">${icon('pin')}Mark</button>` : ''}</div>
-        ${big ? `<div class="pop-big"><small>${esc(big[0])}</small><b${big[1].length > 22 ? ' class="long"' : ''}>${esc(big[1])}</b></div>` : ''}
-        ${rows.length ? `<dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>` : ''}`;
-      div.querySelector('.pop-mark')?.addEventListener('click', () => { map.closePopup(); markSpot(where0); });
-      const pop = L.popup({ className: 'chart-pop', closeButton: false, autoPanPadding: [16, 90], offset: [0, -10] }).setLatLng(latlng).setContent(div).openOn(map);
-      pop.once('remove', () => { if (ring && pop === lastPop) { ring.remove(); ring = null; } });
-      lastPop = pop;
+      tapEl.innerHTML = `<div class="tap-main">${big ? `<small>${esc(big[0])}</small><b${big[1].length > 24 ? ' class="long"' : ''}>${esc(big[1])}</b>` : ''}
+          <span class="tap-pos">${esc(fmtCoords(where0[0], where0[1]))}${rows.map(([k, val]) => ` · ${esc(k.toLowerCase())} ${esc(val)}`).join('')}</span></div>
+        ${markSpot ? `<button type="button" class="pop-mark" aria-label="Mark this spot">${icon('pin')}Mark</button>` : ''}
+        <button type="button" class="tap-close" aria-label="Close">${icon('close')}</button>`;
+      tapEl.hidden = false;
+      view.querySelector('#chart-note').hidden = true; // the same place on screen
+      tapEl.querySelector('.pop-mark')?.addEventListener('click', () => { closeTap(); markSpot(where0); });
+      tapEl.querySelector('.tap-close').addEventListener('click', closeTap);
     };
-    let lastPop = null;
-    // Zooming closes the box (and takes the ring away).
-    map.on('zoomstart', () => map.closePopup());
     // Saved spots scale with the chart: names from zoom 8 (where it opens), small without names
     // further out, and gone when the whole region is in view.
     const spotZoom = () => {
@@ -817,6 +821,7 @@ PAGE_GROUPS.push((view) => ({
         }
       } else putPic(null);
       if (isPlaying && hour + 1 < HOURS) setTimeout(() => ahead(hour + 1), 30);
+      retap?.();
       view.querySelector('#tl-when').textContent = new Date(t0 + hour * 3600e3).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       // The scale like Windy's: the unit, then each colour's value where it sits (every other
       // one when there are many).
@@ -948,7 +953,8 @@ PAGE_GROUPS.push((view) => ({
     }));
     // Tap the sea: everything at that spot.
     map.off('click', earlyTap);
-    map.on('click', (e) => {
+    const describeTap = (e) => {
+      lastTap = e;
       const { lat, lng } = e.latlng;
       const navOnly = () => earlyTap(e);
       if (!at) return navOnly();
@@ -984,7 +990,10 @@ PAGE_GROUPS.push((view) => ({
         wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''}`],
       }[layer] || null;
       tapBox(e.latlng, navRows([lat, lng]), big);
-    });
+    };
+    map.on('click', describeTap);
+    // The bar follows the time and the layer, as on Windy.
+    retap = () => { if (lastTap && !tapEl.hidden) describeTap(lastTap); };
     // The layer you had on last time (if it's here now).
     const again = saved.layer && view.querySelector(`[data-layer="${saved.layer}"]`);
     if (again && !again.disabled && saved.layer !== 'none') again.click();

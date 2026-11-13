@@ -1361,6 +1361,19 @@ body.chart-mode main > div { animation: none; }
 .chart-note { position: absolute; z-index: 1100; left: 12px; right: 70px; /* clear of the buttons down the side */ top: calc(66px + env(safe-area-inset-top, 0px)); padding: 10px 14px; border-radius: 14px;
   background: rgba(10, 26, 51, 0.9); color: #fff; font-size: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
 .chart-note[hidden], .tl-row[hidden] { display: none; }
+/* What's at a tapped spot: a slim bar under the chart's name, as on Windy. */
+.chart-tap { position: absolute; z-index: 1100; left: 12px; right: 70px; top: calc(66px + env(safe-area-inset-top, 0px)); display: flex; align-items: center; gap: 8px;
+  padding: 8px 8px 8px 14px; border-radius: 14px; background: rgba(10, 26, 51, 0.9); color: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+.chart-tap[hidden] { display: none; }
+.chart-tap .tap-main { flex: 1; min-width: 0; }
+.chart-tap small { display: block; color: rgba(255, 255, 255, 0.6); font-size: 11px; font-weight: 600; }
+.chart-tap b { display: block; font-size: 20px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-tap b.long { font-size: 14px; white-space: normal; }
+.chart-tap .tap-pos { display: block; margin-top: 2px; color: rgba(255, 255, 255, 0.7); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-tap .pop-mark { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 6px 10px 6px 7px; border: 0; border-radius: 999px; background: #fff; color: #0a1a33; font: inherit; font-weight: 800; font-size: 12px; }
+.chart-tap .pop-mark svg { width: 14px; height: 14px; }
+.chart-tap .tap-close { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.12); color: #fff; }
+.chart-tap .tap-close svg { width: 16px; height: 16px; }
 
 /* The chart's controls, like a plotter's: the name at the top, buttons down the side, and the
    layers panel of squares. */
