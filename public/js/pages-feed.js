@@ -130,7 +130,6 @@ PAGE_GROUPS.push((view) => ({
       <div id="tournament-call"></div>
       <div id="weigh-call"></div>
       <div id="sea-card"></div>
-      <div id="coming-up"></div>
       <div class="home-tiles">
         <a class="home-tile big" href="#/chart">${raw(icon('map'))}<span><b>Fishing chart</b><span>Contours, hotspots, currents, water colour and your fish</span></span><span class="go" aria-hidden="true">›</span></a>
         <div id="biting" class="home-wide-slot"></div>
@@ -140,6 +139,7 @@ PAGE_GROUPS.push((view) => ({
         <a class="home-tile" href="#/log">${raw(icon('history'))}<b>Log</b><span>Trips and the season</span></a>
         <a class="home-tile" href="#/tournaments">${raw(icon('trophy'))}<b>Tournaments</b><span>Coming up and results</span></a>
       </div>
+      <div id="coming-up"></div>
       ${state.me ? raw('<div id="notify" class="feed-notify"></div>') : ''}`;
     homeCards(view);
   },
