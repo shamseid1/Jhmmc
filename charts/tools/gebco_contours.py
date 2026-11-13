@@ -23,8 +23,9 @@ dd = gaussian_filter(np.where(land, 0, depth), 4.0)
 t = np.clip((depth - 1500) / 1000, 0, 1)
 d = np.where(land, -1, d * (1 - t) + dd * t)
 def zmin(m):
-    if m in (200, 1000, 2000, 3000, 4000, 5000): return 6
-    if m == 100 or m % 500 == 0: return 8
+    # From furthest out, the shallow ones too (20, 50, 100 m), so the lines always run to the coast.
+    if m in (20, 50, 100, 200, 500, 1000, 2000, 3000, 4000): return 6
+    if m in (10, 30, 150, 300) or m % 500 == 0: return 8
     if (m <= 500 and m % 50 == 0) or (m <= 2000 and m % 100 == 0) or m % 200 == 0: return 9
     if (m <= 100 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or m % 100 == 0: return 10
     if (m <= 200 and m % 10 == 0) or (m <= 500 and m % 25 == 0) or (m <= 2000 and m % 50 == 0): return 11
