@@ -100,3 +100,27 @@ test('no sea forecast: the weather still shows', async () => {
     global.Date = RealDate;
   }
 });
+
+test('Copernicus\'s waves and tide put into the sea forecast, on its own hours; the rest kept', () => {
+  const { withCopernicus } = require('../src/sea');
+  const day = Date.UTC(2026, 10, 13);
+  const time = Array.from({ length: 48 }, (_, h) => new Date(day + h * 3600e3).toISOString().slice(0, 16));
+  const w = { utc_offset_seconds: 0, hourly: { time }, daily: { time: ['2026-11-13', '2026-11-14'] } };
+  const m0 = { utc_offset_seconds: 0, hourly: { time, wave_height: time.map(() => 0.7), sea_level_height_msl: time.map(() => 0), sea_surface_temperature: time.map(() => 28) }, daily: { time: ['2026-11-13', '2026-11-14'], wave_height_max: [0.7, 0.9] } };
+  const wk = {
+    waves: { times: Array.from({ length: 9 }, (_, k) => day + k * 3 * 3600e3), values: [1, 1.3, 1, 1, 1, 1, 1, 1, 1] }, // today only
+    tide: { times: time.map((_, h) => day + h * 3600e3), values: time.map((_, h) => Math.round(Math.cos((2 * Math.PI * h) / 12.42) * 50) / 100) },
+  };
+  const m = withCopernicus(w, m0, wk);
+  assert.equal(m.hourly.wave_height[3], 1.3);
+  assert.equal(m.hourly.wave_height[4], 1.2, 'blended between 3-hour steps');
+  assert.equal(m.hourly.wave_height[30], 0.7, 'tomorrow: none from Copernicus, the forecast\'s kept');
+  assert.deepEqual(m.daily.wave_height_max, [1.3, 0.9]);
+  assert.equal(m.hourly.sea_level_height_msl[0], 0.5);
+  assert.equal(m.hourly.sea_surface_temperature[0], 28);
+  assert.equal(m0.hourly.wave_height[3], 0.7, 'the forecast itself unchanged');
+  // Without Open-Meteo's sea part: the weather's hours.
+  const m2 = withCopernicus(w, { hourly: {}, current: {}, daily: {} }, wk);
+  assert.equal(m2.hourly.time.length, 48);
+  assert.equal(m2.hourly.wave_height[0], 1);
+});

@@ -16,7 +16,7 @@ const { createDepth } = require('./depth');
 const { createCurrents } = require('./currents');
 const { createChlorophyll } = require('./chlorophyll');
 const { createSst } = require('./sst');
-const { createCopernicus } = require('./copernicus');
+const { createCopernicus, createPointSeries } = require('./copernicus');
 const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -96,7 +96,8 @@ function createApp({
   contactEmail = (contactEmail ?? (/<([^>]+)>/.exec(process.env.MAIL_FROM || '')?.[1] || (process.env.MAIL_FROM || '').trim()))?.trim().toLowerCase() || null;
   const db = openDb(dbFile);
   // Sea conditions (Open-Meteo): none under the test runner, so tests never go online.
-  if (sea === undefined) sea = process.env.NODE_TEST_CONTEXT ? null : createSea();
+  // (Its waves and tide from Copernicus Marine, the fishing chart's source; Open-Meteo's as the backup.)
+  if (sea === undefined) sea = process.env.NODE_TEST_CONTEXT ? null : createSea({ marine: createPointSeries() });
   if (depth === undefined) depth = process.env.NODE_TEST_CONTEXT ? null : createDepth();
   if (chlorophyll === undefined) {
     // The water colour (NOAA's satellites), kept beside the database too.

@@ -284,4 +284,83 @@ function wavesNear(W, lat, lng, time, reach = 3) {
   return { m: h[best] / 100, from: d == null || d === NONE ? null : d, periodS: p == null || p === NONE ? null : p / 10 };
 }
 
-module.exports = { createCopernicus, hourOf, mergeInto, currentNear, wavesNear, NONE, AREA, SETS };
+// A place's week ahead, for Sea conditions: the wave height (every 3 hours, about 9 days on)
+// and the tide (hourly, about 10 days on) at the nearest sea point (a port is on land on the
+// model's grid), from the store's area blocks that hold it (each all its days). Kept for 6
+// hours a place (to 0.1°), and the catalogue for 12.
+const TIDE = { product: 'GLOBAL_ANALYSISFORECAST_PHY_001_024', dataset: 'cmems_mod_glo_phy_anfc_merged-sl_PT1H-i', vars: { tide: ['ocean_tide', 100] } };
+const WAVE_HEIGHT = { ...SETS.waves, vars: { wh: ['VHM0', 100] } };
+function createPointSeries({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, reach = 4 } = {}) {
+  const described = new Map(); // dataset -> { at, value }
+  const kept = new Map(); // place -> { at, value }
+  const describeOnce = async (set) => {
+    const hit = described.get(set.dataset);
+    if (hit && Date.now() - hit.at < 12 * 3600e3) return hit.value;
+    const value = await describe(fetchImpl, set);
+    described.set(set.dataset, { at: Date.now(), value });
+    return value;
+  };
+  // One variable's values over [from, to] (ms) at the sea point nearest (lat, lng).
+  async function series(set, lat, lng, from, to) {
+    const s = await describeOnce(set);
+    const [name] = Object.values(set.vars)[0];
+    const kind = s.kinds[name];
+    const ints = kind.dtype === '<i2';
+    const j0 = Math.round((lat - s.lat.min) / s.lat.step); const i0 = Math.round((lng - s.lng.min) / s.lng.step);
+    const t0 = Math.max(0, Math.ceil((from - s.time.min) / s.time.step)); const t1 = Math.min(s.time.len - 1, Math.floor((to - s.time.min) / s.time.step));
+    if (t1 < t0) return null;
+    // The blocks around the spot (it can be near a block's edge), each all its times.
+    const blocks = new Map();
+    const get = async (tc, jc, ic) => {
+      const key = `${tc}.${jc}.${ic}`;
+      if (!blocks.has(key)) {
+        blocks.set(key, (async () => {
+          const res = await fetchImpl(`${s.href}/${name}/${tc}${s.level ? '.0' : ''}.${jc}.${ic}`, { signal: AbortSignal.timeout(60000) });
+          if (res.status === 403 || res.status === 404) return null; // all land
+          if (!res.ok) throw new Error(`Copernicus ${res.status}`);
+          const raw = decompress(new Uint8Array(await res.arrayBuffer()));
+          return ints ? new Int16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2) : new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
+        })());
+      }
+      return blocks.get(key);
+    };
+    const CJ = s.lat.chunk; const CI = s.lng.chunk; const CT = s.time.chunk;
+    const valueAt = async (t, j, i) => {
+      const f = await get(Math.floor(t / CT), Math.floor(j / CJ), Math.floor(i / CI));
+      if (!f) return null;
+      const x = f[((t % CT) * CJ + (j % CJ)) * CI + (i % CI)];
+      const v = ints ? (x === kind.fill ? NaN : x * kind.scale + kind.offset) : x;
+      return Number.isFinite(v) && Math.abs(v) < 1000 ? v : null;
+    };
+    // The nearest point with sea.
+    let best = null; let bestD = Infinity;
+    for (let dj = -reach; dj <= reach; dj++) {
+      for (let di = -reach; di <= reach; di++) {
+        if (di * di + dj * dj >= bestD) continue;
+        if (await valueAt(t0, j0 + dj, i0 + di) != null) { best = [j0 + dj, i0 + di]; bestD = di * di + dj * dj; }
+      }
+    }
+    if (!best) return null;
+    const times = []; const values = [];
+    for (let t = t0; t <= t1; t++) { times.push(s.time.min + t * s.time.step); values.push(await valueAt(t, best[0], best[1])); }
+    return { times, values };
+  }
+  return {
+    // { waves: { times, values (m) }, tide: { times, values (m) } } (either can be null).
+    async week(latIn, lngIn, from, to) {
+      const lat = Math.round(latIn * 10) / 10; const lng = Math.round(lngIn * 10) / 10;
+      const key = `${lat},${lng}`;
+      const hit = kept.get(key);
+      if (hit && Date.now() - hit.at < ttlMs && hit.from <= from && hit.to >= to) return hit.value;
+      const [w, t] = await Promise.allSettled([series(WAVE_HEIGHT, lat, lng, from, to), series(TIDE, lat, lng, from, to)]);
+      const value = { waves: w.value || null, tide: t.value || null };
+      if (w.status === 'rejected') console.warn(`Copernicus waves for a place: ${w.reason.message}`);
+      if (t.status === 'rejected') console.warn(`Copernicus tide for a place: ${t.reason.message}`);
+      if (kept.size > 200) kept.delete(kept.keys().next().value);
+      if (value.waves || value.tide) kept.set(key, { at: Date.now(), from, to, value });
+      return value;
+    },
+  };
+}
+
+module.exports = { createCopernicus, createPointSeries, hourOf, mergeInto, currentNear, wavesNear, NONE, AREA, SETS };

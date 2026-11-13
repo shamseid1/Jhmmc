@@ -148,7 +148,51 @@ const PLACES = 'https://geocoding-api.open-meteo.com/v1/search';
 const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
 const query = (lat, lng) => `latitude=${lat}&longitude=${lng}&timezone=auto&forecast_days=7&past_days=2`;
 
-function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3 } = {}) {
+// The sea part with Copernicus's waves and tide put in (marine.week: the waves every 3 hours
+// and the tide hourly at the nearest sea point), on the forecast's own hours (the place's
+// clock); Open-Meteo's stays wherever Copernicus has nothing. Without Open-Meteo's sea part,
+// the hours are the weather's.
+function withCopernicus(w, m0, wk) {
+  if (!wk?.waves && !wk?.tide) return m0;
+  const m = { ...m0, hourly: { ...(m0.hourly || {}) }, daily: { ...(m0.daily || {}) } };
+  if (!m.hourly.time) { m.hourly.time = w.hourly?.time || []; m.utc_offset_seconds = w.utc_offset_seconds; }
+  const off = (m.utc_offset_seconds ?? w.utc_offset_seconds ?? 0) * 1000;
+  const times = m.hourly.time;
+  // A series' value at a time (ms), blended between its steps; null outside it.
+  const at = (sr, t) => {
+    if (!sr) return null;
+    const { times: ts, values: vs } = sr;
+    if (!ts.length || t < ts[0] || t > ts.at(-1)) return null;
+    let k = Math.min(ts.length - 2, Math.max(0, Math.floor(((t - ts[0]) / (ts.at(-1) - ts[0] || 1)) * (ts.length - 1))));
+    while (k > 0 && ts[k] > t) k -= 1;
+    while (k < ts.length - 2 && ts[k + 1] < t) k += 1;
+    const a = vs[k]; const b = vs[k + 1] ?? a;
+    if (a == null || b == null) return a ?? b ?? null;
+    const f = ts[k + 1] > ts[k] ? (t - ts[k]) / (ts[k + 1] - ts[k]) : 0;
+    return a + (b - a) * Math.min(1, Math.max(0, f));
+  };
+  const utc = times.map((t) => Date.parse(`${t}:00Z`) - off);
+  if (wk.waves) {
+    const old = m.hourly.wave_height || [];
+    m.hourly.wave_height = utc.map((t, k) => { const v = at(wk.waves, t); return v == null ? old[k] ?? null : Math.round(v * 100) / 100; });
+    // Each day's highest, from the hours (a day the waves cover at least 20 hours of).
+    const days = m.daily.time || w.daily?.time || [];
+    const oldMax = m.daily.wave_height_max || [];
+    m.daily.time = days;
+    m.daily.wave_height_max = days.map((day, d) => {
+      const hrs = times.map((t, k) => (t.startsWith(day) && at(wk.waves, utc[k]) != null ? m.hourly.wave_height[k] : null)).filter((v) => v != null);
+      return hrs.length >= 20 ? Math.max(...hrs) : oldMax[d] ?? null;
+    });
+  }
+  if (wk.tide) {
+    const old = m.hourly.sea_level_height_msl || [];
+    m.hourly.sea_level_height_msl = utc.map((t, k) => { const v = at(wk.tide, t); return v == null ? old[k] ?? null : Math.round(v * 100) / 100; });
+  }
+  m.seaFrom = 'Copernicus Marine';
+  return m;
+}
+
+function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3, marine = null } = {}) {
   const cache = new Map();
   async function get(json) {
     const res = await fetchImpl(json, { signal: AbortSignal.timeout(10000) });
@@ -171,8 +215,14 @@ function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3 } = {}) {
     if (wr.status !== 'fulfilled') throw wr.reason;
     // No sea forecast (refused, or none for that place): the weather, sun and moon still show.
     const w = wr.value;
-    const m = mr.status === 'fulfilled' ? mr.value : { hourly: {}, current: {}, daily: {} };
+    let m = mr.status === 'fulfilled' ? mr.value : { hourly: {}, current: {}, daily: {} };
     if (mr.status !== 'fulfilled') console.warn(`Marine forecast failed: ${mr.reason?.message}`);
+    // The waves and tide from Copernicus (the chart's source) over the same days, when it has them.
+    if (marine) {
+      const day = Date.parse(`${(w.hourly?.time?.[0] || new Date().toISOString().slice(0, 10)).slice(0, 10)}T00:00:00Z`) - (w.utc_offset_seconds || 0) * 1000;
+      const wk = await marine.week(lat, lng, day, day + 10 * 864e5).catch((err) => { console.warn(`Copernicus for a place: ${err.message}`); return null; });
+      m = withCopernicus(w, m, wk);
+    }
     const data = { w, m };
     if (cache.size > 300) cache.delete(cache.keys().next().value);
     // Without the sea part, ask again sooner (10 minutes).
@@ -209,4 +259,4 @@ function createSea({ fetchImpl = globalThis.fetch, ttlMs = 30 * 60e3 } = {}) {
   };
 }
 
-module.exports = { createSea, summarize, conditionsAt, tideTurns, moon, solunar, rating, compass };
+module.exports = { createSea, withCopernicus, summarize, conditionsAt, tideTurns, moon, solunar, rating, compass };
