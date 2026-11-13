@@ -30,11 +30,14 @@ for d in sorted(glob.glob('x/*')):
         km2 = g.area * 111.2 ** 2
         c = g.representative_point()
         # The coast's water (40 km in) and the big lakes and rivers; inland ponds and streams left out.
-        if km2 < 20 and inland(c.y, c.x) > 40: continue
+        # Rivers (their banks) at any distance, and lakes and lagoons over 1 km²; small ponds inland left out.
+        near = inland(c.y, c.x)
+        if near > 40 and rec.get('water') != 'river' and km2 < 1: continue
         # Every water area from zoom 9 at the latest, so a river's area is always there with its line.
         zmin = 6 if km2 > 50 else 8 if km2 > 5 else 9
         for p in ([g] if g.geom_type == 'Polygon' else [x for x in g.geoms if x.geom_type == 'Polygon']):
-            s = p.simplify(0.00015 if km2 > 5 else 0.0001, preserve_topology=True)
+            home = 4 <= c.y <= 9.5 and -14 <= c.x <= -7  # our own coast: Sierra Leone to Cape Palmas
+            s = p.simplify((0.00005 if home else 0.0001) if near <= 40 else 0.00015, preserve_topology=True)  # our coast's water to about 5 m
             if s.is_empty or len(s.exterior.coords) < 4: continue
             # Zoomed out (to 8): a coarse copy (about 100 m); from 9, the full detail.
             versions = [(9 if zmin <= 8 else zmin, s)]

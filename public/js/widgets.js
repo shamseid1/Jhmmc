@@ -230,7 +230,7 @@ function placeNames(L, map) {
 // The Plotter map's water on the land, as on Garmin (charts/tools/osm_water.py, OpenStreetMap):
 // rivers with their real banks, lagoons and lakes (no line-only rivers), in one blue; zoomed out a
 // coarse copy, from zoom 9 the full detail. Tile by tile from 1° squares.
-const WATER_V = '3';
+const WATER_V = '4';
 const waterFiles = new Map();
 let waterIndex = null;
 const waterFile = async (key, tier) => {
