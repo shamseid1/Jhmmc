@@ -308,15 +308,24 @@ function sampler(g, f) {
   };
 }
 const compassName = (deg) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
-// Colour scales, fixed like Windy's (the same colour is the same value every day). Water
-// temperature in Windy's yellow-orange-red, with more steps over the tropical range so a
-// break of a degree or two still shows.
-const SST_SCALE = [[18, [175, 190, 60]], [22, [230, 200, 50]], [25, [245, 160, 40]], [27, [240, 125, 35]], [29, [228, 88, 35]], [31, [200, 52, 42]], [33, [150, 28, 48]]];
-// Wind in Windy's own colours (knots): violet-blue when calm, teal, green, then gold and red.
-const WIND_SCALE = [[0, [98, 113, 183]], [2, [57, 97, 159]], [6, [74, 148, 169]], [10, [77, 141, 123]], [14, [83, 165, 83]], [17, [53, 159, 53]],
-  [21, [167, 157, 81]], [25, [159, 127, 58]], [29, [161, 108, 92]], [33, [129, 58, 78]], [37, [175, 80, 136]], [41, [117, 74, 147]]];
-// Waves in Windy's colours: cyan for small, deepening blue to purple, red only for big seas.
-const WAVE_SCALE = [[0, [90, 200, 205]], [0.5, [70, 170, 210]], [1, [62, 125, 205]], [1.5, [62, 92, 192]], [2, [78, 66, 172]], [3, [125, 60, 160]], [4.5, [185, 70, 110]], [6, [205, 85, 85]]];
+// Colour scales fixed for this coast (the same colour is the same value every day, so it can
+// be learnt), each spending its colours where it matters to a fisherman.
+// Water temperature off West Africa: about 24 °C in the cool season's upwelling to 31 °C;
+// a step every half degree from 26 (where nearly all of it is most of the year), so a break
+// of half a degree shows as a change of colour. Cool blue through green and yellow to red.
+const SST_SCALE = [[24, [40, 60, 150]], [25, [40, 110, 190]], [26, [40, 160, 190]], [26.5, [50, 180, 160]], [27, [70, 190, 120]],
+  [27.5, [120, 200, 80]], [28, [180, 210, 60]], [28.5, [230, 210, 55]], [29, [245, 180, 50]], [29.5, [245, 145, 45]],
+  [30, [235, 105, 45]], [30.5, [215, 65, 50]], [31, [175, 40, 70]]];
+// Wind and waves in the bands Sea conditions rates by: blue to green while it's good (wind
+// under 12 kn, waves under 1.5 m), yellow to orange when fair, red from rough (wind 18 kn,
+// waves 2.2 m), purple when it's dangerous.
+const WIND_SCALE = [[0, [55, 70, 150]], [5, [45, 125, 195]], [9, [50, 170, 170]], [12, [130, 195, 75]], [15, [235, 205, 60]],
+  [18, [240, 130, 45]], [22, [215, 55, 50]], [28, [160, 40, 110]], [35, [110, 40, 140]]];
+const WAVE_SCALE = [[0, [55, 70, 150]], [0.5, [45, 125, 195]], [1, [50, 170, 170]], [1.5, [130, 195, 75]], [1.8, [235, 205, 60]],
+  [2.2, [240, 130, 45]], [3, [215, 55, 50]], [4, [160, 40, 110]], [6, [110, 40, 140]]];
+// What the wind and waves mean for a day out, as Sea conditions says it.
+const windWord = (kn) => (kn < 12 ? 'good' : kn < 18 ? 'fair' : 'rough');
+const waveWord = (m) => (m < 1.5 ? 'good' : m < 2.2 ? 'fair' : 'rough');
 // Water colour (chlorophyll, mg/m³): deep blue for clear ocean water, through blue-green to
 // green where plankton (and bait) are rich, and brown-green in coastal water.
 const CHL_SCALE = [[0.03, [25, 35, 115]], [0.07, [35, 75, 175]], [0.12, [40, 120, 205]], [0.2, [40, 160, 190]], [0.35, [45, 170, 140]],

@@ -986,8 +986,8 @@ PAGE_GROUPS.push((view) => ({
         currents: u != null && ['Current', `${Math.hypot(u, v).toFixed(1)} kn ${arrow(deg(u, v))} ${pt(deg(u, v))}`],
         sst: t != null && ['Water temperature', estTxt(tempTxt(t))],
         chl: chl != null && ['Water colour', `${chlWords(chl)} · ${chl.toFixed(2)} mg/m³`],
-        wind: wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn ${arrow(deg(wu, wv))} from ${pt(deg(wu, wv) + 180)}`],
-        wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''}`],
+        wind: wu != null && ['Wind', `${Math.round(Math.hypot(wu, wv))} kn ${arrow(deg(wu, wv))} from ${pt(deg(wu, wv) + 180)} · ${windWord(Math.hypot(wu, wv))}`],
+        wave: wh != null && ['Waves', `${wavesTxt(wh)}${wd != null ? ` ${arrow(wd + 180)} from ${pt(wd)}` : ''} · ${waveWord(wh)}`],
       }[layer] || null;
       tapBox(e.latlng, navRows([lat, lng]), big);
     };
