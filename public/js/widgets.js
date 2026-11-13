@@ -18,7 +18,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   const BASES = {
     // (The photo's names from Esri's layer for dark maps: quiet grey borders instead of thick
     // white lines between the countries; the names brightened to read on the photo.)
-    satellite: { map: 'World_Imagery', names: 'Canvas/World_Dark_Gray_Reference', credit: 'Imagery © Esri', maxNative: 16 },
+    // (The photo from Esri: no free imagery is as good; its names are ours, as on the plotter's.)
+    satellite: { map: 'World_Imagery', credit: 'Imagery © Esri', maxNative: 16 },
     // A plotter's (as Garmin's), drawn from data, not pictures: a plain blue sea, the land in
     // charcoal from our coastline (so the sea's colours stand out), and white names.
     plotter: { credit: 'Names: GeoNames', maxNative: 16 },
@@ -95,9 +96,9 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
       ...(b.names ? [L.tileLayer(esri(b.names), { maxZoom: 18, maxNativeZoom: b.maxNative, pane: 'names' }).addTo(map)] : [])];
     // The credit (the photo's comes with its tiles; the plotter's is its names').
     if (credit) map.attributionControl?.removeAttribution(credit);
-    credit = b.map ? null : b.credit;
+    credit = b.map ? 'Names: GeoNames' : b.credit;
     if (credit) map.attributionControl?.addAttribution(credit);
-    ourNames.set(kind === 'plotter');
+    ourNames.set(true);
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     waterOn?.remove(); waterOn = null;
     if (kind === 'plotter') {
