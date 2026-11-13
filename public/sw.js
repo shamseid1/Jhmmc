@@ -4,7 +4,7 @@
 // secretary) and opens the right page when one is tapped. Catches, points
 // and other data always come from the server.
 
-const CACHE = 'app-v244';
+const CACHE = 'app-v245';
 const APP_FILES = [
   '/', '/index.html', '/styles.css',
   '/js/core.js', '/js/exports.js', '/js/widgets.js', '/js/cards.js', '/js/pages-feed.js', '/js/pages-board.js', '/js/pages-weigh.js', '/js/pages-log.js', '/js/pages-more.js', '/js/pages-officers.js', '/js/pages-account.js', '/js/main.js',
@@ -53,13 +53,14 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
-  if (CHART_API.includes(url.pathname)) {
+  if (CHART_API.includes(url.pathname) || url.pathname.startsWith('/api/currents/fine')) {
     event.respondWith((async () => {
       const cache = await caches.open(CHART_DATA);
       try {
         const res = await fetch(req);
         // Only a real forecast is kept (not "still being prepared"), so it never replaces one.
-        const keep = res.ok && (url.pathname !== '/api/currents' || Array.isArray((await res.clone().json().catch(() => null))?.frames));
+        const body = url.pathname === '/api/currents' || url.pathname === '/api/currents/fine' ? await res.clone().json().catch(() => null) : null;
+        const keep = res.ok && (url.pathname === '/api/currents' ? Array.isArray(body?.frames) : url.pathname === '/api/currents/fine' ? body?.ready === true : true);
         if (keep) cache.put(req, res.clone()).catch(() => {});
         return res;
       } catch (err) {

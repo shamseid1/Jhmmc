@@ -609,6 +609,25 @@ PAGE_GROUPS.push((view) => ({
     view.querySelector('[data-layer=chl]').disabled = true;
     if (chlGrid) useChl(chlGrid);
     else chlP?.then((g) => { if (g && view.isConnected) useChl(g, true); });
+    // The current at full detail (Copernicus, about 9 km), one hour at a time when it's needed;
+    // until an hour's in (or without it), the chart's own grid.
+    let fine = null;
+    const fineVals = new Map(); // hour's time -> { u, v } in knots
+    const fineAsked = new Set();
+    let fineArrived = null; // redraws the hour (set once the map's drawn)
+    const fineBounds = () => raster(fine, 1).bounds;
+    const timeOf = (h) => new Date(t0 + h * 3600e3).toISOString().slice(0, 16);
+    const fineFor = (time) => {
+      if (!fine || fineVals.has(time) || fineAsked.has(time)) return;
+      fineAsked.add(time);
+      const kn = (a) => a.map((c) => (c == null ? null : c / 51.444));
+      api(`/currents/fine/${encodeURIComponent(time)}`).then((x) => {
+        fineVals.set(time, { u: kn(x.u), v: kn(x.v) });
+        if (fineVals.size > 80) fineVals.delete(fineVals.keys().next().value);
+        if (view.isConnected && timeOf(hour) === time) fineArrived?.();
+      }).catch(() => {});
+    };
+    api('/currents/fine').then((m) => { if (m?.ready && view.isConnected) { fine = m; redraw?.(); } }).catch(() => {});
     const satNote = () => satGrid && say(html`<b>Water temperature</b> measured by satellite (${satGrid.source}) on ${fmtDate(satGrid.newest)}, every 3 km or so. It's the latest there is: it doesn't change with the hour.`);
     const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
     // Every hour of the forecast. A chart saved before it came hourly has 3-hour steps: the
@@ -652,6 +671,7 @@ PAGE_GROUPS.push((view) => ({
     let labels = null;
     let at = null;
     let lines = null;
+    let fineNow = null; // the full-detail current's sampler for the hour shown
     // The pictures: each hour's drawn once (off to the side, made into a file without holding the
     // screen up), kept for the hours seen, and put on the map only when it's ready, over the one
     // before, which goes then: no blank moment and no flicker while the time moves.
@@ -696,16 +716,24 @@ PAGE_GROUPS.push((view) => ({
     const ahead = (h) => {
       const L1 = LAYER[layer]; const f = frameAt(h); const coast = L1.overLand ? null : land;
       if (L1.hot) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => hotspotCanvas(data, f, land));
-      else if (L1.colour && !(layer === 'sst' && satGrid)) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(data, f, L1.colour, L1.stops, coast));
+      else if (L1.colour && !(layer === 'sst' && satGrid) && !(layer === 'currents' && fine)) picFor(`${layer}|${h}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(data, f, L1.colour, L1.stops, coast));
     };
     const show = () => {
       const f = frameAt(hour);
       cur = f;
       const L1 = LAYER[layer];
       at = sampler(data, f);
+      // The current at full detail for this hour, if it's in (asked for if not).
+      const ft = timeOf(hour);
+      fineFor(ft); fineFor(timeOf(hour + 1));
+      const fv = fine && fineVals.get(ft);
+      const fineAt = fv ? sampler(fine, fv) : null;
+      fineNow = fineAt;
       if (L1.lines) {
         const [ku, kv, k] = L1.lines;
-        lines = (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
+        lines = fineAt && ku === 'u'
+          ? (lat, lng, key) => fineAt(lat, lng, key) ?? at(lat, lng, key)
+          : (lat, lng, key) => { const x = at(lat, lng, key === 'u' ? ku : kv); return x == null ? null : x * k; };
       } else lines = null;
       labels?.remove(); labels = null;
       outline?.remove(); outline = null;
@@ -719,6 +747,8 @@ PAGE_GROUPS.push((view) => ({
         outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
         labels = L.layerGroup(hotspotLabels(data, f).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
           .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
+      } else if (layer === 'currents' && fv) {
+        putPic(`fine|${ft}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(fine, fv, 'speed', SPEED_SCALE, coast, 4), 0.85, 'field-image', fineBounds());
       } else if (layer === 'sst' && satGrid) {
         // Measured by satellite: one picture and its lines (it doesn't change with the hour).
         putPic(`satsst|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(satGrid, { sst: satGrid.values }, 'sst', SST_SCALE, coast, 2), 0.85, 'field-image', satBounds);
@@ -758,6 +788,7 @@ PAGE_GROUPS.push((view) => ({
     const bounds = [[data.south, data.west], [data.south + (data.ny - 1) * data.step, data.west + (data.nx - 1) * data.step]];
     const flow = flowLayer(map, () => lines, () => (LAYER[layer].overLand ? null : land), bounds, () => LAYER[layer]);
     redraw = () => { show(); flow.reseed(); };
+    fineArrived = () => show();
     // The time strip, like Windy's: the days as blocks with a mark for each hour, swiped under
     // a fixed pointer; it settles on whole hours and the bubble says which.
     const PX = 22; // per hour
@@ -853,7 +884,7 @@ PAGE_GROUPS.push((view) => ({
       const { lat, lng } = e.latlng;
       const navOnly = () => earlyTap(e);
       if (!at) return navOnly();
-      const u = at(lat, lng, 'u'); const v = at(lat, lng, 'v');
+      const u = fineNow?.(lat, lng, 'u') ?? at(lat, lng, 'u'); const v = fineNow?.(lat, lng, 'v') ?? at(lat, lng, 'v');
       const wu = at(lat, lng, 'wu'); const wv = at(lat, lng, 'wv');
       const t = satAt?.(lat, lng, 'sst') ?? at(lat, lng, 'sst'); const wh = at(lat, lng, 'wh');
       const f = cur;
@@ -901,7 +932,12 @@ PAGE_GROUPS.push((view) => ({
           ${c.refusal ? raw(html`<p><b>Refused:</b> ${when(c.refusal.at)} · ${c.refusal.message.replace(/^Currents \d+: /, '')}</p><p><b>Tries again by itself:</b> ${when(c.nextTry)}</p>`) : ''}
           <div><button type="button" class="primary" id="fc-try" ${c.fetching ? 'disabled' : ''}>Try now</button></div>
           <p class="small muted">A try now asks the forecast service at once. If it's still refusing, nothing changes and the chart keeps what it has.</p>
-        </div>`) : raw('<div class="card pad muted">The chart\'s forecast isn\'t set up on this server.</div>')}`;
+        </div>`) : raw('<div class="card pad muted">The chart\'s forecast isn\'t set up on this server.</div>')}
+        ${st.copernicus ? raw(html`<h2>Currents (Copernicus Marine)</h2><div class="card pad stack">
+          <p><b>Last fetched:</b> ${when(st.copernicus.at)}</p>
+          <p><b>Now:</b> ${st.copernicus.fetching ? 'fetching (under a minute)…' : st.copernicus.error ? `failed: ${st.copernicus.error}` : 'fine'}</p>
+          <p class="small muted">The current at 9 km, every hour, tide included. Fetched twice a day; it tries again by itself within the hour if it fails. Until then the chart uses the forecast service's current.</p>
+        </div>`) : ''}`;
       view.querySelector('#fc-try')?.addEventListener('click', async () => {
         try { draw(await api('/admin/forecast', { method: 'POST' })); toast('Asking the forecast service now.'); setTimeout(() => { if (view.isConnected) load(); }, 20000); } catch (err) { toast(err.message); }
       });

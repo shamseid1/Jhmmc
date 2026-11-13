@@ -3,15 +3,23 @@
 // Sea conditions for a place: the Sea conditions page, the feed's card and the line on Log
 // fish all ask here, so phones never call the forecast service themselves. Part of createApp.
 module.exports = (ctx) => {
-  const { api, auth, chlorophyll, currents, db, depth, satSst, sea } = ctx;
+  const { api, auth, chlorophyll, copernicus, currents, db, depth, satSst, sea } = ctx;
+  const { mergeInto, NONE } = require('../copernicus');
+  // The grid with Copernicus's current put in, worked out once for each pair of downloads.
+  let merged = { grid: null, cop: null, out: null };
+  const withCopernicus = (grid, cop) => {
+    if (merged.grid !== grid || merged.cop !== cop) merged = { grid, cop, out: mergeInto(grid, cop) };
+    return merged.out;
+  };
 
   // For the admin: the chart's forecast (when fetched, refused and why), and a try now.
   const adminOnly = (req, res, next) => (ctx.isAdminUser(req.user) ? next() : res.status(403).json({ error: 'Only the club admin can do that.' }));
-  api.get('/admin/forecast', auth.requireUser, adminOnly, (_req, res) => res.json({ chart: currents?.status?.() ?? null }));
+  api.get('/admin/forecast', auth.requireUser, adminOnly, (_req, res) => res.json({ chart: currents?.status?.() ?? null, copernicus: copernicus?.status?.() ?? null }));
   api.post('/admin/forecast', auth.requireUser, adminOnly, async (_req, res) => {
     if (!currents?.tryNow) return res.status(503).json({ error: 'The chart\'s forecast is not set up here.' });
     currents.tryNow(); // in the background: about 5 minutes, a minute between its parts
-    res.json({ chart: currents.status() });
+    copernicus?.warm();
+    res.json({ chart: currents.status(), copernicus: copernicus?.status?.() ?? null });
   });
 
   // The water colour (chlorophyll, newest clear view of the last week), for the fishing chart.
@@ -37,6 +45,23 @@ module.exports = (ctx) => {
     }
   });
 
+  // The current at Copernicus's full detail (1/12°, about 9 km), one hour at a time, for the
+  // chart's current lines and colours: what it covers, then each hour's east and north
+  // (whole cm/s, null on land).
+  api.get('/currents/fine', async (_req, res) => {
+    const cop = await copernicus?.get().catch(() => null);
+    if (!cop) return res.set('Cache-Control', 'no-store').json({ ready: false });
+    const { south, west, step, nx, ny, t0, hours } = cop;
+    res.set('Cache-Control', 'public, max-age=900').json({ ready: true, south, west, step, nx, ny, t0, hours });
+  });
+  api.get('/currents/fine/:t', async (req, res) => {
+    const cop = await copernicus?.get().catch(() => null);
+    const h = cop ? Math.round((Date.parse(`${req.params.t}:00Z`) - Date.parse(`${cop.t0}:00Z`)) / 3600e3) : NaN;
+    if (!(h >= 0 && h < cop.hours)) return res.status(404).json({ error: 'No current for that hour.' });
+    const out = (a) => a.map((x) => (x === NONE ? null : x));
+    res.set('Cache-Control', 'public, max-age=3600').json({ t0: cop.t0, u: out(cop.u[h]), v: out(cop.v[h]) });
+  });
+
   // The fishing chart's preferences: the water temperature and depth billfish have been
   // landed in over the last two years, every boat's together (no spots, no boats), as the
   // middle 80%. Null until there are 5 such fish.
@@ -58,7 +83,9 @@ module.exports = (ctx) => {
   api.get('/currents', async (_req, res) => {
     if (!currents) return res.status(503).json({ error: 'The currents map is not available right now.' });
     try {
-      res.set('Cache-Control', 'public, max-age=900').json(await currents.get());
+      const grid = await currents.get();
+      const cop = await copernicus?.get().catch(() => null);
+      res.set('Cache-Control', 'public, max-age=900').json(withCopernicus(grid, cop));
     } catch (err) {
       // Not ready yet (just after an update): said at once, and the page asks again by itself.
       if (err.preparing) {

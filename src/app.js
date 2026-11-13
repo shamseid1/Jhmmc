@@ -16,6 +16,7 @@ const { createDepth } = require('./depth');
 const { createCurrents } = require('./currents');
 const { createChlorophyll } = require('./chlorophyll');
 const { createSst } = require('./sst');
+const { createCopernicus } = require('./copernicus');
 const { zoneOf, dateIn, CLUB_ZONE } = require('./zones');
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
@@ -75,6 +76,7 @@ function createApp({
   currents,
   chlorophyll,
   satSst,
+  copernicus,
   // The feed fills itself (weigh-ins, Log fish): posting by hand is closed.
   // Tests that still post open it.
   openPosts = false,
@@ -113,6 +115,12 @@ function createApp({
     satSst = process.env.NODE_TEST_CONTEXT ? null
       : createSst({ file: dbFile === ':memory:' ? null : path.join(path.dirname(path.resolve(dbFile)), 'chart-sst.json') });
     satSst?.warm();
+  }
+  if (copernicus === undefined) {
+    // The currents at full detail (Copernicus Marine), kept beside the database too.
+    copernicus = process.env.NODE_TEST_CONTEXT ? null
+      : createCopernicus({ file: dbFile === ':memory:' ? null : path.join(path.dirname(path.resolve(dbFile)), 'chart-currents.json') });
+    copernicus?.warm();
   }
   pusher ??= createPusher(db, { contact: contactEmail || 'info@africasportfishing.com' });
   const backups = createBackups(db, { dir: backupDir || path.join(path.dirname(path.resolve(dbFile)), 'backups'), mailer, adminEmail });
@@ -429,6 +437,7 @@ const SHOWN = "COALESCE(NULLIF(u.nickname, ''), u.name)";
     currents,
     chlorophyll,
     satSst,
+    copernicus,
     removeUpload,
     requireApprove,
     requireMoney,
