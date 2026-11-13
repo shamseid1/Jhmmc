@@ -17,7 +17,9 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   // shaded by its depth from GEBCO's seabed map), each with its own names.
   const BASES = {
     satellite: { map: 'World_Imagery', names: 'Reference/World_Boundaries_and_Places', credit: 'Imagery © Esri', maxNative: 18 },
-    chart: { map: 'Ocean/World_Ocean_Base', names: 'Ocean/World_Ocean_Reference', credit: 'Esri, Garmin, GEBCO, NOAA NGDC', maxNative: 13 },
+    // (Its map and names go to zoom 10 here; closer in, Esri sends "Map data not yet
+    // available": zoom 10's are enlarged instead.)
+    chart: { map: 'Ocean/World_Ocean_Base', names: 'Ocean/World_Ocean_Reference', credit: 'Esri, Garmin, GEBCO, NOAA NGDC', maxNative: 10 },
   };
   let layers = [];
   const setBase = (kind) => {

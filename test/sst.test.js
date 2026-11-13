@@ -32,3 +32,11 @@ test('NASA busy: asked again once, then NOAA\'s own; too old is never shown', as
   await assert.rejects(old.get({ wait: true }), /being prepared/);
   assert.equal(parse('a\nb\n').length, 0);
 });
+
+test('the measured temperature at a spot: the nearest sea the satellites saw (a port is on land)', () => {
+  const { tempNear } = require('../src/sst');
+  const sat = { south: 6, west: -11, step: 0.03, nx: 3, ny: 3, values: [28.44, 28.6, null, 28.7, null, null, null, null, null] };
+  assert.equal(tempNear(sat, 6.06, -10.94), 28.6, 'on land: the nearest sea');
+  assert.equal(tempNear(sat, 6, -11), 28.4);
+  assert.equal(tempNear(sat, 9, -11), null, 'far off the map');
+});

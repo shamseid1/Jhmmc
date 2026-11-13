@@ -97,3 +97,21 @@ test('Copernicus: most of the store gone is a failure, not an empty sea', async 
   assert.match(cop.status().error, /blocks not there/);
   assert.equal(cop.ready(), false);
 });
+
+test('the current at a spot: the nearest sea point, knots and the way it goes', () => {
+  const { currentNear, NONE } = require('../src/copernicus');
+  const C = { south: 0, west: 0, step: 1, nx: 2, ny: 1, t0: '2026-11-13T00:00', stepH: 1, steps: 2,
+    u: [[NONE, 51.444], [NONE, 0]], v: [[NONE, 0], [NONE, -51.444]] };
+  const a = currentNear(C, 0, 0, '2026-11-13T00:00');
+  assert.deepEqual([Math.round(a.kn * 10) / 10, Math.round(a.deg)], [1, 90], 'land: the next point, 1 kn east');
+  assert.equal(Math.round(currentNear(C, 0, 1, '2026-11-13T01:00').deg), 180);
+  assert.equal(currentNear(C, 0, 1, '2026-11-14T00:00'), null, 'an hour not covered');
+});
+
+test('the waves at a spot: height, the way they come from, the period', () => {
+  const { wavesNear, NONE } = require('../src/copernicus');
+  const W = { south: 0, west: 0, step: 1, nx: 2, ny: 1, t0: '2026-11-13T00:00', stepH: 3, steps: 2,
+    wh: [[NONE, 100], [NONE, 130]], wd: [[NONE, 180], [NONE, 200]], tp: [[NONE, 120], [NONE, 126]] };
+  assert.deepEqual(wavesNear(W, 0, 0, '2026-11-13T00:00'), { m: 1, from: 180, periodS: 12 });
+  assert.deepEqual(wavesNear(W, 0, 1, '2026-11-13T03:00'), { m: 1.3, from: 200, periodS: 12.6 });
+});

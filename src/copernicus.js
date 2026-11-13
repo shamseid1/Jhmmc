@@ -246,4 +246,42 @@ function mergeInto(grid, cop) {
   return { ...grid, frames, currentsFrom: C ? 'Copernicus Marine' : undefined, wavesFrom: W ? 'Copernicus Marine' : undefined };
 }
 
-module.exports = { createCopernicus, hourOf, mergeInto, NONE, AREA, SETS };
+// The current at a spot and time (knots, and the way it flows, degrees): the nearest point
+// Copernicus has as sea, within about 25 km. Null if none, or the hour isn't covered.
+function currentNear(C, lat, lng, time, reach = 3) {
+  const u = C && hourOf(C, time, 'u'); const v = C && hourOf(C, time, 'v');
+  if (!u || !v) return null;
+  const i0 = Math.round((lng - C.west) / C.step); const j0 = Math.round((lat - C.south) / C.step);
+  let best = null; let bestD = Infinity;
+  for (let dj = -reach; dj <= reach; dj++) {
+    for (let di = -reach; di <= reach; di++) {
+      const i = i0 + di; const j = j0 + dj;
+      if (i < 0 || j < 0 || i >= C.nx || j >= C.ny) continue;
+      const k = j * C.nx + i;
+      if (u[k] !== NONE && v[k] !== NONE && di * di + dj * dj < bestD) { best = k; bestD = di * di + dj * dj; }
+    }
+  }
+  if (best == null) return null;
+  return { kn: Math.hypot(u[best], v[best]) * KN, deg: ((Math.atan2(u[best], v[best]) * 180) / Math.PI + 360) % 360 };
+}
+
+// The waves at a spot and time (metres, the way they come from, the period in seconds): the
+// nearest point Copernicus has as sea, within about 25 km. Null if none.
+function wavesNear(W, lat, lng, time, reach = 3) {
+  const h = W && hourOf(W, time, 'wh');
+  if (!h) return null;
+  const i0 = Math.round((lng - W.west) / W.step); const j0 = Math.round((lat - W.south) / W.step);
+  let best = null; let bestD = Infinity;
+  for (let dj = -reach; dj <= reach; dj++) {
+    for (let di = -reach; di <= reach; di++) {
+      const i = i0 + di; const j = j0 + dj;
+      if (i < 0 || j < 0 || i >= W.nx || j >= W.ny) continue;
+      if (h[j * W.nx + i] !== NONE && di * di + dj * dj < bestD) { best = j * W.nx + i; bestD = di * di + dj * dj; }
+    }
+  }
+  if (best == null) return null;
+  const d = hourOf(W, time, 'wd')?.[best]; const p = W.tp ? hourOf(W, time, 'tp')?.[best] : NONE;
+  return { m: h[best] / 100, from: d == null || d === NONE ? null : d, periodS: p == null || p === NONE ? null : p / 10 };
+}
+
+module.exports = { createCopernicus, hourOf, mergeInto, currentNear, wavesNear, NONE, AREA, SETS };

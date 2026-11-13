@@ -149,6 +149,32 @@ module.exports = (ctx) => {
     }
   });
 
+  // Sea conditions' "now" from the same data as the fishing chart: the water temperature the
+  // satellites measured (not the forecast model's), and the current from Copernicus at full
+  // detail. The forecast for the days ahead stays the forecast's.
+  const { compass, rating } = require('../sea');
+  const { tempNear } = require('../sst');
+  const { currentNear, wavesNear } = require('../copernicus');
+  const withBestNow = async (s, lat, lng) => {
+    if (!s?.now) return s;
+    const now = { ...s.now };
+    const sat = await satSst?.get().catch(() => null);
+    const t = tempNear(sat, lat, lng);
+    if (t != null) { now.waterC = t; now.waterMeasured = sat.newest; }
+    const cop = await copernicus?.get().catch(() => null);
+    const hourNow = new Date().toISOString().slice(0, 13) + ':00';
+    const c = currentNear(cop?.currents, lat, lng, hourNow);
+    if (c) { now.currentKn = Math.round(c.kn * 10) / 10; now.currentDir = compass(c.deg); }
+    // The waves as the chart has them: height, the way they come from, the swell's period.
+    const w = wavesNear(cop?.waves, lat, lng, hourNow);
+    if (w) {
+      now.waveM = Math.round(w.m * 10) / 10;
+      if (w.from != null) now.swellDir = compass(w.from);
+      if (w.periodS != null) now.swellS = Math.round(w.periodS);
+      now.rating = rating(now.windKn, now.waveM);
+    }
+    return { ...s, now };
+  };
   api.get('/sea', async (req, res) => {
     const lat = Number(req.query.lat);
     const lng = Number(req.query.lng);
@@ -157,7 +183,7 @@ module.exports = (ctx) => {
     }
     if (!sea) return res.status(503).json({ error: 'Sea conditions are not available right now.' });
     try {
-      res.set('Cache-Control', 'private, max-age=600').json(await sea.summary(lat, lng));
+      res.set('Cache-Control', 'private, max-age=600').json(await withBestNow(await sea.summary(lat, lng), lat, lng));
     } catch (err) {
       console.warn(`Sea conditions failed: ${err.message}`);
       res.status(503).json({ error: 'Sea conditions are not available right now. Try again in a few minutes.' });

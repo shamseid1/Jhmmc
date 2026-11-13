@@ -213,8 +213,15 @@ module.exports = (ctx) => {
       // The sea when it came aboard, and how deep it was there (the GEBCO seabed map), saved
       // with it in the background: never holds up the log.
       if ((ctx.sea || ctx.depth) && spot.lat != null) {
-        Promise.allSettled([ctx.sea?.at(spot.lat, spot.lng, landedAt), ctx.depth?.at([{ lat: spot.lat, lng: spot.lng }])]).then(([c, d]) => {
+        Promise.allSettled([ctx.sea?.at(spot.lat, spot.lng, landedAt), ctx.depth?.at([{ lat: spot.lat, lng: spot.lng }]), ctx.satSst?.get()]).then(([c, d, m]) => {
           const cond = { ...(c.value || {}), ...(d.value?.[0] != null && { depthM: d.value[0] }) };
+          // The water temperature the satellites measured there (as the chart shows it), when
+          // their latest is within 3 days of the fish; else the forecast model's.
+          const sat = m.value;
+          if (sat && Math.abs(Date.parse(`${sat.newest}T12:00:00Z`) - Date.parse(landedAt)) < 3 * 864e5) {
+            const t = require('../sst').tempNear(sat, spot.lat, spot.lng);
+            if (t != null) cond.waterC = t;
+          }
           if (Object.keys(cond).length) db.prepare('UPDATE outing_landings SET conditions = ? WHERE id = ?').run(JSON.stringify(cond), landingId);
         }).catch(() => {});
       }

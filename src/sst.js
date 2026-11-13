@@ -92,4 +92,21 @@ function sstInto(grid, sat) {
   return { ...grid, frames, sstFrom: sat.source };
 }
 
-module.exports = { createSst, parse, sstInto, SOURCES };
+// The measured temperature at a spot: the nearest point the satellites saw as sea, within about
+// 12 km (a port or a beach is on land on their map). Null if none.
+function tempNear(sat, lat, lng, reach = 4) {
+  if (!sat?.values) return null;
+  const i0 = Math.round((lng - sat.west) / sat.step); const j0 = Math.round((lat - sat.south) / sat.step);
+  let best = null; let bestD = Infinity;
+  for (let dj = -reach; dj <= reach; dj++) {
+    for (let di = -reach; di <= reach; di++) {
+      const i = i0 + di; const j = j0 + dj;
+      if (i < 0 || j < 0 || i >= sat.nx || j >= sat.ny) continue;
+      const v = sat.values[j * sat.nx + i];
+      if (v != null && di * di + dj * dj < bestD) { best = v; bestD = di * di + dj * dj; }
+    }
+  }
+  return best == null ? null : Math.round(best * 10) / 10;
+}
+
+module.exports = { createSst, parse, sstInto, tempNear, SOURCES };
