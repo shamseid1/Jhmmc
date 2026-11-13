@@ -22,7 +22,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     satellite: { map: 'World_Imagery', credit: 'Imagery © Esri', maxNative: 16 },
     // A plotter's (as Garmin's), drawn from data, not pictures: a plain blue sea, the land in
     // charcoal from our coastline (so the sea's colours stand out), and white names.
-    plotter: { credit: 'Names: GeoNames', maxNative: 16 },
+    plotter: { credit: 'Names: GeoNames, Borders: geoBoundaries', maxNative: 16 },
   };
   const landPane = map.getPane('land') || map.createPane('land');
   landPane.style.zIndex = 250;
@@ -39,12 +39,17 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   const details = L.layerGroup();
   let detailData = null;
   let detailBase = 'plotter';
+  const bordersPane = map.getPane('borders') || map.createPane('borders');
+  bordersPane.style.zIndex = 265; // over the water (260), under the depth lines' numbers and names
+  bordersPane.style.pointerEvents = 'none';
+  let bRenderer = null;
+  const borderRenderer = () => (bRenderer ??= L.canvas({ pane: 'borders', padding: 0.3 }));
   const drawDetails = () => {
     details.clearLayers();
     if (!detailData) return;
     // On the photo: only the country borders, faint (its own colours show the rest).
     if (detailBase === 'satellite') {
-      details.addLayer(L.polyline(detailData.borders, { pane: 'land', renderer: L.canvas({ pane: 'land', padding: 0.3 }), interactive: false, color: '#ffffff', weight: 1, opacity: 0.45 }));
+      details.addLayer(L.polyline(detailData.borders, { pane: 'borders', renderer: borderRenderer(), interactive: false, color: '#ffffff', weight: 1, opacity: 0.45 }));
       return;
     }
     if (!map.getContainer().classList.contains('base-plotter')) return;
@@ -58,8 +63,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     // Provinces and counties far out only: their lines are coarse, and close in they'd run beside
     // the rivers and coasts they really follow.
     if (z >= 6 && z <= 9) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
-    // Country borders at every zoom.
-    details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
+    // Country borders at every zoom, over the water (a border that's a river runs down its middle).
+    details.addLayer(L.polyline(borders, { ...o, pane: 'borders', renderer: borderRenderer(), color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
     // The countries' names, as on Garmin, while the map's far enough out to show them.
     if (z >= 5 && z <= 8) {
       for (const [name, lat, lng, from = 5] of COUNTRY_NAMES) {
@@ -304,7 +309,7 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
 const CONTOURS_V = '7'; // (bumped: the land now saved with the lines)
-const LAND_V = '7';
+const LAND_V = '8';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
 const contourCell = async (key) => {
