@@ -111,7 +111,9 @@ function createCurrents({ fetchImpl = globalThis.fetch, ttlMs = 6 * 3600e3, regi
   try { if (file) saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = null; }
   // The last chart, even if it was another grid (the area or spacing changed): shown until the
   // new one is ready (it carries its own grid), but fetched again at once.
-  if (saved?.data?.frames) cached = { at: saved.at, data: saved.data, otherGrid: saved.data.step !== region.step || saved.data.south !== region.south || saved.data.west !== region.west };
+  if (saved?.data?.frames) cached = { at: saved.at, data: saved.data, otherGrid: saved.data.step !== region.step || saved.data.south !== region.south || saved.data.west !== region.west
+    // Saved before the chart came hourly (3-hour steps, the tide averaged out): fetched again now.
+    || !saved.data.hours };
   let pending = null;
   let failedAt = 0;
   // A refusal is remembered on disk too, so a restart (every update) doesn't ask again before then.

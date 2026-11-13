@@ -381,7 +381,10 @@ function fieldCanvas(g, f, kind, stops, land, S = 12) {
       if (v == null) continue;
       const [r, gg, b] = colourAt(stops, v);
       const k = (py * R.w + px) * 4;
-      img.data[k] = r; img.data[k + 1] = gg; img.data[k + 2] = b; img.data[k + 3] = 235;
+      // Faded over the last grid step and a half at the forecast's edges, so the area it
+      // covers blends into the map rather than ending in a hard box.
+      const edge = Math.min(px, R.w - 1 - px, py, R.h - 1 - py) / (1.5 * S);
+      img.data[k] = r; img.data[k + 1] = gg; img.data[k + 2] = b; img.data[k + 3] = edge >= 1 ? 235 : Math.round(235 * edge * edge * (3 - 2 * edge));
     }
   }
   ctx.putImageData(img, 0, 0);
