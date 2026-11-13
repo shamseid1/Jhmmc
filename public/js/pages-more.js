@@ -614,6 +614,7 @@ PAGE_GROUPS.push((view) => ({
     let fine = null;
     const fineVals = new Map(); // hour's time -> { u, v } in knots
     const fineAsked = new Set();
+    const fineWait = new Map(); // hour's time -> its download
     let fineArrived = null; // redraws the hour (set once the map's drawn)
     let realign = null; // puts the time strip back on an hour (set once it's made)
     const fineBounds = () => raster(fine, 1).bounds;
@@ -622,7 +623,7 @@ PAGE_GROUPS.push((view) => ({
       if (!fine || fineVals.has(time) || fineAsked.has(time)) return;
       fineAsked.add(time);
       const kn = (a) => a.map((c) => (c == null ? null : c / 51.444));
-      api(`/currents/fine/${encodeURIComponent(time)}`).then((x) => {
+      fineWait.set(time, api(`/currents/fine/${encodeURIComponent(time)}`).then((x) => {
         const fv = { u: kn(x.u), v: kn(x.v) };
         // The waves (height in cm, the way they come from): metres, and the way they go as a vector.
         if (x.wh) {
@@ -631,11 +632,25 @@ PAGE_GROUPS.push((view) => ({
           fv.xv = x.wd.map((d, k) => (d == null || x.wh[k] == null ? null : Math.cos(((d + 180) * Math.PI) / 180)));
         }
         fineVals.set(time, fv);
-        if (fineVals.size > 80) fineVals.delete(fineVals.keys().next().value);
         if (view.isConnected && timeOf(hour) === time) fineArrived?.();
-      }).catch(() => {});
+      }).catch(() => {}));
     };
-    api('/currents/fine').then((m) => { if (m?.ready && view.isConnected) { fine = m; redraw?.(); } }).catch(() => {});
+    // All the hours, a couple at a time from the hour shown onwards, so moving through time
+    // never waits (about 35 KB an hour).
+    const preload = async () => {
+      const order = Array.from({ length: HOURS }, (_, k) => (hour + k) % HOURS);
+      let next = 0;
+      const one = async () => {
+        while (next < order.length && view.isConnected) {
+          const t = timeOf(order[next++]);
+          if (fineVals.has(t) || fineAsked.has(t)) continue;
+          fineFor(t);
+          await fineWait.get(t);
+        }
+      };
+      await Promise.all([one(), one()]);
+    };
+    api('/currents/fine').then((m) => { if (m?.ready && view.isConnected) { fine = m; redraw?.(); preload(); } }).catch(() => {});
     const satNote = () => satGrid && say(html`<b>Water temperature</b> measured by satellite (${satGrid.source}) on ${fmtDate(satGrid.newest)}, every 3 km or so. It's the latest there is: it doesn't change with the hour.`);
     const chlNote = () => chlGrid && say(html`<b>Water colour:</b> each spot's newest clear view from the satellites, ${fmtDate(chlGrid.oldest)} to ${fmtDate(chlGrid.newest)}. Clouds hide the sea: blank where it was cloudy all week.`);
     // Every hour of the forecast. A chart saved before it came hourly has 3-hour steps: the
@@ -668,11 +683,12 @@ PAGE_GROUPS.push((view) => ({
       // The scale's unit, and each colour's value in it. None: just the chart. Hotspots: outlined,
       // with the current's lines faint over them.
       none: { lines: null, per: 1e9 },
-      hotspots: { hot: true, lines: ['u', 'v', 1], per: 420 },
-      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], unit: () => 'kn', label: num1 },
-      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
+      // The current's lines as on Windy: few, thin and soft, with long trails.
+      hotspots: { hot: true, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.7, fade: 0.3 },
+      currents: { colour: 'speed', stops: SPEED_SCALE, lines: ['u', 'v', 1], per: 420, width: 1, alpha: 0.75, fade: 0.3, unit: () => 'kn', label: num1 },
+      sst: { colour: 'sst', stops: SST_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, unit: () => unit('temp'), label: (v) => Math.round(toUnit('temp', v)) },
       wind: { colour: 'wind', stops: WIND_SCALE, lines: ['wu', 'wv', 1 / 6], per: 1100, overLand: true, unit: () => 'kn', label: (v) => v },
-      chl: { colour: 'chl', stops: CHL_SCALE, lines: ['u', 'v', 1], per: 260, unit: () => 'mg/m³', label: (v) => String(v) },
+      chl: { colour: 'chl', stops: CHL_SCALE, lines: ['u', 'v', 1], per: 520, width: 1, alpha: 0.6, fade: 0.3, unit: () => 'mg/m³', label: (v) => String(v) },
       wave: { colour: 'wave', stops: WAVE_SCALE, lines: ['xu', 'xv', 0.45], per: 550, crests: true, unit: () => unit('depth'), label: (v) => num1(toUnit('depth', v)) },
     };
 
@@ -680,6 +696,8 @@ PAGE_GROUPS.push((view) => ({
     let at = null;
     let lines = null;
     let fineNow = null; // the full-detail current's sampler for the hour shown
+    let lastFv = null; // the last full-detail hour shown
+    const blend = { at: null, w: 0 }; // the neighbouring hour's sampler and how far towards it
     // The pictures: each hour's drawn once (off to the side, made into a file without holding the
     // screen up), kept for the hours seen, and put on the map only when it's ready, over the one
     // before, which goes then: no blank moment and no flicker while the time moves.
@@ -742,15 +760,23 @@ PAGE_GROUPS.push((view) => ({
       // The current at full detail for this hour, if it's in (asked for if not).
       const ft = timeOf(hour);
       fineFor(ft); fineFor(timeOf(hour + 1));
-      const fv = fine && fineVals.get(ft);
+      // Until this hour's in, the last one shown stays (never back to the coarse grid).
+      const fv = fine && (fineVals.get(ft) || lastFv);
+      if (fv) lastFv = fv;
       const fineAt = fv ? sampler(fine, fv) : null;
       fineNow = fineAt;
       if (L1.lines) {
         const [ku, kv, k] = L1.lines;
         const fk = fv && fv[ku] ? fineAt : null; // this layer's field at full detail, if it's in
+        // Between two hours (the strip being moved, or playing): blended towards the next one,
+        // so the lines turn smoothly rather than jump each hour.
         lines = (lat, lng, key) => {
           const name = key === 'u' ? ku : kv;
-          const x = (fk && fk(lat, lng, name)) ?? at(lat, lng, name);
+          let x = (fk && fk(lat, lng, name)) ?? at(lat, lng, name);
+          if (x != null && fk && blend.w > 0.02 && blend.at) {
+            const y = blend.at(lat, lng, name);
+            if (y != null) x += (y - x) * blend.w;
+          }
           return x == null ? null : x * k;
         };
       } else lines = null;
@@ -864,15 +890,24 @@ PAGE_GROUPS.push((view) => ({
         ticking = false;
         // Hiding the strip (None) puts it back to the start: not a change of hour.
         if (bar.hidden) return;
-        const h = Math.min(HOURS - 1, Math.max(0, Math.round(tl.scrollLeft / PX)));
+        const tf = Math.min(HOURS - 1, Math.max(0, tl.scrollLeft / PX));
+        const h = Math.round(tf);
         if (h !== hour) { hour = h; show(); }
+        // How far towards the next (or last) hour the strip is.
+        const d = tf - h; const other = fine && fineVals.get(timeOf(d > 0 ? h + 1 : h - 1));
+        blend.at = other ? sampler(fine, other) : null;
+        blend.w = Math.abs(d);
       });
     }, { passive: true });
     window.addEventListener('resize', () => { if (view.isConnected) { pads(); tl.scrollLeft = hour * PX; } });
     // Play: hour by hour to 3 days ahead, round again from now; touching the strip stops it.
     const playBtn = view.querySelector('#cur-play');
     let playing = 0;
-    const stopPlay = () => { clearInterval(playing); playing = 0; isPlaying = false; playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play'); };
+    const stopPlay = () => {
+      cancelAnimationFrame(playing); playing = 0; isPlaying = false;
+      tl.style.scrollSnapType = ''; // settles on the nearest hour again
+      playBtn.innerHTML = icon('play'); playBtn.setAttribute('aria-label', 'Play');
+    };
     tl.addEventListener('pointerdown', stopPlay);
     tl.addEventListener('wheel', stopPlay, { passive: true });
     playBtn.addEventListener('click', () => {
@@ -880,11 +915,20 @@ PAGE_GROUPS.push((view) => ({
       playBtn.innerHTML = icon('pause'); playBtn.setAttribute('aria-label', 'Pause');
       isPlaying = true;
       ahead(hour + 1);
-      playing = setInterval(() => {
+      // A smooth glide, as on Windy: an hour every 0.7 seconds, the lines blending between
+      // hours; back to now at the end. The strip's snapping to hours is off meanwhile.
+      tl.style.scrollSnapType = 'none';
+      let lastT = 0; let x = tl.scrollLeft;
+      const glide = (now) => {
         if (!view.isConnected) return stopPlay();
-        const next = hour + 1 >= HOURS ? nowHour : hour + 1;
-        tl.scrollTo({ left: next * PX, behavior: next === nowHour ? 'auto' : 'smooth' });
-      }, 500);
+        const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0;
+        lastT = now;
+        x += (dt * PX) / 0.7;
+        if (x > (HOURS - 1) * PX) x = nowHour * PX;
+        tl.scrollLeft = x;
+        playing = requestAnimationFrame(glide);
+      };
+      playing = requestAnimationFrame(glide);
     });
     // Keys (a keyboard or a screen reader): left and right step an hour.
     tl.addEventListener('keydown', (e) => {

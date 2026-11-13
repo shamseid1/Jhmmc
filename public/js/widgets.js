@@ -738,14 +738,15 @@ function flowLayer(map, getField, getLand = () => null, bounds = null, style = (
     const at = getField();
     // Slower when zoomed out (the sea is smaller on screen), a little faster zoomed in.
     const zoomK = Math.min(1.6, Math.max(0.35, 2 ** ((map.getZoom() - 7) * 0.6)));
-    // Fade the old trails within about a second: short streaks, as on Windy.
+    // Fade the old trails (each layer its own: the current's long and soft, as on Windy).
     ctx.globalCompositeOperation = 'destination-in';
-    const crests = !!style().crests;
-    ctx.fillStyle = `rgba(0,0,0,${Math.pow(crests ? 0.02 : 0.12, dt).toFixed(3)})`;
+    const st = style();
+    const crests = !!st.crests;
+    ctx.fillStyle = `rgba(0,0,0,${Math.pow(crests ? 0.02 : st.fade || 0.12, dt).toFixed(3)})`;
     ctx.fillRect(0, 0, r.width, r.height);
     ctx.globalCompositeOperation = 'source-over';
-    ctx.lineWidth = crests ? 2.2 : 1.3;
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = crests ? 2.2 : st.width || 1.3;
+    ctx.strokeStyle = `rgba(255,255,255,${st.alpha || 0.85})`;
     ctx.beginPath();
     for (const p of parts) {
       const ll = map.containerPointToLatLng([p.x, p.y]);
