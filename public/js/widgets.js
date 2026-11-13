@@ -28,6 +28,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   landPane.style.zIndex = 250;
   landPane.style.pointerEvents = 'none';
   let landLayer = null;
+  let coastZoom = null; // the coastline's show/hide on zoom (one at a time)
   // (GSHHG's coastline: full resolution, about 45 m, along all of West Africa, coarser beyond:
   // charts/tools/gshhg_coast.py.)
   const COUNTRY_NAMES = [['Mauritania', 19.5, -11.5], ['Senegal', 14.6, -14.6], ['The Gambia', 13.45, -15.5, 7], ['Guinea-Bissau', 12.05, -14.9, 6],
@@ -54,7 +55,9 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     const o = { pane: 'land', renderer, interactive: false };
     // (Rivers and lakes: the water layer's, OpenStreetMap's, alone.)
     const { borders, states } = detailData;
-    if (z >= 6) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
+    // Provinces and counties far out only: their lines are coarse, and close in they'd run beside
+    // the rivers and coasts they really follow.
+    if (z >= 6 && z <= 9) details.addLayer(L.polyline(states, { ...o, color: c('--plotter-state', '#4b5462'), weight: 0.8 }));
     details.addLayer(L.polyline(borders, { ...o, color: c('--plotter-border', '#c8d6c0'), weight: 1.3, opacity: 0.85 }));
     // The countries' names, as on Garmin, while the map's far enough out to show them.
     if (z >= 5 && z <= 8) {
@@ -83,8 +86,13 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
       L.polygon(wide, landStyle),
       L.polygon(fill, landStyle),
       details,
-      L.polyline(coast, { pane: 'land', renderer, color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2, interactive: false }),
     ]).addTo(map);
+    // The coastline drawn far out only: close in, the land against the water shows the coast, and
+    // it would sit in the water where it and OpenStreetMap's river mouths don't quite agree.
+    const coastLine = L.polyline(coast, { pane: 'land', renderer, color: css.getPropertyValue('--plotter-coast').trim() || '#5fb3f0', weight: 1.2, interactive: false });
+    const showCoast = () => { if (map.getZoom() <= 10) landLayer.addLayer(coastLine); else landLayer.removeLayer(coastLine); };
+    if (coastZoom) map.off('zoomend', coastZoom);
+    coastZoom = showCoast; map.on('zoomend', showCoast); showCoast();
   }).catch(() => {});
   let layers = [];
   const ourNames = placeNames(L, map);
@@ -264,24 +272,23 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
         // the area covers its line).
         for (const items of files) {
           for (const [kind, zmin, geo] of items) {
-            if (kind !== 'l' || zmin > z || !crosses(geo)) continue;
+            if (kind !== 'l' || zmin > z || z < 9 || !crosses(geo)) continue; // rivers and creeks from zoom 9: further out the land stays quiet, as on Garmin
             ctx.beginPath(); trace(geo, false);
             ctx.strokeStyle = shore; ctx.globalAlpha = 0.75;
             ctx.lineWidth = zmin <= 9 ? Math.max(1, (z - 6) * 0.5) : Math.max(0.7, (z - 9) * 0.4);
             ctx.stroke(); ctx.globalAlpha = 1;
           }
         }
-        // The water areas: filled (holes are islands), with a thin shore close in.
-        ctx.fillStyle = sea; ctx.strokeStyle = shore; ctx.lineWidth = 0.7;
-        for (const items of files) {
-          for (const [kind, zmin, geo] of items) {
-            if (kind !== 'a' || zmin > z || !crosses(geo[0])) continue;
-            ctx.beginPath();
-            for (const ring of geo) trace(ring, true);
-            ctx.fill('evenodd');
-            if (z >= 10) { ctx.globalAlpha = 0.6; ctx.stroke(); ctx.globalAlpha = 1; }
-          }
-        }
+        // The water areas (holes are islands), with no outline, as on Garmin: an area's edge isn't
+        // always a shore (a river's area is closed straight across its mouth, and a river comes in
+        // pieces), and the water against the land shows the banks.
+        const areas = [];
+        for (const items of files) for (const [kind, zmin, geo] of items) if (kind === 'a' && zmin <= z && crosses(geo[0])) areas.push(geo);
+        const shape = (geo) => { ctx.beginPath(); for (const ring of geo) trace(ring, true); };
+        // Each fill reaches half a pixel past its edge, closing hairline gaps between pieces that
+        // don't quite touch (the coastline under them would show through).
+        ctx.fillStyle = sea; ctx.strokeStyle = sea; ctx.lineWidth = 1;
+        for (const geo of areas) { shape(geo); ctx.fill('evenodd'); ctx.stroke(); }
         done(null, cv);
       });
       return cv;
