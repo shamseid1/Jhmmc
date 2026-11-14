@@ -865,7 +865,8 @@ PAGE_GROUPS.push((view) => ({
           // The patches of the numbered spots only (within about 15 km of one): every patch on
           // the chart is one of them.
           const near = (k) => { const la = hg.south + Math.floor(k / hg.nx) * hg.step; const lo = hg.west + (k % hg.nx) * hg.step; return spotsNow.some((sp) => Math.hypot(sp.lat - la, sp.lng - lo) < 0.14); };
-          const hf2 = { ...hf, fish: hf.fish.map((v, k) => (v != null && near(k) ? v : null)) };
+          // (Away from them: no hotspot (0), not blank, so a patch keeps its own shape.)
+          const hf2 = { ...hf, fish: hf.fish.map((v, k) => (v == null ? null : near(k) ? v : 0)) };
           hf2.fish.lim = hotspotLimit(hf);
           putPic(`${key}|${fh ? 'fine' : 'grid'}|spots`, () => hotspotCanvas(hg, hf2, land), 1, 'hot-image', fh ? fineBounds() : imgBounds);
           const lk = `${hour}|${land ? 1 : 0}|${fh ? 'fine' : 'grid'}|spots`;
