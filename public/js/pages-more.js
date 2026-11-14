@@ -198,6 +198,7 @@ PAGE_GROUPS.push((view) => ({
         <div class="sq-grid">${LAYERS.map(([k, label, ic]) => square('data-layer', k, label, ic, k === 'none'))}</div>
         <div class="panel-head catches-head"><b>Map</b></div>
         <div class="base-pick" role="group" aria-label="Map">${[['plotter', 'Plotter'], ['satellite', 'Satellite']].map(([k, label]) => raw(html`<button type="button" data-base="${k}" aria-pressed="${saved.base === k}">${label}</button>`))}</div>
+        <div class="panel-switches catches"><label><span>Relief shading<small>Light and shadow on the seabed: bumps, holes and edges between the depth lines (Plotter).</small></span><input type="checkbox" class="switch" data-relief ${saved.relief === false ? '' : 'checked'}></label></div>
         ${state.me ? raw(html`<div class="panel-head catches-head"><b>Catches</b></div>
         <div class="panel-switches catches">
           <label><span>Your fish<small>${crew ? 'Your crew\'s exact spots. Only your crew sees them.' : 'Your own posts with a spot. Only you see them.'}</small></span><input type="checkbox" class="switch" data-show="fish" ${saved.fish === false ? '' : 'checked'}></label>
@@ -225,6 +226,7 @@ PAGE_GROUPS.push((view) => ({
       try {
         localStorage.setItem('chart-prefs', JSON.stringify({ fish: on('fish'), spots: on('spots'), regional: on('regional'), cf,
           base: view.querySelector('[data-base][aria-pressed="true"]')?.dataset.base || 'plotter',
+          relief: !!view.querySelector('[data-relief]')?.checked,
           layer: view.querySelector('[data-layer][aria-pressed="true"]')?.dataset.layer || 'none' }));
       } catch { /* not kept on this phone */ }
     };
@@ -273,7 +275,8 @@ PAGE_GROUPS.push((view) => ({
     new ResizeObserver(lift).observe(bar);
     lift();
     // The map underneath: a sea chart (the first time) or the satellite photo, as picked.
-    const baseMap = addSatellite(L, map, { fullScreen: true, base: saved.base });
+    const baseMap = addSatellite(L, map, { fullScreen: true, base: saved.base, relief: saved.relief !== false });
+    view.querySelector('[data-relief]')?.addEventListener('change', (e) => { baseMap.setRelief(e.target.checked); setTimeout(remember); });
     view.querySelectorAll('[data-base]').forEach((b) => b.addEventListener('click', () => {
       view.querySelectorAll('[data-base]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       baseMap.setBase(b.dataset.base);

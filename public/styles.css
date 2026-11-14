@@ -1571,3 +1571,9 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .cal-season { margin-top: 18px; }
 .cal-season summary { font-weight: 700; cursor: pointer; }
 .relief-img { image-rendering: auto; }
+
+/* iPhone: a text box under 16 px makes it zoom the page in on a tap (and the page then drifts
+   under the finger): every typed field at 16 px. And the page never drags sideways or bounces. */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: max(16px, 1em); }
+html { overflow-x: clip; overscroll-behavior: none; }
+body { overflow-x: clip; }

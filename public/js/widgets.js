@@ -5,7 +5,7 @@
 
 // The maps: satellite imagery (Esri World Imagery) with borders and place
 // names (country, city, town) on top.
-function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
+function addSatellite(L, map, { fullScreen = false, base = 'satellite', relief: reliefOn = true } = {}) {
   const esri = (service) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
   // The place names and borders above everything drawn on the sea (the colours at 400, their
   // outlines 420, the moving lines 450), as on Windy, so a town is never painted over; under
@@ -103,6 +103,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   let layers = [];
   const ourNames = placeNames(L, map);
   const relief = reliefLayer(L, map);
+  let baseNow = base;
   // The water on the land (rivers, lagoons, creeks), over the land and its details, under the depth lines.
   const waterPane = map.getPane('water') || map.createPane('water');
   waterPane.style.zIndex = 260;
@@ -120,7 +121,8 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     credit = b.map ? 'Names: GeoNames' : b.credit;
     if (credit) map.attributionControl?.addAttribution(credit);
     ourNames.set(true);
-    relief.set(kind === 'plotter');
+    baseNow = kind;
+    relief.set(kind === 'plotter' && reliefOn);
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     waterOn?.remove(); waterOn = null;
     detailBase = kind;
@@ -146,7 +148,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
       .bindTooltip(p.name, { permanent: true, direction: 'right', className: 'place-label', offset: [6, 0] })
       .addTo(map);
   }
-  return { setBase };
+  return { setBase, setRelief: (v) => { reliefOn = v; relief.set(baseNow === 'plotter' && v); } };
 }
 // On a phone, one finger scrolls the page past the map; two fingers move and zoom it (a short
 // hint says so), as Google Maps does inside a page.
