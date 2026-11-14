@@ -735,6 +735,27 @@ PAGE_GROUPS.push((view) => ({
     };
 
     let labels = null;
+    let spotMarks = null; // the hour's best spots, numbered
+    let spotsNow = []; // [{ lat, lng, k, edges, g, f }]
+    // A spot's card, in the tap bar: its number and how strong, how far and which way (from you,
+    // else from Marshall), the depth, the water, and why in plain words.
+    const spotCard = (sp, n) => {
+      const from = myPos || [6.15, -10.3833];
+      const nav = navTo(from, [sp.lat, sp.lng]);
+      const words = { tb: (x) => `${x.toFixed(1)} °C temperature break`, ce: (x) => `current edge ${x.toFixed(1)} kn`,
+        ge: (x) => `green water meets blue (${Math.round(10 ** x)}× greener)` };
+      const why = sp.edges.map(([kind, x]) => words[kind](x));
+      const w = sp.f.why?.[sp.k] || 0;
+      if (w & 4) why.push('on the shelf edge');
+      if (w & 8) why.push('the water billfish have been caught in');
+      const d = sp.g.depth?.[sp.k]; const t = satAt?.(sp.lat, sp.lng, 'sst') ?? sp.f.sst?.[sp.k];
+      const strong = sp.edges.some((e) => e[2]) || sp.edges.length >= 2;
+      return {
+        big: [`Hotspot ${n} · ${strong ? 'Strong' : 'Good'} · ${Math.round(nav.nm)} nm, ${String(Math.round(nav.deg)).padStart(3, '0')}° from ${myPos ? 'you' : 'Marshall'}`,
+          `${why.join(', ')}`],
+        rows: [d != null && ['Depth', estTxt(depthTxt(d))], t != null && ['Water', estTxt(tempTxt(t))]].filter(Boolean),
+      };
+    };
     let at = null;
     let lines = null;
     let fineNow = null; // the full-detail current's sampler for the hour shown
@@ -823,6 +844,7 @@ PAGE_GROUPS.push((view) => ({
         };
       } else lines = null;
       labels?.remove(); labels = null;
+      spotMarks?.remove(); spotMarks = null; spotsNow = [];
       outline?.remove(); outline = null;
       isoLayer?.remove(); isoLayer = null;
       const coast = L1.overLand ? null : land;
@@ -831,12 +853,24 @@ PAGE_GROUPS.push((view) => ({
         // At full detail when this hour's in (about 9 km), else on the chart's own grid.
         const fh = hotFor(ft);
         const hg = fh ? fh.g : data; const hf = fh ? fh.f : f;
-        putPic(`${key}|${fh ? 'fine' : 'grid'}`, () => hotspotCanvas(hg, hf, land), 1, 'hot-image', fh ? fineBounds() : imgBounds);
-        const lk = `${hour}|${land ? 1 : 0}|${fh ? 'fine' : 'grid'}`;
-        if (!outlines.has(lk)) outlines.set(lk, hotspotLines(hg, hf, land));
-        outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
-        labels = L.layerGroup(hotspotLabels(hg, hf).map((p) => L.tooltip({ permanent: true, direction: 'center', className: 'hot-label', interactive: false })
-          .setLatLng([p.lat, p.lng]).setContent(p.text))).addTo(map);
+        // Only where something really stands out (a clear edge by its own size); if nothing
+        // does this hour, nothing's shown, and the scale says so.
+        spotsNow = topSpots(hg, hf, 5).map((sp) => ({ ...sp, g: hg, f: hf }));
+        if (spotsNow.length) {
+          // The patches of the numbered spots only (within about 15 km of one): every patch on
+          // the chart is one of them.
+          const near = (k) => { const la = hg.south + Math.floor(k / hg.nx) * hg.step; const lo = hg.west + (k % hg.nx) * hg.step; return spotsNow.some((sp) => Math.hypot(sp.lat - la, sp.lng - lo) < 0.14); };
+          const hf2 = { ...hf, fish: hf.fish.map((v, k) => (v != null && near(k) ? v : null)) };
+          hf2.fish.lim = hotspotLimit(hf);
+          putPic(`${key}|${fh ? 'fine' : 'grid'}|spots`, () => hotspotCanvas(hg, hf2, land), 1, 'hot-image', fh ? fineBounds() : imgBounds);
+          const lk = `${hour}|${land ? 1 : 0}|${fh ? 'fine' : 'grid'}|spots`;
+          if (!outlines.has(lk)) outlines.set(lk, hotspotLines(hg, hf2, land));
+          outline = L.polyline(outlines.get(lk), { pane: 'outlines', color: '#ff4081', weight: 2.5, opacity: 1, interactive: false, smoothFactor: 0 }).addTo(map);
+          // The best few, numbered: tap one for its card.
+          spotMarks = L.layerGroup(spotsNow.map((sp, i) => L.marker([sp.lat, sp.lng], { pane: 'pins', keyboard: false,
+            icon: L.divIcon({ className: 'hot-num', html: String(i + 1), iconSize: [30, 30], iconAnchor: [15, 15] }) })
+            .on('click', (ev) => { L.DomEvent.stopPropagation(ev); const c = spotCard(sp, i + 1); tapBox(L.latLng(sp.lat, sp.lng), c.rows, c.big); }))).addTo(map);
+        } else putPic(null);
       } else if ((layer === 'currents' && fv) || (layer === 'wave' && fv?.wh)) {
         // At full detail (Copernicus, about 9 km).
         putPic(`fine|${layer}|${ft}|${coast ? 'cut' : 'whole'}`, () => fieldCanvas(fine, fv, L1.colour, L1.stops, coast, 4), 0.85, 'field-image', fineBounds());
@@ -868,7 +902,9 @@ PAGE_GROUPS.push((view) => ({
       const legend = view.querySelector('#chart-legend');
       legend.hidden = !L1.stops && !L1.hot;
       if (L1.hot) {
-        legend.innerHTML = html`<span class="lg-key"><i></i>Hotspots: temperature breaks, current edges, the shelf</span>`;
+        legend.innerHTML = spotsNow.length
+          ? html`<span class="lg-key"><i></i>${spotsNow.length === 1 ? '1 spot stands out' : `${spotsNow.length} spots stand out`} this hour · tap a number</span>`
+          : html`<span class="lg-key">Nothing stands out this hour: no clear temperature, current or colour edge. Try another hour.</span>`;
         return;
       }
       if (!L1.stops) return;
@@ -994,6 +1030,11 @@ PAGE_GROUPS.push((view) => ({
     // Tap the sea: everything at that spot.
     map.off('click', earlyTap);
     const describeTap = (e) => {
+      // On a numbered spot (within about 5 km): its card.
+      if (layer === 'hotspots') {
+        const i = spotsNow.findIndex((sp) => Math.hypot(sp.lat - e.latlng.lat, sp.lng - e.latlng.lng) < 0.045);
+        if (i >= 0) { lastTap = e; const c = spotCard(spotsNow[i], i + 1); return tapBox(e.latlng, c.rows, c.big); }
+      }
       lastTap = e;
       const { lat, lng } = e.latlng;
       const navOnly = () => earlyTap(e);
@@ -1026,7 +1067,7 @@ PAGE_GROUPS.push((view) => ({
       const tp = fineNow?.(lat, lng, 'tp'); // the swell's period (seconds), from Copernicus
       const big = {
         none: d != null && ['Depth', estTxt(depthTxt(d))],
-        hotspots: ['Hotspot', hot && reasons.length ? reasons.join(', ') : 'Not a hotspot'],
+        hotspots: ['Hotspot', !spotsNow.length ? 'Nothing stands out this hour' : hot && reasons.length ? reasons.join(', ') : 'Not one of the best spots'],
         // About: a model's current, off by 0.3 kn or so at a spot (checked against measured ones).
         currents: u != null && ['Current', `${estTxt(`${Math.hypot(u, v).toFixed(1)} kn`)} ${arrow(deg(u, v))} ${pt(deg(u, v))}`],
         sst: t != null && ['Water temperature', estTxt(tempTxt(t))],

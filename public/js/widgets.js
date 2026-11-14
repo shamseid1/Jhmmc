@@ -919,6 +919,10 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
       }
     }
     const rt = rank(tb); const rc = rank(ce); const rg = colourEdge && rank(colourEdge);
+    // The edges' own sizes (not ranked), to say plainly how strong a spot is: the temperature
+    // break in °C (over about 6 km by satellite, else a grid step), the current edge in knots,
+    // the colour edge as log10 of how many times greener.
+    f.tb = satBreak ? tb : null; f.ce = ce; f.ge = colourEdge;
     f.fish = []; f.why = [];
     for (let k = 0; k < nx * ny; k++) {
       if ((f.sst[k] == null && f.u[k] == null) || !fishable(k)) { f.fish.push(null); f.why.push(0); continue; }
@@ -927,8 +931,10 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
       const ge = rg && colourEdge[k] != null ? rg(colourEdge[k]) ** 2 : null;
       // An edge makes a spot: a temperature break, a current edge or a colour edge. The shelf
       // and the water billfish like only raise it; on their own they never make a hotspot.
-      const edge = ge == null ? 0.55 * b + 0.45 * e : 0.4 * b + 0.3 * e + 0.3 * ge;
-      const score = edge * (0.65 + 0.35 * sh) * (0.85 + 0.15 * w);
+      // The water colour only supports (like the shelf): it's each spot's newest clear view of
+      // the last week, so it can be days old under cloud; never a spot on its own.
+      const edge = 0.55 * b + 0.45 * e;
+      const score = edge * (0.65 + 0.35 * sh) * (0.85 + 0.15 * w) * (ge == null ? 1 : 0.9 + 0.1 * ge);
       f.fish.push(Math.round(score * 100) / 100);
       f.why.push((b > 0.8 ? 1 : 0) | (e > 0.8 ? 2 : 0) | (depth && sh > 0.8 ? 4 : 0) | (prefs.water && w > 0.9 ? 8 : 0) | (ge != null && ge > 0.8 ? 16 : 0));
     }
@@ -951,10 +957,39 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
     }
   }
 }
+// Whether a spot's edges really stand out, by their own size (set from the water here: about
+// the top 3% of the sea on a normal day): a temperature break of 0.3 °C over 6 km, a current
+// edge of 0.25 kn, water 2x greener. Each found is [kind, size, strong?].
+const EDGE_MARK = { tb: 0.3, ce: 0.25, ge: Math.log10(2) };
+function standout(f, k) {
+  const out = [];
+  if (f.tb?.[k] >= EDGE_MARK.tb) out.push(['tb', f.tb[k], f.tb[k] >= 2 * EDGE_MARK.tb]);
+  if (f.ce?.[k] >= EDGE_MARK.ce) out.push(['ce', f.ce[k], f.ce[k] >= 1.6 * EDGE_MARK.ce]);
+  // The colour (can be days old) only adds to a spot that stands out already.
+  if (out.length && f.ge?.[k] >= EDGE_MARK.ge) out.push(['ge', f.ge[k], false]);
+  return out;
+}
+// The best few spots that hour: the hotspot peaks that really stand out, strongest first, at
+// least ~20 km apart. [{ lat, lng, k, edges }]
+function topSpots(g, f, n = 3) {
+  const lim = hotspotLimit(f);
+  const xs = [];
+  f.fish.forEach((v, k) => { if (v != null && v >= lim) { const e = standout(f, k); if (e.length) xs.push([v + e.length * 0.05, k, e]); } });
+  xs.sort((a, b) => b[0] - a[0]);
+  const out = [];
+  for (const [, k, edges] of xs) {
+    const lat = g.south + Math.floor(k / g.nx) * g.step; const lng = g.west + (k % g.nx) * g.step;
+    if (out.some((o) => Math.hypot(o.lat - lat, o.lng - lng) < 0.18)) continue;
+    out.push({ lat, lng, k, edges });
+    if (out.length >= n) break;
+  }
+  return out;
+}
 // The fishing chart's hotspots: the most promising water (the top 8% of the fishable sea that
 // hour, and never below a fair score) as patches with a bright outline, so the chart underneath stays
 // readable. Cut at the coast like the other layers.
 function hotspotLimit(f) {
+  if (f.fish?.lim != null) return f.fish.lim; // set when only some patches are kept
   const xs = (f.fish || []).filter((v) => v != null).sort((a, b) => a - b);
   return xs.length ? Math.max(0.4, xs[Math.floor(xs.length * 0.92)]) : Infinity;
 }

@@ -1577,3 +1577,5 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: max(16px, 1em); }
 html { overflow-x: clip; overscroll-behavior: none; }
 body { overflow-x: clip; }
+.leaflet-marker-icon.hot-num { display: block; text-align: center; line-height: 26px; box-sizing: border-box; border-radius: 50%; background: #ff4081; color: #fff; font: 800 15px/26px system-ui, sans-serif;
+  border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
