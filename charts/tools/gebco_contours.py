@@ -22,6 +22,11 @@ d = gaussian_filter(np.where(land, 0, depth), 0.8); d[land] = -1
 dd = gaussian_filter(np.where(land, 0, depth), 4.0)
 t = np.clip((depth - 1500) / 1000, 0, 1)
 d = np.where(land, -1, d * (1 - t) + dd * t)
+# The shelf smoothed more too (its small bumps are noise in the grid, not reefs): blended out
+# from 150 m to 300 m, so the slope and its canyons keep their detail, as a plotter draws them.
+ds = gaussian_filter(np.where(land, 0, depth), 2.2)
+u = np.clip((depth - 150) / 150, 0, 1)
+d = np.where(land, -1, ds * (1 - u) + d * u)
 # How far each point is from land (km; a grid step is about 0.46 km): only lines that come
 # within 250 km of the coast are kept, the fishing grounds' (not the far ocean's features, cut
 # off by the data's edge).
@@ -60,6 +65,9 @@ for lev in levels:
     cs = ax.contour(lngs, lats, d, levels=[lev])
     for seg in cs.allsegs[0]:
         if len(seg) < 4 or not near_coast(np.asarray(seg)): continue
+        # Small rings left out (under about 2 km across): bumps, not features worth a line.
+        sa = np.asarray(seg)
+        if np.allclose(sa[0], sa[-1]) and max(np.ptp(sa[:, 0]), np.ptp(sa[:, 1])) < 0.018: continue
         s = simplify(np.asarray(seg), 0.0003)
         # Pieces of at most 60 points and half a degree across (so a tile finds every piece
         # that crosses it in the squares around it), each filed under its first point's 1° square.
