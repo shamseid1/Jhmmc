@@ -308,7 +308,7 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '8'; // (bumped: the land now saved with the lines)
+const CONTOURS_V = '9'; // (bumped: the land now saved with the lines)
 const LAND_V = '8';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
@@ -344,9 +344,9 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         for (const lines of cells) {
           for (const [m, zmin, flat] of lines) {
-            // As a plotter: each finer set of lines one zoom later than it's made for (the main
-            // depths, from furthest out, as they are), so a screen never has too many.
-            if ((zmin <= 6 ? zmin : zmin + 1) > z) continue;
+            // As Garmin: none further out than zoom 9; at 9 the whole picture at once (the shelf
+            // every 10 m, the slope close, the deep every 100-200 m); then finer as you zoom in.
+            if (zmin - 1 > z) continue;
             // Only pieces that cross this tile: by their whole extent (a long straight stretch can
             // cross a tile without a point in it).
             let s0 = Infinity; let n0 = -Infinity; let w0 = Infinity; let e0 = -Infinity;
@@ -399,7 +399,7 @@ function contourLayer(L, { color = '#12305e', halo = 'rgba(255,255,255,0.85)' } 
       return cv;
     },
   });
-  return new Layer({ minZoom: 6, maxZoom: 14, updateWhenZooming: false, keepBuffer: 3, className: 'gebco-lines', attribution: 'Depths: GEBCO' });
+  return new Layer({ minZoom: 9, maxZoom: 14, updateWhenZooming: false, keepBuffer: 3, className: 'gebco-lines', attribution: 'Depths: GEBCO' });
 }
 // The depth charts as one map layer: map tiles (sharp at every zoom, only the
 // part in view is loaded) or, for an older chart, one picture.

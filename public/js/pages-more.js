@@ -257,7 +257,7 @@ PAGE_GROUPS.push((view) => ({
     // empty grey around the map), and the map stays around West Africa.
     // In as far as a scale of about half a kilometre (zoom 14): the depth lines' detail ends there.
     const map = L.map(box, { zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 14, bounceAtZoomLimits: false,
-      maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 8);
+      maxBounds: [[-12, -35], [24, 10]], maxBoundsViscosity: 1 }).setView([6.05, -10.55], 9); // where the depth lines start, as on Garmin
     // The map's layers, bottom to top over the sea's colours (400): the hotspot outlines and
     // temperature lines (420), the moving lines (450), your fish, spots and position (610). Made at once, so nothing is put on a layer that isn't there yet.
     for (const [name, z] of [['outlines', 420], ['pins', 610]]) {
