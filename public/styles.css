@@ -1579,3 +1579,5 @@ html { overflow-x: clip; overscroll-behavior: none; }
 body { overflow-x: clip; }
 .leaflet-marker-icon.hot-num { display: block; text-align: center; line-height: 26px; box-sizing: border-box; border-radius: 50%; background: #ff4081; color: #fff; font: 800 15px/26px system-ui, sans-serif;
   border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.chart-fresh { padding: 3px 10px 4px; font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-fresh[hidden] { display: none; }

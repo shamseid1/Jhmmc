@@ -212,6 +212,7 @@ PAGE_GROUPS.push((view) => ({
         <div class="tl-row"><button type="button" class="chart-play" id="cur-play" aria-label="Play">${raw(icon('play'))}</button>
           <div class="tl-wrap"><div class="tl" id="tl" tabindex="0" aria-label="Time: swipe through the hours"></div><span class="tl-mark" aria-hidden="true"></span><span class="tl-bubble" id="tl-when"></span><span class="tl-port" id="tl-port"></span></div></div>
         <div class="chart-legend" id="chart-legend"></div>
+        <div class="chart-fresh" id="chart-fresh" hidden></div>
       </div>
     </div>`;
     // The layers panel: opened with the layers button (or the name at the top), closed with the
@@ -812,13 +813,17 @@ PAGE_GROUPS.push((view) => ({
       cur = f;
       const L1 = LAYER[layer];
       at = sampler(data, f);
-      // None: nothing changes with the hour, so no time bar (and no playing).
-      if (bar.hidden !== (layer === 'none')) {
-        if (layer === 'none' && isPlaying) stopPlay();
+      // No time bar where nothing changes with the hour: None, and the satellites' pictures (the
+      // water colour, the measured temperature: a day's, or a week's clear views). The scale and
+      // how fresh it is stay; None has neither.
+      const noTime = layer === 'none' || layer === 'chl' || (layer === 'sst' && !!satGrid);
+      if (bar.hidden !== (layer === 'none') || tlRow.hidden !== noTime) {
+        if (noTime && isPlaying) stopPlay();
         bar.hidden = layer === 'none';
+        tlRow.hidden = noTime;
         lift();
         // Shown again: the strip back on the hour (a hidden strip can't keep its place).
-        if (!bar.hidden) { const keep = hour; requestAnimationFrame(() => realign?.(keep)); }
+        if (!noTime) { const keep = hour; requestAnimationFrame(() => realign?.(keep)); }
       }
       // The current at full detail for this hour, if it's in (asked for if not).
       const ft = timeOf(hour);
@@ -855,7 +860,7 @@ PAGE_GROUPS.push((view) => ({
         const hg = fh ? fh.g : data; const hf = fh ? fh.f : f;
         // Only where something really stands out (a clear edge by its own size); if nothing
         // does this hour, nothing's shown, and the scale says so.
-        spotsNow = topSpots(hg, hf, 5).map((sp) => ({ ...sp, g: hg, f: hf }));
+        spotsNow = topSpots(hg, hf).map((sp) => ({ ...sp, g: hg, f: hf }));
         if (spotsNow.length) {
           // The patches of the numbered spots only (within about 15 km of one): every patch on
           // the chart is one of them.
@@ -901,6 +906,21 @@ PAGE_GROUPS.push((view) => ({
       // one when there are many).
       const legend = view.querySelector('#chart-legend');
       legend.hidden = !L1.stops && !L1.hot;
+      // How fresh it is: when measured (the satellites) or when the forecast was last fetched.
+      const freshEl = view.querySelector('#chart-fresh');
+      const ago = (t) => { if (!t) return ''; const m = Math.round((Date.now() - (typeof t === 'number' ? t : Date.parse(t))) / 60e3); return m < 60 ? `${Math.max(1, m)} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+      const day = (d) => fmtDate(d).replace(/,? \d{4}$/, '');
+      const daysOld = (d) => Math.round((Date.parse(`${today()}T12:00:00Z`) - Date.parse(`${d}T12:00:00Z`)) / 864e5);
+      const fresh = {
+        sst: satGrid ? `Measured by satellite ${day(satGrid.newest)} (${daysOld(satGrid.newest) <= 0 ? 'today' : daysOld(satGrid.newest) === 1 ? 'yesterday' : `${daysOld(satGrid.newest)} days old`})` : `Forecast · updated ${ago(data.updatedAt)}`,
+        chl: chlGrid ? `Satellite · each spot's newest clear view, ${day(chlGrid.oldest)} – ${day(chlGrid.newest)}` : '',
+        currents: `Forecast (Copernicus) · updated ${ago(fine?.at || data.updatedAt)}`,
+        wave: `Forecast (Copernicus) · updated ${ago(fine?.at || data.updatedAt)}`,
+        wind: `Forecast (ECMWF) · updated ${ago(data.updatedAt)}`,
+        hotspots: `From currents (updated ${ago(fine?.at || data.updatedAt)}) and satellite temperature (${satGrid ? day(satGrid.newest) : 'forecast'})`,
+      }[layer] || '';
+      freshEl.textContent = fresh;
+      freshEl.hidden = !fresh;
       if (L1.hot) {
         legend.innerHTML = spotsNow.length
           ? html`<span class="lg-key"><i></i>${spotsNow.length === 1 ? '1 spot stands out' : `${spotsNow.length} spots stand out`} this hour · tap a number</span>`

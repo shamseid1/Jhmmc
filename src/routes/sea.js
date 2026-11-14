@@ -72,7 +72,7 @@ module.exports = (ctx) => {
     if (!C) return res.set('Cache-Control', 'no-store').json({ ready: false });
     const { south, west, step, nx, ny, depth } = C;
     // With the seabed's depth at each point (for the hotspots at full detail), when it's in.
-    res.set('Cache-Control', 'public, max-age=900').json({ ready: true, south, west, step, nx, ny, depth: depth || null });
+    res.set('Cache-Control', 'public, max-age=900').json({ ready: true, south, west, step, nx, ny, depth: depth || null, at: copernicus.status?.().at || null });
   });
   api.get('/currents/fine/:t', async (req, res) => {
     const cop = await copernicus?.get().catch(() => null);

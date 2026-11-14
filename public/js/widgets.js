@@ -958,9 +958,10 @@ function fishingField(g, prefs = {}, chl = null, sat = null) {
   }
 }
 // Whether a spot's edges really stand out, by their own size (set from the water here: about
-// the top 3% of the sea on a normal day): a temperature break of 0.3 °C over 6 km, a current
-// edge of 0.25 kn, water 2x greener. Each found is [kind, size, strong?].
-const EDGE_MARK = { tb: 0.3, ce: 0.25, ge: Math.log10(2) };
+// the top 1% of the sea on a normal day): a temperature break of 0.5 °C over 6 km, a current
+// edge of 0.4 kn; water 2x greener only adds. Each found is [kind, size, strong?]. As many
+// spots as stand out are shown, no more and no fewer.
+const EDGE_MARK = { tb: 0.5, ce: 0.4, ge: Math.log10(2) };
 function standout(f, k) {
   const out = [];
   if (f.tb?.[k] >= EDGE_MARK.tb) out.push(['tb', f.tb[k], f.tb[k] >= 2 * EDGE_MARK.tb]);
@@ -971,7 +972,7 @@ function standout(f, k) {
 }
 // The best few spots that hour: the hotspot peaks that really stand out, strongest first, at
 // least ~20 km apart. [{ lat, lng, k, edges }]
-function topSpots(g, f, n = 3) {
+function topSpots(g, f, n = Infinity) {
   const lim = hotspotLimit(f);
   const xs = [];
   f.fish.forEach((v, k) => { if (v != null && v >= lim) { const e = standout(f, k); if (e.length) xs.push([v + e.length * 0.05, k, e]); } });
