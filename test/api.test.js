@@ -753,9 +753,9 @@ test('JHMMC points: weigh-in, secretary approval, calendar and standings', async
     const jhBook = (await as()('GET', `/records?club=${jhmmc}`)).body.book;
     assert.equal(jhBook.asAt, '2026-05-03');
     const bookWahoo = jhBook.groups.find((g) => g.title === 'Wahoo').records;
-    assert.deepEqual(bookWahoo.slice(0, 4).map((r) => [r.angler, r.weightKg, !!r.fromApp]),
-      [['Robert Bains', 44.1, false], ['Heinz Wachter', 32, false], ['Jean Chahine', 28.9, false], ['Ocean Captain', 21, true]],
-      'approved fish are ranked in with the club record book');
+    assert.deepEqual(bookWahoo.map((r) => [r.angler, r.weightKg, !!r.fromApp]),
+      [['Robert Bains', 44.1, false], ['Heinz Wachter', 32, false], ['Jean Chahine', 28.9, false]],
+      "a fish goes in only if it beats one already there: the app's 21 kg wahoo doesn't");
     assert.equal(jhBook.groups.find((g) => g.title === 'Blue Marlin').records[0].angler, 'Heinz Wachter');
     assert.equal(jhBook.groups.find((g) => g.title === 'Blue Marlin').records.length, 11, 'every book record stays listed');
     assert.equal(jhBook.lineRecords.find((r) => r.group === 'Wahoo' && r.lineClass === '50 lb').angler, 'Jean Chahine',

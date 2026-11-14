@@ -62,8 +62,13 @@ module.exports = (ctx) => {
     const fromApp = (species) => approved.filter((a) => a.species === species).map((a) => ({ ...a, fromApp: true }));
     const heaviestFirst = (rows) => rows.sort((a, b) => b.weightKg - a.weightKg);
     const listed = new Set(jhmmcBook.GROUPS.map((g) => g.species).filter(Boolean));
-    const all = jhmmcBook.GROUPS.map((g) => ({ title: g.title, species: g.species, length: Math.max(BOOK_LENGTH, g.records.length),
-      records: heaviestFirst([...g.records, ...(g.species ? fromApp(g.species) : [])]) }));
+    // A fish from the app goes into the book only if it beats a fish already there (heavier than
+    // the book's lightest for its species): a short list isn't topped up with small fish.
+    const all = jhmmcBook.GROUPS.map((g) => {
+      const lightest = g.records.length ? Math.min(...g.records.map((r) => r.weightKg)) : Infinity;
+      const beats = g.species ? fromApp(g.species).filter((a) => a.weightKg > lightest) : [];
+      return { title: g.title, species: g.species, length: Math.max(g.records.length, 1) + beats.length, records: heaviestFirst([...g.records, ...beats]) };
+    });
     for (const species of new Set(approved.map((a) => a.species))) {
       if (!listed.has(species)) all.push({ title: species, species, length: BOOK_LENGTH, records: fromApp(species) });
     }
