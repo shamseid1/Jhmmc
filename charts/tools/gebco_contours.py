@@ -43,7 +43,7 @@ def zmin(m):
     if m in (20, 50, 100, 200, 500, 1000, 2000, 3000, 4000): return 6
     if m in (10, 30, 150, 300) or m % 500 == 0: return 8
     if (m <= 500 and m % 50 == 0) or (m <= 2000 and m % 100 == 0) or m % 200 == 0: return 9
-    if (m <= 200 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or m % 100 == 0: return 10
+    if (m <= 200 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or (m <= 1500 and m % 100 == 0): return 10  # deep water every 200 m at first, as Garmin
     if (m <= 100 and m % 5 == 0) or (m <= 500 and m % 25 == 0) or (m <= 2000 and m % 50 == 0): return 11
     return 12
 levels = sorted(set(list(range(5, 101, 5)) + list(range(110, 301, 10)) + list(range(325, 1001, 25)) + list(range(1050, 2001, 50)) + list(range(2100, 4001, 100))))  # to 4,000 m: further out is the flat deep floor

@@ -308,7 +308,7 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
 // zoom 12), each labelled along the line in the depth unit chosen on More. Drawn tile by tile
 // from the 1° squares in view (loaded as needed, kept for no signal by the app).
-const CONTOURS_V = '10'; // (bumped: the land now saved with the lines)
+const CONTOURS_V = '11'; // (bumped: the land now saved with the lines)
 const LAND_V = '8';
 const contourCells = new Map(); // "lat_lng" -> Promise of its lines (or [])
 let contourIndex = null; // the squares there are (the rest is land, or off the chart)
