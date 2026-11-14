@@ -22,6 +22,11 @@ d = gaussian_filter(np.where(land, 0, depth), 0.8); d[land] = -1
 dd = gaussian_filter(np.where(land, 0, depth), 4.0)
 t = np.clip((depth - 1500) / 1000, 0, 1)
 d = np.where(land, -1, d * (1 - t) + dd * t)
+# The shelf as sharp as the data allows (barely smoothed): its bumps, holes and edges are what
+# fishermen read; blended back to the usual from 200 m to 400 m.
+dsh = gaussian_filter(np.where(land, 0, depth), 0.35)
+u = np.clip((depth - 200) / 200, 0, 1)
+d = np.where(land, -1, dsh * (1 - u) + d * u)
 
 # How far each point is from land (km; a grid step is about 0.46 km): only lines that come
 # within 250 km of the coast are kept, the fishing grounds' (not the far ocean's features, cut
@@ -38,10 +43,10 @@ def zmin(m):
     if m in (20, 50, 100, 200, 500, 1000, 2000, 3000, 4000): return 6
     if m in (10, 30, 150, 300) or m % 500 == 0: return 8
     if (m <= 500 and m % 50 == 0) or (m <= 2000 and m % 100 == 0) or m % 200 == 0: return 9
-    if (m <= 100 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or m % 100 == 0: return 10
-    if (m <= 200 and m % 10 == 0) or (m <= 500 and m % 25 == 0) or (m <= 2000 and m % 50 == 0): return 11
+    if (m <= 200 and m % 10 == 0) or (m <= 300 and m % 25 == 0) or (m <= 1000 and m % 50 == 0) or m % 100 == 0: return 10
+    if (m <= 100 and m % 5 == 0) or (m <= 500 and m % 25 == 0) or (m <= 2000 and m % 50 == 0): return 11
     return 12
-levels = sorted(set(list(range(5, 51, 5)) + list(range(60, 301, 10)) + list(range(325, 1001, 25)) + list(range(1050, 2001, 50)) + list(range(2100, 4001, 100))))  # to 4,000 m: further out is the flat deep floor
+levels = sorted(set(list(range(5, 101, 5)) + list(range(110, 301, 10)) + list(range(325, 1001, 25)) + list(range(1050, 2001, 50)) + list(range(2100, 4001, 100))))  # to 4,000 m: further out is the flat deep floor
 def simplify(pts, tol):
     keep = np.zeros(len(pts), bool); keep[0] = keep[-1] = True
     stack = [(0, len(pts) - 1)]
