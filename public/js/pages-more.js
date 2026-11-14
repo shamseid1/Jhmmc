@@ -478,7 +478,7 @@ PAGE_GROUPS.push((view) => ({
       if (!navigator.onLine || !('serviceWorker' in navigator) || navigator.connection?.saveData) return;
       // The depth lines for our stretch of coast (Guinea-Bissau to Cape Palmas, about 1.5 MB),
       // once (again only when they change); the rest of West Africa's are kept as they're seen.
-      try { if (localStorage.getItem('contours-saved') === `${CONTOURS_V}.${NAMES_V}.${WATER_V}`) return; } catch { /* no memory: fetch (the app keeps them once) */ }
+      try { if (localStorage.getItem('contours-saved') === `${CONTOURS_V}.${NAMES_V}.${WATER_V}.${SHADE_V}`) return; } catch { /* no memory: fetch (the app keeps them once) */ }
       let keys = [];
       try { keys = await (await fetch(`/contours/index.json?v=${CONTOURS_V}`)).json(); } catch { return; }
       keys = keys.filter((k) => { const [la, lo] = k.split('_').map(Number); return la >= 0 && la <= 12 && lo >= -19 && lo <= -7; });
@@ -492,13 +492,13 @@ PAGE_GROUPS.push((view) => ({
           .flatMap(([k, t]) => [...t].map((x) => `/water/${k}.${x}.json?v=${WATER_V}`));
       } catch { /* the water comes as it's seen */ }
       const urls = [...keys.map((k) => `/contours/${k}.json?v=${CONTOURS_V}`), ...names.map((k) => `/names/${k}.json?v=${NAMES_V}`), `/names/index.json?v=${NAMES_V}`,
-        ...water, `/water/index.json?v=${WATER_V}`,
+        ...water, `/water/index.json?v=${WATER_V}`, ...keys.map((k) => `/shade/${k}.png?v=${SHADE_V}`), `/shade/index.json?v=${SHADE_V}`,
         `/land-fine.json?v=${LAND_V}`, `/land-details.json?v=${LAND_V}`];
       let failed = 0;
       // Two at a time, so the map you're looking at isn't slowed down; stops if you leave.
       const next = async () => { while (urls.length && view.isConnected) { const ok = await fetch(urls.shift()).then((r) => r.ok).catch(() => false); if (!ok) failed += 1; } };
       await Promise.all([next(), next()]);
-      if (!urls.length && !failed) { try { localStorage.setItem('contours-saved', `${CONTOURS_V}.${NAMES_V}.${WATER_V}`); } catch { /* fine */ } }
+      if (!urls.length && !failed) { try { localStorage.setItem('contours-saved', `${CONTOURS_V}.${NAMES_V}.${WATER_V}.${SHADE_V}`); } catch { /* fine */ } }
     };
     setTimeout(saveForSea, 4000);
     // ---- saved spots: press and hold the map to save one; your crew's are shown ----

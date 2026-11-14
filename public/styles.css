@@ -1570,3 +1570,4 @@ button.pop-link { border: 0; background: none; padding: 0; font: inherit; cursor
 .cal-edit { margin-left: auto; flex: none; border: 0; background: #eef1f6; color: inherit; border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 13px; }
 .cal-season { margin-top: 18px; }
 .cal-season summary { font-weight: 700; cursor: pointer; }
+.relief-img { image-rendering: auto; }

@@ -102,6 +102,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
   }).catch(() => {});
   let layers = [];
   const ourNames = placeNames(L, map);
+  const relief = reliefLayer(L, map);
   // The water on the land (rivers, lagoons, creeks), over the land and its details, under the depth lines.
   const waterPane = map.getPane('water') || map.createPane('water');
   waterPane.style.zIndex = 260;
@@ -119,6 +120,7 @@ function addSatellite(L, map, { fullScreen = false, base = 'satellite' } = {}) {
     credit = b.map ? 'Names: GeoNames' : b.credit;
     if (credit) map.attributionControl?.addAttribution(credit);
     ourNames.set(true);
+    relief.set(kind === 'plotter');
     map.getContainer().classList.toggle('base-plotter', kind === 'plotter');
     waterOn?.remove(); waterOn = null;
     detailBase = kind;
@@ -303,6 +305,37 @@ function waterLayer(L, { sea = '#0c2f5c', shore = '#5fb3f0' } = {}) {
     },
   });
   return new Layer({ pane: 'water', minZoom: 5, maxZoom: 14, updateWhenZooming: false, keepBuffer: 2, attribution: 'Water: © OpenStreetMap contributors' });
+}
+// The Plotter map's relief shading (charts/tools/relief_shade.py): light and shadow from the
+// seabed, so every bump, hole and edge shows between the depth lines. One picture per 1° square,
+// laid over the sea under the land, the squares in view only.
+const SHADE_V = '2';
+let shadeIndex = null;
+function reliefLayer(L, map) {
+  const pane = map.getPane('relief') || map.createPane('relief');
+  pane.style.zIndex = 240; // over the sea (the map's background), under the land (250)
+  pane.style.pointerEvents = 'none';
+  const shown = new Map();
+  let on = false;
+  const draw = async () => {
+    if (!on) { for (const o of shown.values()) o.remove(); shown.clear(); return; }
+    shadeIndex ??= fetch(`/shade/index.json?v=${SHADE_V}`).then((r) => r.json()).then((xs) => new Set(xs)).catch(() => new Set());
+    const have = await shadeIndex;
+    if (!on) return;
+    const b = map.getBounds();
+    const want = new Set();
+    if (map.getZoom() >= 7) {
+      for (let la = Math.floor(b.getSouth()); la <= Math.floor(b.getNorth()); la++) for (let lo = Math.floor(b.getWest()); lo <= Math.floor(b.getEast()); lo++) if (have.has(`${la}_${lo}`)) want.add(`${la}_${lo}`);
+    }
+    for (const [k, o] of shown) if (!want.has(k)) { o.remove(); shown.delete(k); }
+    for (const k of want) {
+      if (shown.has(k)) continue;
+      const [la, lo] = k.split('_').map(Number);
+      shown.set(k, L.imageOverlay(`/shade/${k}.png?v=${SHADE_V}`, [[la, lo], [la + 1, lo + 1]], { pane: 'relief', interactive: false, className: 'relief-img' }).addTo(map));
+    }
+  };
+  map.on('moveend zoomend', draw);
+  return { set: (v) => { on = v; draw(); } };
 }
 // The depth lines drawn from GEBCO's seabed map (made once: charts/tools/gebco_contours.py):
 // like a plotter, more lines the closer in (200 m apart far out, 5 m in shallow water from
